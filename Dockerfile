@@ -114,7 +114,7 @@ WORKDIR /repos/obs_lsst
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh ${obs_lsst_branch} && \
-    eups declare -r . -t saluser && \
+    eups declare -r . obs_lsst -t saluser && \
     setup obs_lsst -t saluser && \
     SCONSFLAGS="--no-tests" scons
 
@@ -138,7 +138,7 @@ WORKDIR /repos/drp_pipe
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh ${drp_pipe_branch} && \
-    eups declare -r . -t saluser && \
+    eups declare -r . drp_pipe -t saluser && \
     setup drp_pipe -t saluser && \
     scons version
 
@@ -147,17 +147,16 @@ WORKDIR /repos/Spectractor
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh ${spectractor_branch} && \
-    eups declare -r . -t saluser
+    eups declare -r . spectractor -t saluser
 
 WORKDIR /repos/atmospec
 
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh ${atmospec_branch} && \
-    eups declare -r . -t saluser && \
+    eups declare -r . atmospec -t saluser && \
     setup lsst_distrib && \
     setup obs_lsst -j && \
-    setup sconsUtils -j && \
     setup spectractor -j -t saluser && \
     setup atmospec -j -t saluser && \
     eups list && \
@@ -168,12 +167,11 @@ WORKDIR /repos/summit_utils
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh ${summit_utils_branch} && \
-    eups declare -r . -t saluser && \
+    eups declare -r . summit_utils -t saluser && \
     setup lsst_distrib && \
     setup obs_lsst && \
     setup atmospec -j -t saluser && \
     setup summit_utils -j -t saluser && \
-    setup sconsUtils && \
     scons version
 
 WORKDIR /repos/summit_extras
@@ -181,13 +179,12 @@ WORKDIR /repos/summit_extras
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh ${summit_extras_branch} && \
-    eups declare -r . -t saluser && \
+    eups declare -r . summit_extras -t saluser && \
     setup lsst_distrib && \
     setup obs_lsst && \
     setup atmospec -j -t saluser && \
     setup summit_utils -j -t saluser && \
     setup summit_extras -j -t saluser && \
-    setup sconsUtils && \
     scons version
 
 
@@ -195,22 +192,19 @@ WORKDIR /repos/rubintv_analysis_service
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh main && \
-    eups declare -r . -t saluser && \
+    eups declare -r . rubintv_analysis_service -t saluser && \
+    setup lsst_distrib && \
     setup atmospec -j -t saluser && \
     setup summit_utils -j -t saluser && \
     setup summit_extras -j -t saluser && \
-#    setup rubintv_production -j -t saluser && \
-    setup rubintv_analysis_service -j -t saluser && \
-    setup lsst_distrib && \
-    setup obs_lsst && \
-    setup sconsUtils && \
+    setup obs_lsst -j -t saluser && \
     scons version
 
 WORKDIR /repos/ts_wep
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh ${ts_wep_branch} && \
-    eups declare -r . ts_wep ${ts_wep} -t saluser && \
+    eups declare -r . ts_wep -t saluser && \
     setup ts_wep -t saluser && \
     scons version
 
@@ -233,7 +227,7 @@ WORKDIR /repos/donut_viz
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh ${donut_viz_branch} && \
-    eups declare -r . donut_viz ${donut_viz} -t saluser && \
+    eups declare -r . donut_viz -t saluser && \
     setup donut_viz -t saluser && \
     scons version
 
@@ -241,8 +235,8 @@ WORKDIR /repos/TARTS
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh ${tarts_branch} && \
-    eups declare -r . tarts ${tarts} -t saluser && \
-    setup tarts -t saluser
+    eups declare -r . tarts -t saluser
+#    setup tarts -t saluser
 
 WORKDIR /repos/rubintv_production
 
@@ -254,20 +248,18 @@ RUN chown -R ${UID}:${GID} /repos/rubintv_production
 
 USER saluser
 
-RUN git remote set-url origin https://github.com/lsst-sitcom/rubintv_production.git && \
-    git config --local --unset http."https://github.com/".extraheader
+RUN git remote set-url origin https://github.com/lsst-sitcom/rubintv_production.git
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    eups declare -r . -t saluser && \
+    eups declare -r . rubintv_production -t saluser && \
+    setup lsst_distrib && \
     setup atmospec -j -t saluser && \
     setup daf_butler -j -t saluser && \
     setup pipe_base -j -t saluser && \
     setup summit_utils -j -t saluser && \
     setup summit_extras -j -t saluser && \
     setup rubintv_production -j -t saluser && \
-    setup lsst_distrib && \
-    setup obs_lsst && \
-    setup sconsUtils && \
+    setup obs_lsst -j -t saluser && \
     scons version
 
 
