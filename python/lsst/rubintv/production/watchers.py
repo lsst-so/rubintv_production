@@ -138,19 +138,20 @@ class ButlerWatcher:
         expRecords : `dict` [`str`, `lsst.daf.butler.DimensionRecord` or `None`]  # noqa: W505
             A dict of the most recent exposure records, keyed by dataProduct.
         """
-        records = self.butler.registry.queryDimensionRecords("exposure", datasets="raw")
+        # runtime is ~200ms on the summit. If the dayObs were added and the
+        # results and then sorted in python this would bring this to ~30ms, but
+        # the change would then need to deal with the change in behaviour when
+        # the list is empty
+        records = self.butler.query_dimension_records("exposure", order_by="-exposure.timespan.end", limit=1)
 
         # we must sort using the timespan because:
         # we can't use exposure.id because it is calculated differently
         # for different instruments, e.g. TS8 is 10x bigger than AuxTel
         # and also C-controller data has expIds like 3YYYMMDDNNNNN so would
         # always be the "most recent".
-        records.order_by("-exposure.timespan.end")  # the minus means descending ordering
-        records.limit(1)
-        recordList = list(records)
-        if len(recordList) != 1:
-            raise RuntimeError(f"Found {len(recordList)} records for 'raw', expected 1")
-        return recordList[0]
+        if len(records) != 1:
+            raise RuntimeError(f"Found {len(records)} records for 'raw', expected 1")
+        return records[0]
 
     def run(self) -> None:
         lastSeen = None
