@@ -24,7 +24,7 @@ __all__ = ("RedisWatcher", "ButlerWatcher")
 
 import logging
 import sys
-from time import sleep
+from time import perf_counter, sleep
 from typing import TYPE_CHECKING
 
 from lsst.daf.butler import Butler
@@ -157,7 +157,9 @@ class ButlerWatcher:
         lastSeen = None
         while True:
             try:
+                start = perf_counter()
                 latestRecord = self._getLatestExpRecord()
+                duration = perf_counter() - start
 
                 if lastSeen is None:  # starting up for the first time
                     seenBefore = self.redisHelper.checkButlerWatcherList(self.instrument, latestRecord)
@@ -173,6 +175,7 @@ class ButlerWatcher:
                     sleep(self.cadence)
                     continue
 
+                self.log.info(f"Found new exposure={latestRecord.id}, query took {duration * 1000:.1f} ms")
                 self.redisHelper.pushNewExposureToHeadNode(latestRecord)
                 self.redisHelper.pushToButlerWatcherList(self.instrument, latestRecord)
                 lastSeen = latestRecord
