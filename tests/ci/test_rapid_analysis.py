@@ -389,7 +389,7 @@ class TestConfig:
             TestScript("meta_test_runs_ok.py"),
             TestScript("meta_test_debug_config.py", do_debug=True),
             TestScript("meta_test_patching.py"),
-            TestScript("meta_test_env.py"),
+            TestScript("meta_test_env.py", tee_output=True),
             TestScript("meta_test_s3_upload.py"),
             TestScript("meta_test_logging_capture.py"),
             TestScript("meta_test_logging_capture.py", tee_output=True),
