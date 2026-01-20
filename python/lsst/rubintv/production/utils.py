@@ -1547,16 +1547,24 @@ def makeFocalPlaneTitle(record: DimensionRecord) -> str:
     return title
 
 
+@dataclass
+class DurationResult:
+    duration: float | None = None
+
+
 @contextmanager
-def logDuration(logger: Logger, label: str) -> Iterator[None]:
+def logDuration(logger: Logger, label: str) -> Iterator[DurationResult]:
     """Context manager to log the duration of a block of code.
 
     Example usage:
 
-    with logDuration(log, "this block of code"):
+    with logDuration(log, "this block of code") as timing:
         doSomething()
+    duration = timing.duration
+
     This will log the time taken to execute the block of code with the label
-    message "<loggerName>.info this block of code took 1.23s".
+    message "<loggerName>.info this block of code took 1.23s" and return 1.23
+    as the duration attribute of the yielded object.
 
     Parameters
     ----------
@@ -1564,12 +1572,20 @@ def logDuration(logger: Logger, label: str) -> Iterator[None]:
         The logger to use for logging the duration.
     label : `str`
         A label for the block of code being timed, used in the log message.
+
+    Yields
+    ------
+    timing : `DurationResult`
+        An object whose ``duration`` attribute is populated (in seconds)
+        when the context exits.
     """
     start = perf_counter()
+    result = DurationResult()
     try:
-        yield
+        yield result
     finally:
-        logger.info("%s took %.3fs", label, (perf_counter() - start))
+        result.duration = perf_counter() - start
+        logger.info("%s took %.3fs", label, result.duration)
 
 
 def timeFunction(logger: Logger) -> Callable:
