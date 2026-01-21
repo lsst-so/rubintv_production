@@ -55,7 +55,9 @@ PUPIL_OUTER = 4.18
 FIELD_RADIUS = 1.75
 
 
-def makeDataframeFromZernikes(zernikeTable: Table, filterName: str) -> tuple[pd.DataFrame, np.ndarray]:
+def makeDataframeFromZernikes(
+    zernikeTable: Table, filterName: str, ofcData: OFCData
+) -> tuple[pd.DataFrame, np.ndarray]:
     """
     Convert a table of Zernike coefficients into a DataFrame and return the
     rotation matrix.
@@ -67,6 +69,8 @@ def makeDataframeFromZernikes(zernikeTable: Table, filterName: str) -> tuple[pd.
         'nollIndices' and 'rotTelPos'.
     filterName : `str`
         Name of the filter used for the exposure.
+    ofcData : `OFCData`
+        OFCData object containing telescope configuration.
 
     Returns
     -------
@@ -76,7 +80,6 @@ def makeDataframeFromZernikes(zernikeTable: Table, filterName: str) -> tuple[pd.
     rotMat : `numpy.ndarray`
         2x2 rotation matrix applied to field angles.
     """
-    ofcData = OFCData("lsst")
     ofcData.zn_selected = np.array(zernikeTable.meta["nollIndices"])
     rotationAngle = zernikeTable.meta["rotTelPos"]
     rotMat = np.array(
@@ -212,6 +215,7 @@ def extractWavefrontData(
 
 
 def estimateWavefrontDataFromDofs(
+    ofcData: OFCData,
     dofState: np.ndarray,
     wavefrontResults: pd.DataFrame,
     sourceTable: Table,
@@ -233,6 +237,8 @@ def estimateWavefrontDataFromDofs(
 
     Parameters
     ----------
+    ofcData : `OFCData`
+        OFCData object containing telescope configuration.
     dofState : `numpy.ndarray`
         Array of length 50 representing the AOS DOF state.
     wavefrontResults : `pandas.DataFrame`
@@ -294,7 +300,6 @@ def estimateWavefrontDataFromDofs(
     zernikesPadded = np.zeros((zernikes.shape[0], zernikes.shape[1] + zMin))
     zernikesPadded[:, zMin : zernikes.shape[1] + zMin] = zernikes
 
-    ofcData = OFCData("lsst")
     wavelength = ofcData.eff_wavelength[filterName.upper()]
 
     # Need to fix the signs and unit conversions to use batoid
@@ -471,6 +476,7 @@ def estimateEllipticities(
 
 
 def estimateTelescopeState(
+    ofcData: OFCData,
     zernikeTable: Table,
     wavefrontResults: pd.DataFrame,
     filterName: str,
@@ -481,6 +487,8 @@ def estimateTelescopeState(
 
     Parameters
     ----------
+    ofcData : `OFCData`
+        OFCData object containing telescope configuration.
     zernikeTable : `astropy.table.Table`
         Table containing Zernike coefficients.
     wavefrontResults : `pandas.DataFrame`
@@ -504,7 +512,6 @@ def estimateTelescopeState(
     else:
         raise ValueError("useDof must be a string representing integer ranges.")
 
-    ofcData = OFCData("lsst")
     ofcData.zn_selected = np.array(zernikeTable.meta["nollIndices"])
     ofcData.comp_dof_idx = newCompDofIdx
     ofcData.controller["truncation_index"] = nKeep

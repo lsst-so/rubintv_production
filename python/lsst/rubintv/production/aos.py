@@ -61,6 +61,7 @@ from lsst.summit.utils import ConsDbClient
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.plotRadialAnalysis import makePanel
 from lsst.summit.utils.utils import getCameraFromInstrumentName, getDetectorIds
+from lsst.ts.ofc import OFCData
 from lsst.utils.plotting.figures import make_figure
 
 from .aosUtils import (
@@ -401,6 +402,7 @@ class ZernikePredictedFWHMPlotter:
         self.log = logging.getLogger("lsst.rubintv.production.aos.ZernikePredictedFWHMPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
         self.s3Uploader = MultiUploader()
+        self.ofcData = OFCData("lsst")
 
     def makePlots(self, visitId: int) -> None:
         """Make the Zernike FWHM plot and DOF prediction for the visit.
@@ -456,7 +458,9 @@ class ZernikePredictedFWHMPlotter:
 
         tableFiltered = randomRowsPerDetector(table, 60)
 
-        wavefrontResults, rotMat = makeDataframeFromZernikes(zkAvgTable, expRecord.physical_filter)
+        wavefrontResults, rotMat = makeDataframeFromZernikes(
+            zkAvgTable, expRecord.physical_filter, self.ofcData
+        )
         wavefrontData = extractWavefrontData(wavefrontResults, tableFiltered, rotMat)
 
         plotName = "zernike_predicted_fwhm"
@@ -483,6 +487,7 @@ class ZernikePredictedFWHMPlotter:
 
         try:
             dofState = estimateTelescopeState(
+                self.ofcData,
                 zkAvgTable,
                 wavefrontResults,
                 filterName=expRecord.physical_filter,
@@ -494,6 +499,7 @@ class ZernikePredictedFWHMPlotter:
             return
 
         wavefrontData = estimateWavefrontDataFromDofs(
+            self.ofcData,
             dofState,
             wavefrontResults,
             tableFiltered,
