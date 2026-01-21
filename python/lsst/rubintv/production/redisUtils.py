@@ -677,33 +677,6 @@ class RedisHelper:
         if not self.isHeadNode:
             raise RuntimeError("This function is only for the head node - consume your queue, worker!")
 
-    def getRemoteCommands(self) -> list[dict]:
-        """Get any remote commands that have been sent to the head node.
-
-        Returns
-        -------
-        commands : `list` of `dict` : `dict`
-            The commands that have been sent. As a list of dicts, where each
-            dict has a single string key, which is the function to be called,
-            and dict value, optionally populated with kwargs to call that
-            function with.
-
-            For example, to ensure the guiders are on, the wavefronts are off,
-            and we have a phase-0 per-CCD checkerboard, the received commands
-            would look like:
-
-            commands = [
-                {'setAllOff': {}},
-                {'setFullCheckerboard': {'phase': 0}},
-                {'setGuidersOn': {}},
-            ]
-        """
-        commands = []
-        while command := self.redis.rpop("commands"):  # rpop for FIFO
-            commands.append(json.loads(command.decode("utf-8")))
-
-        return commands
-
     def pushNewExposureToHeadNode(self, expRecord: DimensionRecord) -> None:
         """Send an exposure record for processing.
 
@@ -808,32 +781,6 @@ class RedisHelper:
         if expRecordJson is None:
             return None
         return expRecordFromJson(expRecordJson, self.locationConfig)
-
-    def checkForOcsDonutPair(self, instrument: str) -> tuple[int, int] | None:
-        """Get the next exposure to process for the specified instrument.
-
-        Parameters
-        ----------
-        instrument : `str`
-            The instrument to get the next exposure for.
-
-        Returns
-        -------
-        expRecord : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
-            The next exposure to process for the specified detector, or
-            ``None`` if the queue is empty.
-        """
-        self._checkIsHeadNode()
-        queueName = f"{instrument}-FROM-OCS_DONUTPAIR"  # defined by Tiago, so just hard-coded here
-        exposurePairBytes = self.redis.lpop(queueName)
-        if exposurePairBytes is not None:
-            exposureIds = _extractExposureIds(exposurePairBytes, instrument)
-            if len(exposureIds) != 2:
-                raise ValueError(f"Expected two exposureIds, got {exposureIds}")
-            expId1, expId2 = exposureIds
-            return expId1, expId2
-        else:
-            return None
 
     def enqueuePayload(self, payload: Payload, destinationPod: PodDetails, top=True) -> None:
         """Send a unit of work to a specific worker-queue.
@@ -1181,19 +1128,6 @@ class RedisHelper:
         if zernikeCount is not None:
             return int(zernikeCount)
         return None
-
-    def setWorkerAsRecruitable(self, pod: PodDetails) -> None:
-        """Set a worker pod as recruitable.
-
-        This means that the worker is available to process work from other
-        queues, as distributed by the ClusterManager.
-
-        Parameters
-        ----------
-        pod : `lsst.rubintv.production.podDetails.PodDetails`
-            The pod details of the worker to set as recruitable.
-        """
-        self.redis.hset("HEADNODE_RECRUITABLE_WORKERS", pod.queueName, "1")
 
     def setDetectorsIgnoredByHeadNode(self, instrument: str, detectors: list[int]) -> None:
         """Set the detectors that the head node is currently not processing
