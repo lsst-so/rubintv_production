@@ -62,6 +62,7 @@ from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.plotRadialAnalysis import makePanel
 from lsst.summit.utils.utils import getCameraFromInstrumentName, getDetectorIds
 from lsst.ts.ofc import OFCData
+from lsst.utils import getPackageDir
 from lsst.utils.plotting.figures import make_figure
 
 from .aosUtils import (
@@ -402,7 +403,9 @@ class ZernikePredictedFWHMPlotter:
         self.log = logging.getLogger("lsst.rubintv.production.aos.ZernikePredictedFWHMPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
         self.s3Uploader = MultiUploader()
-        self.ofcData = OFCData("lsst")
+        configMttcsDir = getPackageDir("ts_config_mttcs")
+        ofcDir = os.path.join(configMttcsDir, "MTAOS", "ofc")
+        self.ofcData = OFCData("lsst", config_dir=ofcDir)
 
     def makePlots(self, visitId: int) -> None:
         """Make the Zernike FWHM plot and DOF prediction for the visit.
