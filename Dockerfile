@@ -23,6 +23,7 @@ ENV donut_viz_branch="18ea94d"
 # no tags for TARTS yet, so default to main if not using deployment branch
 ENV tarts_branch="main"
 ENV ts_ofc_branch="develop"
+ENV ts_config_mttcs_branch="develop"
 
 ENV USER=${USER:-saluser}
 ENV WORKDIR=/opt/lsst/software/stack
@@ -99,6 +100,7 @@ RUN git clone https://github.com/lsst/Spectractor.git && \
     git clone https://github.com/lsst-ts/rubintv_analysis_service.git && \
     git clone https://github.com/lsst-ts/ts_wep.git && \
     git clone https://github.com/lsst-ts/ts_ofc.git && \
+    git clone https://github.com/lsst-ts/ts_config_mttcs.git && \
     git clone https://github.com/lsst-ts/donut_viz.git && \
     git clone https://github.com/PetchMa/TARTS.git && \
     git clone https://github.com/lsst-camera-dh/eo_pipe.git
@@ -236,6 +238,13 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     setup ts_ofc -t saluser && \
     scons version
 
+WORKDIR /repos/ts_config_mttcs
+
+RUN source ${WORKDIR}/loadLSST.bash && \
+    /home/saluser/.checkout_repo.sh ${ts_config_mttcs_branch} && \
+    eups declare -r . ts_config_mttcs ${ts_config_mttcs} -t saluser && \
+    setup ts_config_mttcs -t saluser
+
 WORKDIR /repos/donut_viz
 
 RUN source ${WORKDIR}/loadLSST.bash && \
@@ -314,6 +323,7 @@ RUN git config --system --add safe.directory /repos/obs_lsst && \
     git config --system --add safe.directory /repos/rubintv_analysis_service && \
     git config --system --add safe.directory /repos/ts_wep && \
     git config --system --add safe.directory /repos/ts_ofc && \
+    git config --system --add safe.directory /repos/ts_config_mttcs && \
     git config --system --add safe.directory /repos/donut_viz && \
     git config --system --add safe.directory /repos/TARTS
 
