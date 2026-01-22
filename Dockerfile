@@ -22,7 +22,7 @@ ENV ts_wep_branch="5107292b"
 ENV donut_viz_branch="18ea94d"
 # no tags for TARTS yet, so default to main if not using deployment branch
 ENV tarts_branch="main"
-ENV ts_ofc_branch="main"
+ENV ts_ofc_branch="develop"
 
 ENV USER=${USER:-saluser}
 ENV WORKDIR=/opt/lsst/software/stack
