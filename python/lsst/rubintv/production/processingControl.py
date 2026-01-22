@@ -998,15 +998,16 @@ class HeadProcessController:
         instrument = expRecord.instrument
         assert instrument == self.instrument, f"instrument {instrument} does not match head node instance!"
 
-        if not isFam:  # dispatch corner chips for normal images first
-            self.doAosFanout(expRecord)
-        else:  # write a shard to the AOS page for the FAM image
-            aosShardPath = getShardPath(self.locationConfig, expRecord, isAos=True)
-            writeExpRecordMetadataShard(expRecord, aosShardPath)
-            self.log.info(f"Sending {expRecord.id} to {self.currentAosFamPipeline} pipeline")
-            # record pipeline config so the step1b dispatch knows what the
-            # active pipeline was
-            self.redisHelper.recordAosPipelineConfig(instrument, expRecord.id, self.currentAosFamPipeline)
+        if self.instrument != "LATISS":
+            if not isFam:  # dispatch corner chips for normal images first
+                self.doAosFanout(expRecord)
+            else:  # write a shard to the AOS page for the FAM image
+                aosShardPath = getShardPath(self.locationConfig, expRecord, isAos=True)
+                writeExpRecordMetadataShard(expRecord, aosShardPath)
+                self.log.info(f"Sending {expRecord.id} to {self.currentAosFamPipeline} pipeline")
+                # record pipeline config so the step1b dispatch knows what the
+                # active pipeline was
+                self.redisHelper.recordAosPipelineConfig(instrument, expRecord.id, self.currentAosFamPipeline)
 
         # data driven section
         targetPipelineBytes, targetPipelineGraph, who = self.getPipelineConfig(expRecord)
