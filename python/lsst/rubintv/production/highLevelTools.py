@@ -29,23 +29,33 @@ import pickle
 import re
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pandas as pd
 from astropy.table import Column, MaskedColumn, Table
+from galsim.zernike import zernikeRotMatrix
+from tqdm import tqdm
 
-from lsst.daf.butler import Butler, DimensionRecord
+from lsst.daf.butler import Butler, DatasetNotFoundError, DimensionRecord
 from lsst.summit.utils.butlerUtils import getExpRecordFromDataId, getSeqNumsForDayObs, makeDefaultLatissButler
 from lsst.summit.utils.consdbClient import getCcdVisitTableForDay, getWideQuicklookTableForDay
 from lsst.summit.utils.dateTime import calcPreviousDay, dayObsIntToString, getCurrentDayObsInt
-from lsst.summit.utils.utils import setupLogging
+from lsst.summit.utils.efdUtils import getEfdData
+from lsst.summit.utils.utils import computeCcdExposureId, setupLogging
 from lsst.utils import getPackageDir
 from lsst.utils.iteration import sequence_to_string
 
 from .channels import CHANNELS, PREFIXES
+from .consdbUtils import CCD_VISIT_MAPPING, ConsDBPopulator, changeType
 from .uploaders import Uploader
 from .utils import FakeExposureRecord, LocationConfig, expRecordToUploadFilename
+
+HAS_EFD_CLIENT = True
+try:
+    from lsst_efd_client import EfdClient
+except ImportError:
+    HAS_EFD_CLIENT = False
 
 if TYPE_CHECKING:
     from lsst.summit.utils import ConsDbClient
@@ -885,3 +895,303 @@ def checkConsDbContents(butler: Butler, client: ConsDbClient, dayObs: int, verbo
         print(f"Empty columns: {cResults.emptyColumns}")
 
     return dayIsOk
+
+
+def backfillVisit1QuicklookForDay(
+    butler: Butler, populator: ConsDBPopulator, dayObs: int
+) -> tuple[list[DimensionRecord], list[DimensionRecord]]:
+    """Backfill the visit1_quicklook table for a given dayObs.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The butler to query for exposure records.
+    populator : `ConsDBPopulator`
+        The ConsDBPopulator to use to populate the table.
+    dayObs : `int`
+        The dayObs to backfill.
+
+    Returns
+    -------
+    rowsInserted : `list` [`DimensionRecord`]
+        List of DimensionRecords which were successfully populated.
+    noData : `list` [`DimensionRecord`]
+        List of DimensionRecords which could not be populated due to missing
+        data.
+    """
+    where = f"exposure.day_obs={dayObs} AND instrument='LSSTCam'"
+    records = butler.query_dimension_records("exposure", where=where, order_by="-exposure.timespan.end")
+
+    rowsInserted: list[DimensionRecord] = []
+    noData: list[DimensionRecord] = []
+
+    for record in tqdm(reversed(records), total=len(records), mininterval=60.0, ncols=120):
+        try:
+            populator.populateVisitRowWithButler(butler, record, True)
+            rowsInserted.append(record)
+        except DatasetNotFoundError:
+            noData.append(record)
+
+    return rowsInserted, noData
+
+
+def backfillVisit1QuicklookForDayAos(
+    butler: Butler, populator: ConsDBPopulator, dayObs: int
+) -> tuple[list[DimensionRecord], list[DimensionRecord]]:
+    """Backfill the visit1_quicklook table for a given dayObs.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The butler to query for exposure records.
+    populator : `ConsDBPopulator`
+        The ConsDBPopulator to use to populate the table.
+    dayObs : `int`
+        The dayObs to backfill.
+
+    Returns
+    -------
+    rowsInserted : `list` [`DimensionRecord`]
+        List of DimensionRecords which were successfully populated.
+    noData : `list` [`DimensionRecord`]
+        List of DimensionRecords which could not be populated due to missing
+        data.
+    """
+    from lsst.ts.ofc import OFCData
+    from lsst.ts.wep.utils import convertZernikesToPsfWidth, makeDense
+
+    ofcData = OFCData("lsst")
+
+    where = f"exposure.day_obs={dayObs} AND instrument='LSSTCam'"
+    records = butler.query_dimension_records("exposure", where=where, order_by="-exposure.timespan.end")
+
+    rowsInserted: list[DimensionRecord] = []
+    noData: list[DimensionRecord] = []
+
+    for record in tqdm(reversed(records), total=len(records), mininterval=60.0, ncols=120):
+        if not record.can_see_sky:
+            continue
+        try:
+            zernikes = butler.get("aggregateZernikesAvg", visit=record.id)
+            rowSums = []
+
+            # NOTE: this recipe is copied and pasted from
+            # SingleCorePipelineRunner.postProcessAggregateZernikeTables - if
+            # that recipe is updated, this needs to be updated too
+            # TODO: refactor this for proper reuse and remove this note
+
+            nollIndices = zernikes.meta["nollIndices"]
+            maxNollIndex = np.max(zernikes.meta["nollIndices"])
+            for row in zernikes:
+                zkOcs = row["zk_deviation_OCS"]
+                detector = row["detector"]
+                zkDense = makeDense(zkOcs, nollIndices, maxNollIndex)
+                zkDense -= ofcData.y2_correction[detector][: len(zkDense)]
+                zkFwhm = convertZernikesToPsfWidth(zkDense)
+                rowSums.append(np.sqrt(np.sum(zkFwhm**2)))
+
+            average_result = np.nanmean(rowSums)
+            residual = 1.06 * np.log(1 + average_result)  # adjustement per John Franklin's paper
+            donutBlurFwhm = float("nan")  # needs to be defined for lower block but nans are removed on send
+            if "estimatorInfo" in zernikes.meta and zernikes.meta["estimatorInfo"] is not None:
+                # If danish is run then fwhm is in the metadata, if TIE then
+                # it's not. danish models the width of the Kolmogorov profile
+                # needed to convolve with the geometric donut model (the
+                # optics) to match the donut. If AI_DONUT then "estimatorInfo"
+                # might not be present.
+                donutBlurFwhm = zernikes.meta["estimatorInfo"].get("fwhm")
+
+            consDbValues = {"aos_fwhm": residual, "visit_id": record.id}
+            if donutBlurFwhm:
+                consDbValues["donut_blur_fwhm"] = donutBlurFwhm
+            populator.populateArbitrary(
+                record.instrument,
+                "visit1_quicklook",
+                consDbValues,
+                record.day_obs,
+                record.seq_num,
+                True,  # insert into existing an row requires allowUpdate
+            )
+            rowsInserted.append(record)
+        except DatasetNotFoundError:
+            noData.append(record)
+
+    return rowsInserted, noData
+
+
+def backfillCcdVisit1QuicklookForDay(
+    butler: Butler, populator: ConsDBPopulator, dayObs: int
+) -> tuple[dict[DimensionRecord, list[int]], list[DimensionRecord]]:
+    """Backfill the visit1_quicklook table for a given dayObs.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The butler to query for exposure records.
+    populator : `ConsDBPopulator`
+        The ConsDBPopulator to use to populate the table.
+    dayObs : `int`
+        The dayObs to backfill.
+
+    Returns
+    -------
+    rowsInserted : `dict` [`DimensionRecord`, list[`int`]]
+        Dictionary mapping DimensionRecord to list of detectors successfully
+        populated for that record.
+    noData : `list` [`DimensionRecord`]
+        List of DimensionRecords which could not be populated due to missing
+        data.
+    """
+    where = f"exposure.day_obs={dayObs} AND instrument='LSSTCam'"
+    records = butler.query_dimension_records("exposure", where=where, order_by="-exposure.timespan.end")
+
+    noData: list[DimensionRecord] = []
+    rowsInserted: dict[DimensionRecord, list[int]] = {}
+
+    table = "cdb_lsstcam.ccdvisit1_quicklook"
+    schema = cast(dict[str, tuple[str, str]], populator.client.schema("lsstcam", "ccdvisit1_quicklook"))
+    typeMapping: dict[str, str] = {k: v[0] for k, v in schema.items()}
+
+    slowInserts = 0
+    for i, record in enumerate(tqdm(reversed(records), total=len(records), mininterval=30.0, ncols=120)):
+
+        try:
+            visitSummary = butler.get("preliminary_visit_summary", visit=record.id)
+            visitSummary = visitSummary.asAstropy()
+
+            t0 = time.time()  # deliberately time after the butler.get()
+            for row in visitSummary:
+                detNum = int(row["id"])
+                obsId = computeCcdExposureId(record.instrument, record.id, detNum)
+
+                values = {}
+                for summaryKey, consDbKey in CCD_VISIT_MAPPING.items():
+                    typeFunc = changeType(consDbKey, typeMapping)
+                    values[consDbKey] = typeFunc(row[summaryKey])
+
+                inserted = populator._insertIfAllowed(
+                    instrument=record.instrument,
+                    table=table,
+                    obsId=int(obsId),  # integer form required for ccd-type tables
+                    values=values,
+                    allowUpdate=True,
+                )
+                if inserted:
+                    if record not in rowsInserted:
+                        rowsInserted[record] = []
+                    rowsInserted[record].append(detNum)
+
+            insertTime = time.time() - t0  # time for all rows
+            if insertTime > 12.5:
+                slowInserts += 1
+                time.sleep(30)  # give the DB some rest
+                if slowInserts >= 3:
+                    print(f"Aborted after {i} inserts due to poor ConsDB performance")
+                    return rowsInserted, noData
+            else:  # reset as soon as DB is performing well again
+                slowInserts = 0
+
+        except DatasetNotFoundError:
+            noData.append(record)
+
+    return rowsInserted, noData
+
+
+def backfillCcdVisit1QuicklookForDayAos(
+    butler: Butler, populator: ConsDBPopulator, dayObs: int, efdClient: EfdClient
+) -> tuple[dict[DimensionRecord, list[int]], dict[DimensionRecord, list[int]]]:
+    """Backfill the visit1_quicklook table for a given dayObs.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The butler to query for exposure records.
+    populator : `ConsDBPopulator`
+        The ConsDBPopulator to use to populate the table.
+    dayObs : `int`
+        The dayObs to backfill.
+
+    Returns
+    -------
+    rowsInserted : `dict` [`DimensionRecord`, list[`int`]]
+        Dictionary mapping DimensionRecord to list of detectors successfully
+        populated for that record.
+    noData : `dict` [`DimensionRecord`, list[`int`]]
+        Dictionary mapping DimensionRecord to list of detectors which could
+        not be populated due to missing data.
+    """
+    from lsst.ts.wep.utils.zernikeUtils import makeDense
+
+    where = f"exposure.day_obs={dayObs} AND instrument='LSSTCam'"
+    records = butler.query_dimension_records("visit", where=where, order_by="-visit.id")
+
+    detectors = (191, 192, 195, 196, 199, 200, 203, 204)
+
+    rowsInserted: dict[DimensionRecord, list[int]] = {}
+    noData: dict[DimensionRecord, list[int]] = {}
+
+    slowInserts = 0
+    for i, record in enumerate(
+        tqdm(reversed(records), total=len(records * len(detectors)), mininterval=30.0, ncols=120)
+    ):
+        for detector in detectors:
+            t0 = time.time()
+            try:
+                zkTable = butler.get("zernikes", visit=record.id, detector=detector)
+
+                # NOTE: this recipe is copied and pasted from
+                # SingleCorePipelineRunner.postProcessCalcZernikes -
+                # if that recipe is updated, this needs to be updated too
+
+                # TODO: refactor this for proper reuse and remove this note
+                MAX_NOLL_INDEX = 28
+
+                data = getEfdData(efdClient, "lsst.sal.MTRotator.rotation", expRecord=record)
+                physicalRotation = np.nanmean(data["actualPosition"])
+
+                zkTable = zkTable[zkTable["label"] == "average"]
+                zkColsHere = zkTable.meta["opd_columns"]
+                nollIndicesHere = np.asarray(zkTable.meta["noll_indices"])
+                # Grab Zernike values, convert to dense array, save
+                zkSparse = zkTable[zkColsHere].to_pandas().values[0]
+                zkDense = makeDense(zkSparse, nollIndicesHere, MAX_NOLL_INDEX)
+                rotationMatrix = zernikeRotMatrix(MAX_NOLL_INDEX, -np.deg2rad(physicalRotation))
+                # we only track z4 upwards and ConsDB only has slots for z4 to
+                # z28
+                zernikeValues: np.ndarray = zkDense / 1e3 @ rotationMatrix[4:, 4:]
+
+                consDbValues: dict[str, float] = {}
+                for i in range(len(zernikeValues)):  # these start at z4 and are dense so contain zeros
+                    value = float(zernikeValues[i])  # make a real float for ConsDB
+                    # skip the ones which were zero due to sparseness so
+                    # they're null in the DB
+                    if value == 0:
+                        continue
+                    consDbValues[f"z{i + 4}"] = float(zernikeValues[i])
+
+                populator.populateCcdVisitRowZernikes(record, detector, consDbValues, allowUpdate=True)
+
+                if record not in rowsInserted:
+                    rowsInserted[record] = []
+                rowsInserted[record].append(detector)
+
+                insertTime = time.time() - t0
+                if insertTime > 2.5:
+                    slowInserts += 1
+                    time.sleep(30)  # give the DB some rest
+                    if slowInserts >= 3:
+                        print(f"Aborted after {i} inserts due to poor ConsDB performance")
+                        return rowsInserted, noData
+
+                else:
+                    slowInserts = 0
+
+            except (DatasetNotFoundError, IndexError):
+                # ideally we wouldn't catch IndexError, but sometimes the
+                # zernike table is empty and that raises IndexError when we
+                # try to access the first row above
+                if record not in noData:
+                    noData[record] = []
+                noData[record].append(detector)
+
+    return rowsInserted, noData

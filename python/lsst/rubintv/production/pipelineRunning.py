@@ -921,6 +921,11 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             zkTable.meta = {}
         zkTable.meta["shutter_to_zernike_time"] = float((Time.now() - visitRecord.timespan.end).sec)
 
+        # NOTE: this recipe is copied and pasted to
+        # highLevelTools.backfillCcdVisit1QuicklookForDayAos - if
+        # that recipe is updated, this needs to be updated too
+        # TODO: refactor this for proper reuse and remove this note
+
         data = getEfdData(self.efdClient, "lsst.sal.MTRotator.rotation", expRecord=visitRecord)
         physicalRotation = np.nanmean(data["actualPosition"])
 
@@ -970,6 +975,11 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         zernikes.meta["shutter_to_zernike_time"] = float((Time.now() - expRecord.timespan.end).sec)
 
         rowSums = []
+
+        # NOTE: this recipe is copied and pasted to
+        # highLevelTools.backfillVisit1QuicklookForDayAos - if
+        # that recipe is updated, this needs to be updated too
+        # TODO: refactor this for proper reuse and remove this note
 
         nollIndices = zernikes.meta["nollIndices"]
         maxNollIndex = np.max(zernikes.meta["nollIndices"])
