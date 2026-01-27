@@ -346,9 +346,6 @@ class ConsDBPopulator:
         obsId = computeCcdExposureId(visitRecord.instrument, visitRecord.id, detectorNum)
         table = f"cdb_{visitRecord.instrument.lower()}.ccdvisit1_quicklook"
 
-        if allowUpdate and "visit_id" not in zernikeValues:  # required key if updating
-            zernikeValues["visit_id"] = visitRecord.id
-
         self._insertIfAllowed(
             instrument=visitRecord.instrument,
             table=table,
