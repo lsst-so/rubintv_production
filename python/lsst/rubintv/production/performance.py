@@ -79,6 +79,9 @@ AOS_TASK_COLORS = [
     "#17becf",
 ]
 
+OODS_DOT_COLOR = "tab:purple"
+BUTLER_DOT_COLOR = "tab:orange"
+
 COLORMAP = get_multiband_plot_colors()
 COLORMAP["unknown"] = "#FDFDFD"  # very slightly off-white
 COLORMAP["white"] = "#FDFDFD"  # very slightly off-white
@@ -749,6 +752,8 @@ class AosMetrics:
 
     staircaseTimings: dict[str, float]
     legendItems: dict[str, float]
+    oodsIngestTimes: dict[int, float]
+    butlerIngestTimes: dict[int, float]
 
 
 class PerformanceBrowser:
@@ -769,7 +774,7 @@ class PerformanceBrowser:
 
     def __init__(
         self,
-        butler,
+        butler: Butler,
         instrument: str,
         locationConfig: LocationConfig,
         debug: bool = False,
@@ -975,7 +980,7 @@ class PerformanceBrowser:
             return None
 
         if metrics is None:
-            metrics = calculateAosMetrics(efdClient, record, taskResults, cwfsDetNums)
+            metrics = calculateAosMetrics(self.butler, efdClient, record, taskResults, cwfsDetNums)
 
         legendExtraLines = [f"{k}: {v:.2f}s" for k, v in metrics.legendItems.items()]
 
@@ -997,6 +1002,8 @@ class PerformanceBrowser:
             expRecord=record,
             timings=metrics.staircaseTimings,
             legendExtraLines=legendExtraLines,
+            oodsIngestTimes=metrics.oodsIngestTimes,
+            butlerIngestTimes=metrics.butlerIngestTimes,
         )
         return fig
 
@@ -1183,7 +1190,7 @@ class PerformanceMonitor(BaseButlerChannel):
             return
 
         cwfsDetNums = self.cameraControl.CWFS_IDS
-        metrics = calculateAosMetrics(self.efdClient, record, taskResults, cwfsDetNums)
+        metrics = calculateAosMetrics(self.butler, self.efdClient, record, taskResults, cwfsDetNums)
 
         md: dict[int, dict[str, Any]] = {record.seq_num: metrics.legendItems}
         md[record.seq_num].update(metrics.staircaseTimings.items())
@@ -1230,11 +1237,34 @@ def getEffectiveReadoutDuration(client: EfdClient, expRecord: DimensionRecord) -
     return timestamp - expRecord.timespan.end.unix_tai
 
 
-def getIngestTiming(
+def getButlerIngestTimes(butler: Butler, record: DimensionRecord) -> dict[int, float]:
+    """Get the range of ingest times for the CWFS detectors.
+
+    Parameters
+    ----------
+    butler : `Butler`
+        The butler instance.
+    record : `DimensionRecord`
+        The exposure record.
+
+    Returns
+    -------
+    ingestTimes : dict[int, Time]
+        Dictionary of detector number to ingest time after shutter close.
+    """
+    with butler.query() as q:
+        q = q.join_dataset_search("raw", "LSSTCam/raw/all")
+        q = q.where(exposure=record.id)
+        q = q.where("detector in (192, 196, 200, 204, 191, 195, 199, 203)")
+        rows = list(q.general(["exposure"], "raw.ingest_date", "detector", find_first=False))
+        return {int(r["detector"]): (r["raw.ingest_date"] - record.timespan.end).sec for r in rows}
+
+
+def getIngestTimingOods(
     client: EfdClient,
     expRecord: DimensionRecord,
     key="private_kafkaStamp",
-) -> tuple[dict[str, float], dict[str, float]]:
+) -> tuple[dict[int, float], dict[int, float]]:
     """
     Get ingestion times for wavefront and science sensors, as seconds since the
     end of the exposure.
@@ -1255,6 +1285,8 @@ def getIngestTiming(
     sciTimes : `dict`
         Dictionary of science sensor ingestion times since shutter close.
     """
+    camera = getCameraFromInstrumentName("LSSTCam")
+
     mtOodsData = getEfdData(
         client, "lsst.sal.MTOODS.logevent_imageInOODS", expRecord=expRecord, postPadding=60
     )
@@ -1286,8 +1318,14 @@ def getIngestTiming(
     wavefronts = thisImageData[thisImageData["sensor"].isin(CWFS_SENSOR_NAMES)]
     sciences = thisImageData[thisImageData["sensor"].isin(IMAGING_SENSOR_NAMES)]
 
-    wfTimes = {f"{row['raft']}_{row['sensor']}": row[key] - endExposure for _, row in wavefronts.iterrows()}
-    sciTimes = {f"{row['raft']}_{row['sensor']}": row[key] - endExposure for _, row in sciences.iterrows()}
+    wfTimes = {
+        int(camera[f"{row['raft']}_{row['sensor']}"].getId()): row[key] - endExposure
+        for _, row in wavefronts.iterrows()
+    }
+    sciTimes = {
+        int(camera[f"{row['raft']}_{row['sensor']}"].getId()): row[key] - endExposure
+        for _, row in sciences.iterrows()
+    }
 
     return wfTimes, sciTimes
 
@@ -1316,6 +1354,7 @@ def getZernikeCalculatingTaskName(data: dict[str, TaskResult]) -> str | None:
 
 
 def calculateAosMetrics(
+    butler: Butler,
     efdClient: EfdClient,
     expRecord: DimensionRecord,
     taskResults: dict[str, TaskResult],
@@ -1340,7 +1379,7 @@ def calculateAosMetrics(
     metrics : `AosMetrics`
         The calculated metrics.
     """
-    wfTimes, sciTimes = getIngestTiming(efdClient, expRecord)
+    wfTimes, sciTimes = getIngestTimingOods(efdClient, expRecord)
 
     calcZernikesTaskName = getZernikeCalculatingTaskName(taskResults)
     if calcZernikesTaskName is None:
@@ -1377,7 +1416,12 @@ def calculateAosMetrics(
         "Shutter close to zernikes": zernikeDelivery,
     }
 
-    return AosMetrics(staircaseTimings=timings, legendItems=legendItems)
+    return AosMetrics(
+        staircaseTimings=timings,
+        legendItems=legendItems,
+        oodsIngestTimes=wfTimes,
+        butlerIngestTimes=getButlerIngestTimes(butler, expRecord),
+    )
 
 
 def addEventStaircase(
@@ -1487,9 +1531,32 @@ def createLegendBoxes(
         Extra lines to add to the legend.
     """
     # Left: colored task entries (placed just to the *left* of the text legend)
+    ingestHandles = [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            linestyle="None",
+            markersize=7,
+            color=OODS_DOT_COLOR,
+            label="OODS ingest",
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            linestyle="None",
+            markersize=7,
+            color=BUTLER_DOT_COLOR,
+            label="Butler ingest",
+        ),
+    ]
+
     colorHandles = [Patch(facecolor=v, label=k) for k, v in colors.items()]
+    allHandles = ingestHandles + colorHandles
+
     tasksLegend = axTop.legend(
-        handles=colorHandles,
+        handles=allHandles,
         loc="lower right",
         bbox_to_anchor=(1.0, 0.0),  # bottom-right corner of axTop
         bbox_transform=axTop.transAxes,
@@ -1542,6 +1609,8 @@ def plotAosTaskTimings(
     figsize: tuple[float, float] = (12, 8),
     heightRatios: tuple[float, float] = (1, 2.5),
     legendExtraLines: list[str] | None = None,
+    oodsIngestTimes: dict[int, float] | None = None,
+    butlerIngestTimes: dict[int, float] | None = None,
 ) -> Figure:
     """
     Render the AOS task timing plot with an event staircase panel.
@@ -1617,7 +1686,9 @@ def plotAosTaskTimings(
             taskMins[task] = min(taskMins[task], start)
             taskMaxs[task] = max(taskMaxs[task], end)
 
-            idx = detMap[detNum]
+            idx: int | None = detMap.get(detNum)
+            if idx is None:
+                continue
             axBottom.fill_between([start, end], bottoms[idx], tops[idx], color=color)
 
     if taskMins.get("isr", None) is not None:
@@ -1625,6 +1696,21 @@ def plotAosTaskTimings(
 
     # legends anchored to bottom-right of the TOP axis
     createLegendBoxes(axTop, tasksPlotted, extraLines=legendExtraLines)
+
+    dotSize = 36  # scatter "s" is area in points^2
+    if oodsIngestTimes:
+        for detNum, ingestTime in oodsIngestTimes.items():
+            idx = detMap.get(detNum)
+            if idx is None:
+                continue
+            axBottom.scatter([ingestTime], [idx], s=dotSize, marker="o", color=OODS_DOT_COLOR, zorder=5)
+
+    if butlerIngestTimes:
+        for detNum, ingestTime in butlerIngestTimes.items():
+            idx = detMap.get(detNum)
+            if idx is None:
+                continue
+            axBottom.scatter([ingestTime], [idx], s=dotSize, marker="o", color=BUTLER_DOT_COLOR, zorder=5)
 
     axBottom.set_xlim(0, None)
     axBottom.set_yticks(list(detMap.values()))
@@ -1703,9 +1789,9 @@ def unpackTimes(table: pd.DataFrame, key: str) -> list[float]:
     return values
 
 
-def makePlot(table: pd.DataFrame, dayObs: int, filename: str) -> bool:
+def makeNightSummarPlot(table: pd.DataFrame, dayObs: int, filename: str) -> bool:
     s = slice(None)
-    YMAX = 150
+    YMAX = 100
 
     onSkyMask = ~table["Image type"].isin(["bias", "dark", "flat"])
     table = table[onSkyMask]
@@ -1778,8 +1864,8 @@ def makePlot(table: pd.DataFrame, dayObs: int, filename: str) -> bool:
     )
 
     # --- filter band shading ---
-    bandY0 = 125.0
-    bandY1 = 150.0
+    bandY0 = YMAX * 0.8
+    bandY1 = YMAX
     bandAlpha = 0.15
 
     x = table.index[s].to_numpy()
@@ -1813,6 +1899,15 @@ def makePlot(table: pd.DataFrame, dayObs: int, filename: str) -> bool:
                 zorder=0,  # behind your lines
             )
             start = i
+
+    ax.axhline(
+        3.2,
+        linestyle="--",
+        linewidth=1.2,
+        color="green",
+        label="Readout finished @ 3.2s",
+        alpha=0.7,
+    )
 
     # side histogram projection (explicit matching colors; shared Y; no legend)
     bins = list(np.linspace(0.0, YMAX, 60))
@@ -1881,7 +1976,7 @@ def makePlot(table: pd.DataFrame, dayObs: int, filename: str) -> bool:
     # place text labels around y~100, ordered by mode (largest at top)
     modeValues.sort(key=lambda x: x[2], reverse=True)
 
-    baseY = 100.0
+    baseY = YMAX * 0.7
     dy = 6.0
     yPositions = [baseY + dy, baseY, baseY - dy]
 
@@ -1897,6 +1992,17 @@ def makePlot(table: pd.DataFrame, dayObs: int, filename: str) -> bool:
             fontsize="small",
             alpha=0.9,
         )
+
+    axHist.text(
+        5,
+        3.2,
+        "Readout finished",
+        color="green",
+        ha="left",
+        va="center",
+        fontsize="small",
+        alpha=0.9,
+    )
 
     # --- legend inside the RIGHT axis, allowed to spill left ---
     handles, labels = ax.get_legend_handles_labels()
