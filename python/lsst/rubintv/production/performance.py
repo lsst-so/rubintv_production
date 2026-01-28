@@ -1650,20 +1650,40 @@ def plotAosTaskTimings(
 
 
 def getData(dayObs: int) -> pd.DataFrame:
-    mainTable = pd.read_json(f"/project/rubintv/LSSTCam/sidecar_metadata/dayObs_{dayObs}.json").T
-    mainTable = mainTable.sort_index()
+    """Get merged performance data for a given dayObs.
 
-    performanceTable = pd.read_json(f"/project/rubintv/raPerformance/sidecar_metadata/dayObs_{dayObs}.json").T
-    performanceTable = performanceTable.sort_index()
+    Parameters
+    ----------
+    dayObs : `int`
+        The day of observation.
 
-    overlap = mainTable.columns.intersection(performanceTable.columns)
+    Returns
+    -------
+    merged : `pd.DataFrame`
+        The merged performance data, empty if either of the required files
+        aren't found.
+    """
+    try:
+        mainTable = pd.read_json(
+            f"/project/rubintv/LSSTCam/sidecar_metadata/dayObs_{dayObs}.json"
+        ).T.sort_index()
+        perfTable = pd.read_json(
+            f"/project/rubintv/raPerformance/sidecar_metadata/dayObs_{dayObs}.json"
+        ).T.sort_index()
+    except FileNotFoundError:
+        _LOG.warning(f"Missing RubinTV main table or RA performance data for dayObs {dayObs}")
+        return pd.DataFrame()
 
+    overlap = mainTable.columns.intersection(perfTable.columns)
+    commonIndex = mainTable.index.intersection(perfTable.index)
     for col in overlap:
-        if not mainTable[col].equals(performanceTable[col]):
+        a = mainTable.loc[commonIndex, col]
+        b = perfTable.loc[commonIndex, col]
+        both = a.notna() & b.notna()
+        if not a[both].equals(b[both]):
             raise ValueError(f"Column {col} differs between dataframes")
 
-    merged = mainTable.copy()
-    merged = mainTable.join(performanceTable.drop(columns=overlap))
+    merged = mainTable.join(perfTable.drop(columns=overlap), how="left")
     return merged
 
 
