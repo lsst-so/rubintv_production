@@ -21,6 +21,7 @@
 
 from __future__ import annotations
 
+import gc
 from typing import TYPE_CHECKING, Any
 
 import astropy.units as u  # type: ignore[import-untyped]
@@ -419,6 +420,9 @@ class OneOffProcessor(BaseButlerChannel):
 
         md = {expRecord.seq_num: {"Witness detector": f"{detName} ({detNum})"}}
         writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
+
+        del fig, visitImage
+        gc.collect()  # this function seems to be leaking memory somehow, this probably won't help, but trying
 
     def publishVisitSummaryStats(self, visitImage: Exposure, expRecord: DimensionRecord) -> None:
         stats = self.redisHelper.getAveragedStatsForVisit(self.instrument, expRecord.id)
