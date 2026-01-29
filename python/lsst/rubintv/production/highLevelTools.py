@@ -763,7 +763,9 @@ def checkVisitQuicklookTable(
     contentFreeColumns = [name for name in table.colnames if _isContentFree(table[name])]
     emptyColumns = sorted(set([re.sub(r"_(min|max|median)$", "", c) for c in contentFreeColumns]))
 
-    tableOnSky = table[table["can_see_sky"]]
+    canSeeSkyMask = np.ma.filled(np.asarray(table["can_see_sky"]), False).astype(bool)
+
+    tableOnSky = table[canSeeSkyMask]
     sentinelColumn = "n_inputs"
     col = tableOnSky[sentinelColumn]
     hasInputs = (col != None) & (col != 0)  # noqa: E711
