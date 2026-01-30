@@ -900,7 +900,10 @@ def checkConsDbContents(butler: Butler, client: ConsDbClient, dayObs: int, verbo
 
 
 def backfillVisit1QuicklookForDay(
-    butler: Butler, populator: ConsDBPopulator, dayObs: int
+    butler: Butler,
+    populator: ConsDBPopulator,
+    dayObs: int,
+    efdClient: EfdClient,
 ) -> tuple[list[DimensionRecord], list[DimensionRecord]]:
     """Backfill the visit1_quicklook table for a given dayObs.
 
@@ -931,6 +934,21 @@ def backfillVisit1QuicklookForDay(
         try:
             populator.populateVisitRowWithButler(butler, record, True)
             rowsInserted.append(record)
+
+            data = getEfdData(efdClient, "lsst.sal.MTRotator.rotation", expRecord=record)
+            if data.empty:
+                continue
+            physicalRotation = np.nanmean(data["actualPosition"])
+            consDbValues = {"physical_rotator_angle": physicalRotation, "visit_id": record.id}
+            populator.populateArbitrary(
+                record.instrument,
+                "visit1_quicklook",
+                consDbValues,
+                record.day_obs,
+                record.seq_num,
+                True,
+            )
+
         except DatasetNotFoundError:
             noData.append(record)
 
