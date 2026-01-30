@@ -26,6 +26,7 @@ __all__ = [
 ]
 
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass
@@ -35,9 +36,11 @@ from typing import TYPE_CHECKING, Any, Iterable
 import matplotlib.dates as mdates
 import numpy as np
 import pandas as pd
+from astropy.time import Time
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
+from matplotlib.markers import CARETLEFTBASE, MarkerStyle
 from matplotlib.patches import Patch
 
 from lsst.daf.butler import MissingDatasetTypeError
@@ -81,6 +84,7 @@ AOS_TASK_COLORS = [
 
 OODS_DOT_COLOR = "tab:purple"
 BUTLER_DOT_COLOR = "tab:orange"
+S3_DOT_COLOR = "cyan"
 
 COLORMAP = get_multiband_plot_colors()
 COLORMAP["unknown"] = "#FDFDFD"  # very slightly off-white
@@ -754,6 +758,7 @@ class AosMetrics:
     legendItems: dict[str, float]
     oodsIngestTimes: dict[int, float]
     butlerIngestTimes: dict[int, float]
+    s3UploadTimes: dict[int, float]
 
 
 class PerformanceBrowser:
@@ -1004,6 +1009,7 @@ class PerformanceBrowser:
             legendExtraLines=legendExtraLines,
             oodsIngestTimes=metrics.oodsIngestTimes,
             butlerIngestTimes=metrics.butlerIngestTimes,
+            s3UploadTimes=metrics.s3UploadTimes,
         )
         return fig
 
@@ -1237,8 +1243,48 @@ def getEffectiveReadoutDuration(client: EfdClient, expRecord: DimensionRecord) -
     return timestamp - expRecord.timespan.end.unix_tai
 
 
+def getS3UploadTimes(butler: Butler, record: DimensionRecord) -> dict[int, float]:
+    """
+    Get the S3 upload times for the raw data.
+
+    Parameters
+    ----------
+    butler : `Butler`
+        The butler instance.
+    record : `DimensionRecord`
+        The exposure record.
+
+    Returns
+    -------
+    uploadTimes : `dict[int, float]`
+        Dictionary of detector number to S3 upload time after shutter close.
+    """
+    where = "detector in (192, 196, 200, 204, 191, 195, 199, 203)"
+    dRefs = butler.query_datasets("raw", data_id=record.dataId, where=where)
+
+    ret = {}
+    for dRef in dRefs:
+        uri = butler.getURI(dRef)
+        if uri.isLocal:  # probably meaningless values, but needs to run on main for CI purposes
+            modifiedTime = os.stat(uri.ospath).st_mtime
+            t = Time(modifiedTime, format="unix")
+            ret[int(dRef.dataId["detector"])] = (t - record.timespan.end).sec
+        else:
+            # Manually extract time from S3 via LastModified for now
+            # TODO: DM-52947 - this will make this a native API and code above
+            # can be combined with this.
+            bucket = uri._bucket  # type: ignore[attr-defined]
+            client = uri.client  # type: ignore[attr-defined]
+            response = client.head_object(Bucket=bucket, Key=uri.relativeToPathRoot)
+
+            ret[int(dRef.dataId["detector"])] = (
+                (Time(response["LastModified"], format="datetime", scale="utc").tai) - record.timespan.end
+            ).sec
+    return ret
+
+
 def getButlerIngestTimes(butler: Butler, record: DimensionRecord) -> dict[int, float]:
-    """Get the range of ingest times for the CWFS detectors.
+    """Get the ingest times, measured from shutter close for CWFS detectors.
 
     Parameters
     ----------
@@ -1421,6 +1467,7 @@ def calculateAosMetrics(
         legendItems=legendItems,
         oodsIngestTimes=wfTimes,
         butlerIngestTimes=getButlerIngestTimes(butler, expRecord),
+        s3UploadTimes=getS3UploadTimes(butler, expRecord),
     )
 
 
@@ -1550,6 +1597,15 @@ def createLegendBoxes(
             color=BUTLER_DOT_COLOR,
             label="Butler ingest",
         ),
+        Line2D(
+            [0],
+            [0],
+            marker=MarkerStyle(CARETLEFTBASE),
+            linestyle="None",
+            markersize=10,
+            color=S3_DOT_COLOR,
+            label="S3 upload",
+        ),
     ]
 
     colorHandles = [Patch(facecolor=v, label=k) for k, v in colors.items()]
@@ -1611,6 +1667,7 @@ def plotAosTaskTimings(
     legendExtraLines: list[str] | None = None,
     oodsIngestTimes: dict[int, float] | None = None,
     butlerIngestTimes: dict[int, float] | None = None,
+    s3UploadTimes: dict[int, float] | None = None,
 ) -> Figure:
     """
     Render the AOS task timing plot with an event staircase panel.
@@ -1703,14 +1760,28 @@ def plotAosTaskTimings(
             idx = detMap.get(detNum)
             if idx is None:
                 continue
-            axBottom.scatter([ingestTime], [idx], s=dotSize, marker="o", color=OODS_DOT_COLOR, zorder=5)
+            axBottom.scatter([ingestTime], [idx], s=dotSize, marker="o", color=OODS_DOT_COLOR, zorder=5_000)
 
     if butlerIngestTimes:
         for detNum, ingestTime in butlerIngestTimes.items():
             idx = detMap.get(detNum)
             if idx is None:
                 continue
-            axBottom.scatter([ingestTime], [idx], s=dotSize, marker="o", color=BUTLER_DOT_COLOR, zorder=5)
+            axBottom.scatter([ingestTime], [idx], s=dotSize, marker="o", color=BUTLER_DOT_COLOR, zorder=5_000)
+
+    if s3UploadTimes:
+        for detNum, uploadTime in s3UploadTimes.items():
+            idx = detMap.get(detNum)
+            if idx is None:
+                continue
+            axBottom.scatter(
+                [uploadTime],
+                [idx],
+                s=dotSize,
+                marker=MarkerStyle(CARETLEFTBASE),
+                color=S3_DOT_COLOR,
+                zorder=10_000,
+            )
 
     axBottom.set_xlim(0, None)
     axBottom.set_yticks(list(detMap.values()))
@@ -1789,7 +1860,30 @@ def unpackTimes(table: pd.DataFrame, key: str) -> list[float]:
     return values
 
 
-def makeNightSummarPlot(table: pd.DataFrame, dayObs: int, filename: str) -> bool:
+def makeNightSummaryPlot(
+    table: pd.DataFrame,
+    dayObs: int,
+    filename: str,
+    ingestTimes: dict[int, tuple[float, float]] | None = None,
+    s3UploadTimes: dict[int, float] | None = None,
+) -> bool:
+    """Make and save a night summary plot of AOS performance.
+
+    Parameters
+    ----------
+    table : `pd.DataFrame`
+        The performance data table, as returned by `getData()`, which reads
+        from the RubinTV table metadata file.
+    dayObs : `int`
+        The day of observation.
+    filename : `str`
+        The filename to save the plot to.
+    ingestTimes : `dict[int, tuple(float, float)]`, optional
+        Dictionary mapping seqNum to (minIngestTime, maxIngestTime) since
+        shutter close for the CWFS detectors.
+    s3UploadTimes : `dict[int, float]`, optional
+        Dictionary mapping seqNum to S3 upload time since shutter close.
+    """
     s = slice(None)
     YMAX = 100
 
@@ -1838,6 +1932,40 @@ def makeNightSummarPlot(table: pd.DataFrame, dayObs: int, filename: str) -> bool
         color=isrColor,
         label="ISR start delay",
     )
+
+    if ingestTimes:
+        minTimesT = [t[0] for t in ingestTimes.values()]
+        minTimesX = list(ingestTimes.keys())
+        maxTimesT = [t[1] for t in ingestTimes.values()]
+        maxTimesX = list(ingestTimes.keys())
+        ax.plot(
+            minTimesX,
+            minTimesT,
+            "o",
+            ms=2,
+            color="gold",
+            label="Min ingest time (shutter)",
+        )
+        ax.plot(
+            maxTimesX,
+            maxTimesT,
+            "o",
+            ms=2,
+            color="orchid",
+            label="Max ingest time (shutter)",
+        )
+
+    if s3UploadTimes:
+        uploadXs = list(s3UploadTimes.keys())
+        uploadTs = list(s3UploadTimes.values())
+        ax.plot(
+            uploadXs,
+            uploadTs,
+            "v",
+            ms=3.5,
+            color=S3_DOT_COLOR,
+            label="S3 upload finished",
+        )
 
     # --- vertical dotted lines for long gaps ---
     mask = table["Time since previous exposure"][s] > 100
