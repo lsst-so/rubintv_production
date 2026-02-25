@@ -354,7 +354,7 @@ class PsfAzElPlotter:
         plotFile = makePlotFile(
             self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "png"
         )
-        makeAzElPlot(fig, axes, table, self.camera, saveAs=plotFile)
+        makeAzElPlot(fig, axes, table, self.camera, expRecord.physical_filter, saveAs=plotFile)
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument=getRubinTvInstrumentName(self.instrument),
             plotName=plotName,
