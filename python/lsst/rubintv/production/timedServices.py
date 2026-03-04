@@ -151,7 +151,7 @@ class TimedMetadataServer:
         filesTouched: set[str] = set()
         shardFiles = sorted(glob(os.path.join(self.shardsDirectory, "metadata-*")))
         if shardFiles:
-            self.log.debug(f"Found {len(shardFiles)} shardFiles")
+            self.log.info(f"Found {len(shardFiles)} shardFiles")
             sleep(0.1)  # just in case a shard is in the process of being written
 
         updating: set[tuple[int, int]] = set()
@@ -196,6 +196,7 @@ class TimedMetadataServer:
             for file in filesTouched:
                 dayObs = self.dayObsFromFilename(file)
                 self.s3Uploader.uploadMetdata(self.channelName, dayObs, file)
+            self.log.info("Local upload complete (remote is threaded)")
         return
 
     def dayObsFromFilename(self, filename: str) -> int:
