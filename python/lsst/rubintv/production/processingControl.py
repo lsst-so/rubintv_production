@@ -80,6 +80,7 @@ PIPELINE_NAMES: tuple[str, ...] = (
     "FLAT",
     "ISR",
     "AOS_DANISH",
+    "AOS_WCS_DANISH",
     "AOS_TIE",
     "AOS_REFIT_WCS",
     "AOS_AI_DONUT",
@@ -445,6 +446,7 @@ def buildPipelines(
     aiDonutFile = locationConfig.aosLSSTCamAiDonutPipelineFile
     tartsFile = locationConfig.aosLSSTCamTartsPipelineFile
     unpairedDanishFile = locationConfig.aosLSSTCamUnpairedDanishPipelineFile
+    aosWcsDanishFile = locationConfig.aosLSSTCamWcsDanishPipelineFile
 
     drpPipeDir = getPackageDir("drp_pipe")
     biasFile = (Path(drpPipeDir) / "pipelines" / instrument / "quickLookBias.yaml").as_posix()
@@ -484,6 +486,9 @@ def buildPipelines(
         # differently there. It might change in the future, but not soon.
         pipelines["AOS_DANISH"] = PipelineComponents(
             butler.registry, aosFileDanish, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
+        )
+        pipelines["AOS_WCS_DANISH"] = PipelineComponents(
+            butler.registry, aosWcsDanishFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
         pipelines["AOS_TIE"] = PipelineComponents(
             butler.registry, aosFileTIE, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
