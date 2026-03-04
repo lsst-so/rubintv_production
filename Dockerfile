@@ -74,7 +74,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     astrometry \
     redis-py \
     batoid \
-    danish \
+    danish=0.6.0 \
     rubin-libradtran \
     timm \
     peft \
