@@ -27,6 +27,7 @@ import json
 import logging
 import os
 import subprocess
+from collections import defaultdict
 from functools import partial
 from glob import glob
 from pathlib import Path
@@ -156,62 +157,80 @@ class TimedMetadataServer:
         main json file for the corresponding dayObs, and for each file updated,
         upload it.
         """
-        filesTouched: set[str] = set()
-        with logDuration(self.log, "Globbing files") as timing:  # always report this for now
+        with logDuration(self.log, "Globbing files") as timing:
             shardFiles = sorted(glob(os.path.join(self.shardsDirectory, "metadata-*")))
-        assert timing.duration is not None  # for mypy
+        assert timing.duration is not None
         if timing.duration > self.longestGlobDuration:
             self.longestGlobDuration = timing.duration
             self.log.warning(f"Globbing took {timing.duration:.2f} seconds, which is the longest so far")
 
-        if shardFiles:
-            self.log.info(f"Found {len(shardFiles)} shardFiles")
-            sleep(0.1)  # just in case a shard is in the process of being written
+        if not shardFiles:
+            return
 
-        updating: set[tuple[int, int]] = set()
+        self.log.info(f"Found {len(shardFiles)} shardFiles")
+        sleep(0.1)  # just in case a shard is in the process of being written
 
+        shardFilesByDayObs: dict[int, list[str]] = defaultdict(list)
         for shardFile in shardFiles:
-            # filenames look like
-            # metadata-dayObs_20221027_049a5f12-5b96-11ed-80f0-348002f0628.json
             filename = os.path.basename(shardFile)
             dayObs = int(filename.split("_", 2)[1])
+            shardFilesByDayObs[dayObs].append(shardFile)
+
+        filesTouched: set[str] = set()
+        updating: set[tuple[int, int]] = set()
+
+        for dayObs, dayObsShardFiles in sorted(shardFilesByDayObs.items(), key=lambda x: x[0]):
             mainFile = self.getSidecarFilename(dayObs)
             filesTouched.add(mainFile)
 
             data: dict[int, dict[str, Any]] = {}
-            # json.load() doesn't like empty files so check size is non-zero
+
             if os.path.isfile(mainFile) and os.path.getsize(mainFile) > 0:
                 with open(mainFile) as f:
-                    data = json.load(f)
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    data = {int(k): v for k, v in loaded.items()}
 
-            with open(shardFile) as f:
-                shard: dict[int, dict[str, Any]] = json.load(f)
-            if shard:  # each is a dict of dicts, keyed by seqNum
-                for seqNum, seqNumData in shard.items():
-                    seqNumData = sanitizeNans(seqNumData)  # remove NaNs
-                    if seqNum not in data.keys():
-                        data[seqNum] = {}
-                    # Use deep_update instead of the regular update method
-                    data[seqNum] = deep_update(data[seqNum], seqNumData)
-                    updating.add((dayObs, seqNum))
-            os.remove(shardFile)
+            shardFilesToDelete: list[str] = []
 
-            with open(mainFile, "w") as f:
+            for shardFile in dayObsShardFiles:
+                with open(shardFile) as f:
+                    shardLoaded = json.load(f)
+
+                shard: dict[int, dict[str, Any]] = (
+                    {int(k): v for k, v in shardLoaded.items()} if shardLoaded else {}
+                )
+
+                if shard:
+                    for seqNum, seqNumData in shard.items():
+                        seqNumData = sanitizeNans(seqNumData)
+                        if seqNum not in data:
+                            data[seqNum] = {}
+                        data[seqNum] = deep_update(data[seqNum], seqNumData)
+                        updating.add((dayObs, seqNum))
+
+                shardFilesToDelete.append(shardFile)
+
+            tmpFile = f"{mainFile}.tmp"
+            with open(tmpFile, "w") as f:
                 json.dump(data, f, indent=2)
+            os.replace(tmpFile, mainFile)
+
             if not isFileWorldWritable(mainFile):
-                os.chmod(mainFile, 0o777)  # file may be amended by another process
+                os.chmod(mainFile, 0o777)
+
+            for shardFile in shardFilesToDelete:
+                os.remove(shardFile)
 
         if updating:
             for dayObs, seqNum in sorted(updating, key=lambda x: (x[0], x[1])):
                 self.log.info(f"Updating metadata tables for: {dayObs=}, {seqNum=}")
 
-        if filesTouched:
-            self.log.info(f"Uploading {len(filesTouched)} metadata files")
-            for file in filesTouched:
-                dayObs = self.dayObsFromFilename(file)
-                self.s3Uploader.uploadMetdata(self.channelName, dayObs, file)
-            self.log.info("Local upload complete (remote is threaded)")
-        return
+        self.log.info(f"Uploading {len(filesTouched)} metadata files")
+        for file in sorted(filesTouched):
+            dayObs = self.dayObsFromFilename(file)
+            self.s3Uploader.uploadMetdata(self.channelName, dayObs, file)
+        self.log.info("Local upload complete (remote is threaded)")
 
     def dayObsFromFilename(self, filename: str) -> int:
         """Get the dayObs from a metadata sidecar filename.
