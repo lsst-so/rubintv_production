@@ -142,6 +142,7 @@ class TimedMetadataServer:
         self.doRaise = doRaise
         self.log = _LOG.getChild(self.channelName)
         self.s3Uploader = MultiUploader()
+        self.longestGlobDuration = 0.0
 
         if not os.path.isdir(self.metadataDirectory):
             # created by the LocationConfig init so this should be impossible
@@ -156,8 +157,12 @@ class TimedMetadataServer:
         upload it.
         """
         filesTouched: set[str] = set()
-        with logDuration(self.log, "Globbing files"):  # always report this for now even nothing found
+        with logDuration(self.log, "Globbing files") as timing:  # always report this for now
             shardFiles = sorted(glob(os.path.join(self.shardsDirectory, "metadata-*")))
+        assert timing.duration is not None  # for mypy
+        if timing.duration > self.longestGlobDuration:
+            self.longestGlobDuration = timing.duration
+            self.log.warning(f"Globbing took {timing.duration:.2f} seconds, which is the longest so far")
 
         if shardFiles:
             self.log.info(f"Found {len(shardFiles)} shardFiles")
