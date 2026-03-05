@@ -36,7 +36,14 @@ from typing import TYPE_CHECKING, Any
 import matplotlib.pyplot as plt
 
 from .uploaders import MultiUploader
-from .utils import hasDayRolledOver, isFileWorldWritable, raiseIf, sanitizeNans, writeMetadataShard
+from .utils import (
+    hasDayRolledOver,
+    isFileWorldWritable,
+    logDuration,
+    raiseIf,
+    sanitizeNans,
+    writeMetadataShard,
+)
 
 try:
     from lsst_efd_client import EfdClient  # noqa: F401 just check we have it, but don't use it
@@ -149,7 +156,9 @@ class TimedMetadataServer:
         upload it.
         """
         filesTouched: set[str] = set()
-        shardFiles = sorted(glob(os.path.join(self.shardsDirectory, "metadata-*")))
+        with logDuration(self.log, "Globbing files"):  # always report this for now even nothing found
+            shardFiles = sorted(glob(os.path.join(self.shardsDirectory, "metadata-*")))
+
         if shardFiles:
             self.log.info(f"Found {len(shardFiles)} shardFiles")
             sleep(0.1)  # just in case a shard is in the process of being written
