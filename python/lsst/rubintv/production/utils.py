@@ -40,6 +40,7 @@ from time import perf_counter
 from typing import TYPE_CHECKING, Any, Callable, Iterator
 
 import numpy as np
+import sentry_sdk
 import yaml
 
 from lsst.daf.butler import (
@@ -64,7 +65,9 @@ if TYPE_CHECKING:
     from lsst.afw.image import Exposure, ExposureSummaryStats
     from lsst.pipe.base import PipelineGraph
 
+
 __all__ = [
+    "setupSentry",
     "writeDimensionUniverseFile",
     "getDimensionUniverse",
     "expRecordToUploadFilename",
@@ -131,6 +134,11 @@ AOS_WORKER_MAPPING = {n: (depth, ccd) for n, (depth, ccd) in enumerate(itertools
 # this file is for low level tools and should therefore not import
 # anything from elsewhere in the package, this is strictly for importing from
 # only.
+
+
+def setupSentry() -> None:
+    """Set up sentry"""
+    sentry_sdk.init()
 
 
 def writeDimensionUniverseFile(butler, locationConfig: LocationConfig) -> None:
@@ -738,6 +746,7 @@ def raiseIf(doRaise: bool, error: Exception, logger: Logger, msg: str = "") -> N
     AnyException
         Raised if ``self.doRaise`` is True, otherwise swallows and warns.
     """
+    sentry_sdk.capture_exception(error)
     if not msg:
         msg = f"{error}"
     if doRaise:
