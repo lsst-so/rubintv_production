@@ -87,6 +87,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     lsst-efd-client \
     pytorch_lightning \
     easyocr \
+    sentry-sdk \
     && rm -rf ~/.cache/pip
 
 WORKDIR /repos
