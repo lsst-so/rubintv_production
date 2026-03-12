@@ -704,14 +704,26 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         detectorId: int = detector.id  # hence .id rather than .getId()
 
         zkTable = zkTable[zkTable["label"] == "average"]
-        zkColsHere = zkTable.meta["opd_columns"]
+        
         nollIndicesHere = np.asarray(zkTable.meta["noll_indices"])
+        rotationMatrix = zernikeRotMatrix(MAX_NOLL_INDEX, -np.deg2rad(physicalRotation))
         # Grab Zernike values, convert to dense array, save
+        zkColsHere = zkTable.meta["opd_columns"]
         zkSparse = zkTable[zkColsHere].to_pandas().values[0]
         zkDense = makeDense(zkSparse, nollIndicesHere, MAX_NOLL_INDEX)
-        rotationMatrix = zernikeRotMatrix(MAX_NOLL_INDEX, -np.deg2rad(physicalRotation))
+        
+        zkColsDeviation = zkTable.meta["deviation_columns"]
+        zkDeviationSparse = zkTable[zkColsDeviation].to_pandas().values[0]
+        zkDeviationDense = makeDense(zkDeviationSparse, nollIndicesHere, MAX_NOLL_INDEX)
+
+        zkColsIntrinsic = zkTable.meta["intrinsic_columns"]
+        zkIntrinsicSparse = zkTable[zkColsIntrinsic].to_pandas().values[0]
+        zkIntrinsicDense = makeDense(zkIntrinsicSparse, nollIndicesHere, MAX_NOLL_INDEX)
+
         # we only track z4 upwards and ConsDB only has slots for z4 to z28
         zernikeValues: np.ndarray = zkDense / 1e3 @ rotationMatrix[4:, 4:]
+        zernikeDeviationValues: np.ndarray = zkDeviationDense / 1e3 @ rotationMatrix[4:, 4:]
+        zernikeIntrinsicValues: np.ndarray = zkIntrinsicDense / 1e3 @ rotationMatrix[4:, 4:]
 
         consDbValues: dict[str, float] = {}
         for i in range(len(zernikeValues)):  # these start at z4 and are dense so contain zeros
@@ -719,6 +731,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             if value == 0:  # skip the ones which were zero due to sparseness so they're null in the DB
                 continue
             consDbValues[f"z{i + 4}"] = float(zernikeValues[i])
+            consDbValues[f"z{i + 4}_deviation"] = float(zernikeDeviationValues[i])
+            consDbValues[f"z{i + 4}_intrinsic"] = float(zernikeIntrinsicValues[i])
 
         # consDB validates the location and only inserts if it's summit-like
         self.consDBPopulator.populateCcdVisitRowZernikes(visitRecord, detectorId, consDbValues)
