@@ -38,7 +38,7 @@ from lsst.daf.butler import DataCoordinate, DimensionRecord
 
 from .payloads import Payload
 from .podDefinition import PodDetails, PodFlavor, getQueueName
-from .utils import expRecordFromJson, removeDetector, summaryStatsToDict
+from .utils import expRecordFromJson, removeDetector, runningPyTest, runningScons, summaryStatsToDict
 
 # Check if the environment is a notebook
 clear_output: Callable | None = None
@@ -198,12 +198,12 @@ def _extractExposureIds(exposureBytes: bytes, instrument: str) -> list[int]:
 
 class RedisHelper:
     def __init__(self, butler: Butler, locationConfig: LocationConfig, isHeadNode: bool = False) -> None:
+        self.log = logging.getLogger("lsst.rubintv.production.redisUtils.RedisHelper")
         self.butler = butler  # needed to expand dataIds when dequeuing payloads
         self.locationConfig = locationConfig
         self.isHeadNode = isHeadNode
         self.redis = self._makeRedis()
         self._testRedisConnection()
-        self.log = logging.getLogger("lsst.rubintv.production.redisUtils.RedisHelper")
         self._loggedAbout: set[str] = set()
 
     def _makeRedis(self) -> redis.Redis:
@@ -229,7 +229,15 @@ class RedisHelper:
             Raised on any other unexpected error.
         """
         try:
-            self.redis.ping()
+            if not runningScons() and not runningPyTest():
+                # note: the actual CI test suite does use redis, but the unit
+                # tests do not. The CI will still execute the ping here, and
+                # will fail without redis. The ping is important because pods
+                # should fail to come up on the summit if redis isn't
+                # contactable.
+                self.redis.ping()
+            else:
+                self.log.warning("Skipping redis ping for unit tests")
         except redis.exceptions.ConnectionError as e:
             raise RuntimeError("Could not connect to redis - is it running?") from e
         except Exception as e:

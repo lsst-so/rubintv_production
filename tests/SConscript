@@ -10,6 +10,7 @@ passThrough = [
     "PGPASSFILE",  # needed for butler authentication
     "PGUSER",  # needed for butler authentication
     "RAPID_ANALYSIS_LOCATION",
+    "RAPID_ANALYSIS_CI",  # needed to supress trying to contact redis in unit tests
     "JENKINS_HOME",  # needed to determine site location - see utils.getSite()
     "PGPASSFILE",  # needed for butler authentication
     "PGUSER",  # needed for butler authentication

@@ -89,6 +89,8 @@ __all__ = [
     "removeDetector",
     "getFilterColorName",
     "runningCI",
+    "runningPyTest",
+    "runningScons",
     "ALLOWED_DATASET_TYPES",
     "NumpyEncoder",
     "runningCI",
@@ -1481,6 +1483,11 @@ def runningCI() -> bool:
 def runningScons() -> bool:
     """Check if the code is running under scons."""
     return os.environ.get("SCONS_BUILDING", "false").lower() == "true"
+
+
+def runningPyTest() -> bool:
+    """Check if the code is running inside pytest."""
+    return "PYTEST_CURRENT_TEST" in os.environ
 
 
 def makePlotFileFromRecord(
