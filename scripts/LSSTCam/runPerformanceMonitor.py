@@ -24,9 +24,10 @@ import sys
 from lsst.daf.butler import Butler
 from lsst.rubintv.production.performance import PerformanceMonitor
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, setupSentry
 from lsst.summit.utils.utils import setupLogging
 
+setupSentry()
 setupLogging()
 instrument = "LSSTCam"
 locationConfig = getAutomaticLocationConfig()

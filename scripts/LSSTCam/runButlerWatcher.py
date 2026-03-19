@@ -21,9 +21,15 @@
 
 from lsst.daf.butler import Butler
 from lsst.rubintv.production import ButlerWatcher
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, writeDimensionUniverseFile
+from lsst.rubintv.production.utils import (
+    getAutomaticLocationConfig,
+    getDoRaise,
+    setupSentry,
+    writeDimensionUniverseFile,
+)
 from lsst.summit.utils.utils import setupLogging
 
+setupSentry()
 setupLogging()
 instrument = "LSSTCam"
 locationConfig = getAutomaticLocationConfig()

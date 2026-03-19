@@ -27,9 +27,11 @@ from lsst.rubintv.production.utils import (
     getDoRaise,
     getPodWorkerNumber,
     mapAosWorkerNumber,
+    setupSentry,
 )
 from lsst.summit.utils.utils import setupLogging
 
+setupSentry()
 setupLogging()
 instrument = "LSSTCam"
 locationConfig = getAutomaticLocationConfig()

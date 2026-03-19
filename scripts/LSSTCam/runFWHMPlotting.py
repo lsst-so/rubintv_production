@@ -21,9 +21,10 @@
 
 from lsst.daf.butler import Butler
 from lsst.rubintv.production.aos import FocalPlaneFWHMPlotter
-from lsst.rubintv.production.utils import getAutomaticLocationConfig
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, setupSentry
 from lsst.summit.utils.utils import setupLogging
 
+setupSentry()
 instrument = "LSSTCam"
 
 setupLogging()
