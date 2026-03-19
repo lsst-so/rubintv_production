@@ -359,7 +359,13 @@ class TestConfig:
                     tee_output=False,
                     display_on_pass=False,
                 ),
-                TestScript("tests/ci/drip_feed_data.py", ["usdf_testing"], delay=0, display_on_pass=False),
+                TestScript(
+                    "tests/ci/drip_feed_data.py",
+                    ["usdf_testing"],
+                    delay=0,
+                    display_on_pass=False,
+                    tee_output=True,
+                ),
             ]
         )
 
