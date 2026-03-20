@@ -561,9 +561,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             self.log.info(f"Using {nCpus} CPUs for {self.instrument} {self.step} {who}")
 
             executor = SingleQuantumExecutor(
-                butler=None,
+                butler=butlerToUse,
                 task_factory=TaskFactory(),
-                limited_butler_factory=lambda _: butlerToUse,
                 clobber_outputs=True,  # check with Jim if this is how we should handle clobbering
                 assume_no_existing_outputs=True,  # this makes *this* clobber (above) mostly inoperative
                 raise_on_partial_outputs=False,
