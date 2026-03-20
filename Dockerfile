@@ -71,7 +71,6 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     # lsstts channel required for ts-ofc
     -c lsstts \
     rubin-env-rsp \
-    astrometry \
     redis-py \
     batoid \
     danish=0.6.0 \
