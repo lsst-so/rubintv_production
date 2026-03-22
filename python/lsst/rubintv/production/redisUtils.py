@@ -980,7 +980,10 @@ class RedisHelper:
                 self._loggedAbout.add(key)
                 self.log.warning(f"Key {key} not found in redis! Are you processing stale data?")
             return []
-        return [int(det) for det in value.decode("utf-8").split(",")]
+        detectors = value.decode("utf-8").split(",")
+        if not detectors or detectors == [""]:
+            return []
+        return [int(det) for det in detectors]
 
     def recordAosPipelineConfig(self, instrument: str, expId: int, pipelineName: str) -> None:
         """Record the pipeline configuration used for a given exposure ID.
