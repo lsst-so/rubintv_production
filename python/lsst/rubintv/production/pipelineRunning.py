@@ -478,9 +478,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.runCollection = payload.run  # TODO: remove this from being on the class at all
         who = payload.who  # who are we running this for?
 
-        dataIds = [dataId]
-        del dataId
-
         try:
             # NOTE: if someone sends a pipelineGraphBytes that's so different
             # from the pipelines built by buildPipelines that it consumes
@@ -489,57 +486,55 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             # CachingLimitedButler with the new pipelineGraph here.
             pipelineGraph = pipelineGraphFromBytes(pipelineGraphBytes)
 
-            self.log.info(f"Running pipeline for {dataIds}")
+            self.log.info(f"Running pipeline for {dataId}")
 
             # _waitForDataProduct waits for the item to land in the repo and
             # caches it on the butler, so we don't use the return, other than
             # to test that it arrived, so a) we can log and b) send the fail
             # to RubinTV. If it doesn't arrive the qg will be empty
             t0 = time.time()
-            for dataId in dataIds:
-                self.log.info(f"Waiting for {self.dataProduct} for {dataId}")
-                if self.locationConfig.location == "bts":
-                    # TODO : Find something better when we're not about to go
-                    # on sky.
-                    t = 60  # ideally this would be in config not code
-                else:
-                    t = 20  # ideally this wouldn't reassert the upsteam default but it makes this smaller
-                dataProduct = self._waitForDataProduct(dataId, gettingButler=self.cachingButler, timeout=t)
 
-                # self.dataProduct is the data product we are waiting for, so
-                # if that's none the rest doesn't apply here, i.e. that's
-                # success
-                if self.dataProduct is not None and dataProduct is None:
-                    # _waitForDataProduct logs a warning so no need to warn
-                    record = None
-                    if "exposure" in dataId.dimensions:
-                        record = dataId.records["exposure"]
-                    elif "visit" in dataId.dimensions:
-                        # XXX is this ever true? Do we need this? How do visit
-                        # records ever get in here? Maybe for step1b?
-                        record = dataId.records["visit"]
+            self.log.info(f"Waiting for {self.dataProduct} for {dataId}")
+            t = 20  # ideally this wouldn't reassert the upsteam default
+            if self.locationConfig.location == "bts":
+                # TODO : remove this when BTS gets a hardware upgrade
+                t = 60  # ideally this would be in config not code
+            dataProduct = self._waitForDataProduct(dataId, gettingButler=self.cachingButler, timeout=t)
 
-                    if record is None:  # not an else block because mypy
-                        self.log.warning(f"{dataId} has no visit/expRecord so can't log missing data product")
-                        continue
-                    failRecord = {
-                        # it would look nicer to have this dict the other way
-                        # around but we're merging dicts, so that would
-                        # overwrite if there were _e.g. multiple raws missing
-                        f"{dataId}-timeout": f"{self.dataProduct}",  # dict-items these merge cleanly now
-                        "DISPLAY_VALUE": "💩",  # just keep overwriting this, doesn't matter
-                    }
-                    columnName = "Retrieval fails"
-                    shardPath = getShardPath(self.locationConfig, record)
-                    writeMetadataShard(shardPath, record.day_obs, {record.seq_num: {columnName: failRecord}})
+            # self.dataProduct is the data product we are waiting for, so
+            # if that's none the rest doesn't apply here, i.e. that's
+            # success
+            if self.dataProduct is not None and dataProduct is None:
+                # _waitForDataProduct logs a warning so no need to warn
+                record = None
+                if "exposure" in dataId.dimensions:
+                    record = dataId.records["exposure"]
+                elif "visit" in dataId.dimensions:
+                    # XXX is this ever true? Do we need this? How do visit
+                    # records ever get in here? Maybe for step1b?
+                    record = dataId.records["visit"]
+
+                if record is None:  # not an else block because mypy
+                    self.log.error(f"{dataId} has no visit/expRecord so can't log missing data product")
+                    return
+                failRecord = {
+                    # it would look nicer to have this dict the other way
+                    # around but we're merging dicts, so that would
+                    # overwrite if there were _e.g. multiple raws missing
+                    f"{dataId}-timeout": f"{self.dataProduct}",  # dict-items these merge cleanly now
+                    "DISPLAY_VALUE": "💩",  # just keep overwriting this, doesn't matter
+                }
+                columnName = "Retrieval fails"
+                shardPath = getShardPath(self.locationConfig, record)
+                writeMetadataShard(shardPath, record.day_obs, {record.seq_num: {columnName: failRecord}})
             self.log.info(
-                f"Spent {(time.time() - t0):.2f} seconds waiting for {len(dataIds)} {self.dataProduct}(s)"
+                f"Spent {(time.time() - t0):.2f} seconds waiting for the {self.dataProduct}"
                 " (should be ~1s per id)"
             )
 
             builder, where, bind, butlerToUse = self.getQuantumGraphBuilder(payload, pipelineGraph)
 
-            with logDuration(self.log, f"Building quantum graph for {dataIds} for {who}"):
+            with logDuration(self.log, f"Building quantum graph for {dataId} for {who}"):
                 qg: PredictedQuantumGraph = builder.finish(
                     metadata={
                         "data_query": where,
@@ -551,7 +546,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             if not qg:  # fine to still iterate this though, easier this way
                 # TODO: remove this warning if intra-focal and step1b and
                 # paired so that we don't warn when it's expected
-                self.log.warning(f"No work found for {dataIds} in quantum graph")
+                self.log.warning(f"No work found for {dataId} in quantum graph")
 
             nCpus = int(os.getenv("LIMITS_CPU", 1))
             self.log.info(f"Using {nCpus} CPUs for {self.instrument} {self.step} {who}")
