@@ -346,13 +346,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             self.cachingButler,
             timeouts=timeouts,
         )
-        tip = getCurrentOutputCollection(self.butler, self.locationConfig, self.instrument)
-        newDefaults = list(
-            d
-            for d in self.butler.collections.defaults
-            if d != self.locationConfig.getOutputChain(self.instrument)
-        )
-        collections = newDefaults if not tip else [tip, *newDefaults]
+        collections = self.getCollections()
         builder = TrivialQuantumGraphBuilder(
             pipeline_graph=pipelineGraph,
             butler=self.butler,
@@ -364,6 +358,26 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             output_run=self.runCollection,
         )
         return builder, "", {}, butlerToReturn
+
+    def getCollections(self):
+        """Get the collections to use for this payload.
+
+        Returns the current output collection (the tip of the output chain)
+        followed by the defaults.
+
+        Returns
+        -------
+        collections : `list` [`str`]
+            The collections to use for this payload.
+        """
+        tip = getCurrentOutputCollection(self.butler, self.locationConfig, self.instrument)
+        newDefaults = list(
+            d
+            for d in self.butler.collections.defaults
+            if d != self.locationConfig.getOutputChain(self.instrument)
+        )
+        collections = newDefaults if not tip else [tip, *newDefaults]
+        return collections
 
     def getQuantumGraphBuilder(
         self, payload: Payload, pipelineGraph: PipelineGraph
@@ -405,13 +419,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             where += " AND ".join(f"{k}={idString}{k}" for k in dataId.required)
             bind.update({f"{idString}{k}": v for k, v in dataId.required.items()})
 
-            tip = getCurrentOutputCollection(self.butler, self.locationConfig, self.instrument)
-            newDefaults = list(
-                d
-                for d in self.butler.collections.defaults
-                if d != self.locationConfig.getOutputChain(self.instrument)
-            )
-            collections = newDefaults if not tip else [tip, *newDefaults]
+            collections = self.getCollections()
             builder = AllDimensionsQuantumGraphBuilder(
                 pipelineGraph,
                 self.butler,
@@ -442,13 +450,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 return self.finishAosQgBuilder(payload, pipelineGraph, expRecord, dataIds)
 
             else:
-                tip = getCurrentOutputCollection(self.butler, self.locationConfig, self.instrument)
-                newDefaults = list(
-                    d
-                    for d in self.butler.collections.defaults
-                    if d != self.locationConfig.getOutputChain(self.instrument)
-                )
-                collections = newDefaults if not tip else [tip, *newDefaults]
+                collections = self.getCollections()
                 builder = TrivialQuantumGraphBuilder(
                     pipeline_graph=pipelineGraph,
                     butler=self.butler,
