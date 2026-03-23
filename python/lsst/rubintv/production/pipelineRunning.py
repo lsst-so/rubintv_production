@@ -401,12 +401,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             where = ""
             bind = {}
 
-            # TODO: tidy this up
-            idString = f"dataId_{0}_"
-            where += " AND ".join(f"{k}={idString}{k}" for k in dataId.mapping)
-            # if not unpaired:  #  XXX need to get the paired into here somehow
-            # where += f" AND detector not in ({','.join(INTRA_IDS)})"
-            bind.update({f"{idString}{k}": v for k, v in dataId.mapping.items()})
+            idString = "dataId0_"
+            where += " AND ".join(f"{k}={idString}{k}" for k in dataId.required)
+            bind.update({f"{idString}{k}": v for k, v in dataId.required.items()})
 
             tip = getCurrentOutputCollection(self.butler, self.locationConfig, self.instrument)
             newDefaults = list(
