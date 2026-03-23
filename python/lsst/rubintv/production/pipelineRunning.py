@@ -254,9 +254,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
     ) -> tuple[QuantumGraphBuilder, str, dict[str, Any], LimitedButler]:
         """Get any subset inputs needed for the TrivialQuantumGraphBuilder.
 
-        This MUST only be called for step1a non-FAM images.
-        TODO: add protection for this.
-
         Parameters
         ----------
         payload : `lsst.rubintv.production.payloads.Payload`

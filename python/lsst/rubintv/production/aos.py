@@ -553,7 +553,7 @@ class ZernikePredictedFWHMPlotter:
             if visitIdBytes is not None:
                 visitId = int(visitIdBytes.decode("utf-8"))
                 self.log.info(f"Making for ZernikePredictedFWHM plots for visitId {visitId}")
-                with logDuration(self.log, f"Total time for making zernike prection plots for {visitId=}"):
+                with logDuration(self.log, f"Total time for making zernike prediction plots for {visitId=}"):
                     self.makePlots(visitId)
             else:
                 sleep(0.5)

@@ -1878,10 +1878,10 @@ def makeNightSummaryPlot(
         The day of observation.
     filename : `str`
         The filename to save the plot to.
-    ingestTimes : `dict[int, tuple(float, float)]`, optional
+    ingestTimes : `dict[int, tuple(`float`, `float`)]`, optional
         Dictionary mapping seqNum to (minIngestTime, maxIngestTime) since
         shutter close for the CWFS detectors.
-    s3UploadTimes : `dict[int, float]`, optional
+    s3UploadTimes : `dict[`int`, `float`]`, optional
         Dictionary mapping seqNum to S3 upload time since shutter close.
     """
     s = slice(None)
