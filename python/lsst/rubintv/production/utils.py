@@ -1797,8 +1797,9 @@ def getExpRecordFromId(expOrVisitId: int, instrument: str, butler: Butler) -> Di
     return expR
 
 
-def getCurrentOutputCollection(butler: Butler, locationConfig: LocationConfig, instrument: str) -> str | None:
-    """Get the current output collection for the given instrument.
+def getCurrentOutputRun(butler: Butler, locationConfig: LocationConfig, instrument: str) -> str | None:
+    """Get the RUN name at the tip of the current output collection for the
+    given instrument.
 
     Parameters
     ----------

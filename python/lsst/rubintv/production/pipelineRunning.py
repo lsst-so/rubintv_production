@@ -61,7 +61,7 @@ from .plotting.mosaicing import writeBinnedImage
 from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
 from .utils import (
-    getCurrentOutputCollection,
+    getCurrentOutputRun,
     getEquivalentDataId,
     getExpIdOrVisitId,
     getExpRecordFromId,
@@ -370,7 +370,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         collections : `list` [`str`]
             The collections to use for this payload.
         """
-        tip = getCurrentOutputCollection(self.butler, self.locationConfig, self.instrument)
+        tip = getCurrentOutputRun(self.butler, self.locationConfig, self.instrument)
         newDefaults = list(
             d
             for d in self.butler.collections.defaults

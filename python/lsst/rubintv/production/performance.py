@@ -53,7 +53,7 @@ from lsst.utils.plotting.figures import make_figure
 
 from .baseChannels import BaseButlerChannel
 from .processingControl import CameraControlConfig, PipelineComponents, buildPipelines
-from .utils import LocationConfig, getCurrentOutputCollection, makePlotFile, runningCI, writeMetadataShard
+from .utils import LocationConfig, getCurrentOutputRun, makePlotFile, runningCI, writeMetadataShard
 
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
@@ -545,7 +545,7 @@ class TaskResult:
         where = makeWhere(task, record)
         dRefs: list[DatasetRef] = []
         if runningCI():  # must just use the tip of the chain for CI runs
-            collection = getCurrentOutputCollection(butler, locationConfig, "LSSTCam")
+            collection = getCurrentOutputRun(butler, locationConfig, "LSSTCam")
         else:  # processing old data in production envs means we need to look down the chain
             collection = locationConfig.getOutputChain("LSSTCam")
         assert collection is not None, "Collection should not be None, this isn't tested by scons"
