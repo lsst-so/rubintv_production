@@ -36,7 +36,7 @@ def getBaseLogDir() -> Path:
 
     Returns
     -------
-    logDir : `Path`
+    logDir : `pathlib.Path`
         The base log directory containing timestamped subdirectories.
     """
     scriptDir = Path(__file__).parent.resolve()
@@ -51,7 +51,7 @@ def getLogDir(baseLogDir: Path, runIdentifier: str | None = None) -> Path:
 
     Parameters
     ----------
-    baseLogDir : `Path`
+    baseLogDir : `pathlib.Path`
         The base log directory.
     runIdentifier : `str`, optional
         Either a run ID (timestamp or label_timestamp) or an integer index
@@ -59,7 +59,7 @@ def getLogDir(baseLogDir: Path, runIdentifier: str | None = None) -> Path:
 
     Returns
     -------
-    logDir : `Path`
+    logDir : `pathlib.Path`
         The log directory for the specified run.
     """
     if runIdentifier is None:
@@ -97,12 +97,12 @@ def listTestRuns(baseLogDir: Path) -> list[str]:
 
     Parameters
     ----------
-    baseLogDir : `Path`
+    baseLogDir : `pathlib.Path`
         The base log directory.
 
     Returns
     -------
-    runs : `list[str]`
+    runs : `list` [`str`]
         List of run timestamps, newest first.
     """
     if not baseLogDir.exists():
@@ -182,12 +182,12 @@ def listLogFiles(logDir: Path) -> list[Path]:
 
     Parameters
     ----------
-    logDir : `Path`
+    logDir : `pathlib.Path`
         The directory containing log files.
 
     Returns
     -------
-    logFiles : `list[Path]`
+    logFiles : `list` [`pathlib.Path`]
         Sorted list of log file paths.
     """
     if not logDir.exists():
@@ -201,14 +201,14 @@ def findLogsByPid(logDir: Path, pid: str) -> list[Path]:
 
     Parameters
     ----------
-    logDir : `Path`
+    logDir : `pathlib.Path`
         The directory containing log files.
     pid : `str`
         The process ID to search for.
 
     Returns
     -------
-    logFiles : `list[Path]`
+    logFiles : `list` [`pathlib.Path`]
         List of matching log file paths.
     """
     pattern = f"*_pid_{pid}.log"
@@ -221,14 +221,14 @@ def findLogsByName(logDir: Path, name: str) -> list[Path]:
 
     Parameters
     ----------
-    logDir : `Path`
+    logDir : `pathlib.Path`
         The directory containing log files.
     name : `str`
         The script name to search for.
 
     Returns
     -------
-    logFiles : `list[Path]`
+    logFiles : `list` [`pathlib.Path`]
         List of matching log file paths.
     """
     allLogs = listLogFiles(logDir)
@@ -241,7 +241,7 @@ def searchInLogFile(logFile: Path, searchString: str, caseInsensitive: bool = Tr
 
     Parameters
     ----------
-    logFile : `Path`
+    logFile : `pathlib.Path`
         The log file to search.
     searchString : `str`
         The string to search for.
@@ -250,7 +250,7 @@ def searchInLogFile(logFile: Path, searchString: str, caseInsensitive: bool = Tr
 
     Returns
     -------
-    matches : `list[tuple[int, str]]`
+    matches : `list` [`tuple` [`int`, `str`]]
         List of (line_number, line_content) tuples for matching lines.
     """
     matches: list[tuple[int, str]] = []
@@ -275,7 +275,7 @@ def searchAcrossAllLogs(
 
     Parameters
     ----------
-    logDir : `Path`
+    logDir : `pathlib.Path`
         The directory containing log files.
     searchString : `str`
         The string to search for.
@@ -284,7 +284,7 @@ def searchAcrossAllLogs(
 
     Returns
     -------
-    resultsByFile : `dict[Path, list[tuple[int, str]]]`
+    resultsByFile : `dict` [`pathlib.Path`, `list`[ `tuple` [`int`, `str`]]]
         Dictionary mapping log files to lists of (line_number, line_content)
         tuples.
     """
@@ -305,14 +305,14 @@ def extractTracebacks(logFile: Path, contextLines: int = 5) -> list[Traceback]:
 
     Parameters
     ----------
-    logFile : `Path`
+    logFile : `pathlib.Path`
         The log file to search.
     contextLines : `int`, optional
         Number of lines before the traceback to include.
 
     Returns
     -------
-    tracebacks : `list[Traceback]`
+    tracebacks : `list` [`Traceback`]
         List of found tracebacks.
     """
     tracebacks = []
@@ -378,12 +378,12 @@ def findAllTracebacks(logDir: Path) -> dict[Path, list[Traceback]]:
 
     Parameters
     ----------
-    logDir : `Path`
+    logDir : `pathlib.Path`
         The directory containing log files.
 
     Returns
     -------
-    tracebacksByFile : `dict[Path, list[Traceback]]`
+    tracebacksByFile : `dict` [`pathlib.Path`, `list` [`Traceback`]]
         Dictionary mapping log files to their tracebacks.
     """
     tracebacksByFile: dict[Path, list[Traceback]] = {}
@@ -435,7 +435,7 @@ def printAllTracebacksForFile(logFile: Path, tracebacks: list[Traceback]) -> Non
 
     Parameters
     ----------
-    logFile : `Path`
+    logFile : `pathlib.Path`
         The log file.
     tracebacks : `list[Traceback]`
         List of tracebacks from this file.
@@ -459,7 +459,7 @@ def displaySearchResults(
     ----------
     searchString : `str`
         The search string used.
-    resultsByFile : `dict[Path, list[tuple[int, str]]]`
+    resultsByFile : `dict[pathlib.Path, list[tuple[int, str]]]`
         Dictionary mapping log files to matching lines.
     maxLinesPerFile : `int`, optional
         Maximum number of lines to display per file before truncating.
@@ -492,7 +492,7 @@ def handleStringSearchMode(logDir: Path) -> None:
 
     Parameters
     ----------
-    logDir : `Path`
+    logDir : `pathlib.Path`
         The directory containing log files to search.
     """
     print("\nString Search Mode")
@@ -576,7 +576,7 @@ def handleTracebackMode(logDir: Path) -> None:
 
     Parameters
     ----------
-    logDir : `Path`
+    logDir : `pathlib.Path`
         The directory containing log files to search.
     """
     print(f"Searching for tracebacks in {logDir.name}...\n")
@@ -652,7 +652,7 @@ def parseSelection(selection: str, maxIndex: int) -> list[int]:
 
     Returns
     -------
-    indices : `list[int]`
+    indices : `list` [`int`]
         List of 0-based indices.
     """
     indices: list[int] = []
@@ -687,7 +687,7 @@ def printLogFile(logPath: Path) -> None:
 
     Parameters
     ----------
-    logPath : `Path`
+    logPath : `pathlib.Path`
         The log file to print.
     """
     print(f"\n{'=' * 80}")
@@ -704,12 +704,12 @@ def displayRunsTable(baseLogDir: Path) -> list[str]:
 
     Parameters
     ----------
-    baseLogDir : `Path`
+    baseLogDir : `pathlib.Path`
         The base log directory.
 
     Returns
     -------
-    runs : `list[str]`
+    runs : `list` [`str`]
         List of run names, newest first.
     """
     runs = listTestRuns(baseLogDir)
@@ -738,12 +738,12 @@ def selectRun(baseLogDir: Path) -> Path | None:
 
     Parameters
     ----------
-    baseLogDir : `Path`
+    baseLogDir : `pathlib.Path`
         The base log directory.
 
     Returns
     -------
-    logDir : `Path` | None
+    logDir : `pathlib.Path` | `None`
         The selected run's log directory, or None if user quits.
     """
     runs = displayRunsTable(baseLogDir)
@@ -777,7 +777,7 @@ def displayLogsMenu(logDir: Path) -> None:
 
     Parameters
     ----------
-    logDir : `Path`
+    logDir : `pathlib.Path`
         The directory containing log files.
     """
     while True:
@@ -824,7 +824,7 @@ def viewIndividualLogs(logFiles: list[Path]) -> None:
 
     Parameters
     ----------
-    logFiles : `list[Path]`
+    logFiles : `list` [`pathlib.Path`]
         List of available log files.
     """
     if not logFiles:
@@ -861,7 +861,7 @@ def listLogsDisplay(logFiles: list[Path]) -> None:
 
     Parameters
     ----------
-    logFiles : `list[Path]`
+    logFiles : `list` [`pathlib.Path`]
         List of log files to display.
     """
     if not logFiles:
@@ -880,7 +880,7 @@ def searchLogsByName(logDir: Path) -> None:
 
     Parameters
     ----------
-    logDir : `Path`
+    logDir : `pathlib.Path`
         The directory containing log files.
     """
     searchTerm = input("\nEnter search term (or 'b' to go back): ").strip()
@@ -904,7 +904,7 @@ def interactiveMode(baseLogDir: Path) -> None:
 
     Parameters
     ----------
-    baseLogDir : `Path`
+    baseLogDir : `pathlib.Path`
         The base log directory.
     """
     while True:
