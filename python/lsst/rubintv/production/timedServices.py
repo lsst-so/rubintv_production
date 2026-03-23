@@ -168,7 +168,6 @@ class TimedMetadataServer:
             return
 
         self.log.info(f"Found {len(shardFiles)} shardFiles")
-        sleep(0.1)  # just in case a shard is in the process of being written
 
         shardFilesByDayObs: dict[int, list[str]] = defaultdict(list)
         for shardFile in shardFiles:

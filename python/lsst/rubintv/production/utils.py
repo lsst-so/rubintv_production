@@ -907,15 +907,17 @@ def writeMetadataShard(path: str, dayObs: int, mdDict: dict[int, dict[str, Any]]
         os.makedirs(path, exist_ok=True)  # exist_ok True despite check to be concurrency-safe just in case
 
     suffix = uuid.uuid1()
-    # this pattern is relied up elsewhere, so don't change it without updating
-    # in at least the following places: mergeShardsAndUpload
+    # the final filename pattern is relied upon elsewhere, so don't change it
+    # without updating in at least the following places: mergeShardsAndUpload
     filename = os.path.join(path, f"metadata-dayObs_{dayObs}_{suffix}.json")
+    tmpFilename = os.path.join(path, f"tmp-metadata-dayObs_{dayObs}_{suffix}.json")
 
-    with open(filename, "w") as f:
+    with open(tmpFilename, "w") as f:
         json.dump(mdDict, f, cls=NumpyEncoder)
+    os.rename(tmpFilename, filename)
     try:
-        if not isFileWorldWritable(filename):
-            os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
+        if not isFileWorldWritable(tmpFilename):
+            os.chmod(tmpFilename, 0o777)  # file may be deleted by another process, so make it world writable
     except FileNotFoundError:
         pass  # it was indeed deleted elsewhere, so just ignore
     return
