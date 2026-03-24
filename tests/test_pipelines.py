@@ -58,9 +58,9 @@ def swallowLogs() -> Iterator[None]:
             h.setLevel(lvl)
 
 
-NO_BUTLER = True
+HAS_BUTLER = False
 if getSite() in ["staff-rsp", "rubin-devl"]:
-    NO_BUTLER = False
+    HAS_BUTLER = True
 
 EXPECTED_PIPELINES = [
     "BIAS",
