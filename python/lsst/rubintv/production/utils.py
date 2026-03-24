@@ -1569,11 +1569,11 @@ class DurationResult:
 def logDuration(logger: Logger, label: str) -> Iterator[DurationResult]:
     """Context manager to log the duration of a block of code.
 
-    Example usage:
+    Example usage::
 
-    with logDuration(log, "this block of code") as timing:
-        doSomething()
-    duration = timing.duration
+        with logDuration(log, "this block of code") as timing:
+            doSomething()
+        duration = timing.duration
 
     This will log the time taken to execute the block of code with the label
     message "<loggerName>.info this block of code took 1.23s" and return 1.23
@@ -1586,11 +1586,10 @@ def logDuration(logger: Logger, label: str) -> Iterator[DurationResult]:
     label : `str`
         A label for the block of code being timed, used in the log message.
 
-    Yields
-    ------
-    timing : `DurationResult`
-        An object whose ``duration`` attribute is populated (in seconds)
-        when the context exits.
+    Returns
+    -------
+    result : `DurationResult`
+        A context manager that returns a ``DurationResult`` when entered.
     """
     start = perf_counter()
     result = DurationResult()
@@ -1705,7 +1704,8 @@ def getExpIdOrVisitId(obj: DimensionRecord | DataCoordinate) -> int:
 
     Parameters
     ----------
-    expRecord : `lsst.daf.butler.DimensionRecord`
+    expRecord : `lsst.daf.butler.DimensionRecord` or
+                `lsst.daf.butler.DataCoordinate`
         The exposure record to get the ID from.
 
     Returns
@@ -1810,8 +1810,8 @@ def getCurrentOutputRun(butler: Butler, locationConfig: LocationConfig, instrume
     instrument : `str`
         The instrument name.
     ignoreCiFlag : `bool`, optional
-        If ``True``, ignore the CI environment flag when determining the
-        output collection.
+        If ``True``, ignore the CI environment flag when determining the output
+        collection.
 
     Returns
     -------

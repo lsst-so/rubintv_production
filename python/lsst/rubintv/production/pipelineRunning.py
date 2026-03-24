@@ -554,7 +554,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             executor = SingleQuantumExecutor(
                 butler=butlerToUse,
                 task_factory=TaskFactory(),
-                clobber_outputs=True,  # check with Jim if this is how we should handle clobbering
+                clobber_outputs=True,
                 assume_no_existing_outputs=True,  # this makes *this* clobber (above) mostly inoperative
                 raise_on_partial_outputs=False,
                 resources=ExecutionResources(num_cores=nCpus),
@@ -575,8 +575,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     self.log.info(f"Starting to process {taskLabel}")
 
                     try:
-                        # TODO: add per-quantum timing info here and return in
-                        # PayloadResult
                         postQuantum, _ = executor.execute(qg.pipeline_graph.tasks[taskLabel], preQuantum)
                         self.postProcessQuantum(postQuantum)
                         self.redisHelper.reportTaskFinished(self.instrument, taskLabel, dataCoord)
