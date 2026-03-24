@@ -99,21 +99,21 @@ def stop_redis(process):
 
 
 def main():
-    failures = []  # Collect specific failures
+    failures: list[str] = []  # Collect specific failures
+
+    def fail(msg: str) -> None:
+        print(msg)
+        failures.append(msg)
 
     # 1. Check environment variables are correctly set
     print("Checking environment variables...")
     if getDoRaise() is not True:
-        msg = "ERROR: getDoRaise is not True"
-        print(msg)
-        failures.append(msg)
+        fail("ERROR: getDoRaise is not True")
 
     # 2. Check that no Redis process is running initially
     print("Checking for existing Redis processes...")
     if not check_redis_process(expect_running=False):
-        msg = "ERROR: Redis already running, this might interfere with tests"
-        print(msg)
-        failures.append(msg)
+        fail("ERROR: Redis already running, this might interfere with tests")
 
     # 3. Start Redis and verify it's running
     print("Starting Redis server...")
@@ -122,16 +122,12 @@ def main():
     # 4. Check that Redis process is now running
     print("Verifying Redis process is running...")
     if not check_redis_process(expect_running=True):
-        msg = "ERROR: Redis failed to start"
-        print(msg)
-        failures.append(msg)
+        fail("ERROR: Redis failed to start or is not running as expected")
 
     # 5. Test Redis connection
     print("Testing Redis connection...")
     if not check_redis_connection(host, port, password):
-        msg = "ERROR: Redis connection failed"
-        print(msg)
-        failures.append(msg)
+        fail("ERROR: Redis connection failed")
     else:
         print("Redis connection successful")
 
@@ -139,16 +135,12 @@ def main():
     print("Testing attempt to start Redis when already running...")
     try:
         start_test_redis()
-        msg = "ERROR: Was able to start Redis again when it should have failed"
-        print(msg)
-        failures.append(msg)
+        fail("ERROR: Was able to start Redis again when it should have failed")
     except RuntimeError as e:
         if "Redis server is already running" in str(e):
             print("✅ Correctly failed to start Redis when already running")
         else:
-            msg = f"ERROR: Got unexpected error when starting Redis again: {e}"
-            print(msg)
-            failures.append(msg)
+            fail(f"ERROR: Got unexpected error when starting Redis again: {e}")
 
     # 6. Stop Redis
     print("Stopping Redis server...")
@@ -158,27 +150,19 @@ def main():
     print("Verifying Redis process is stopped...")
     time.sleep(1)  # Give it a moment to fully terminate
     if not check_redis_process(expect_running=False):
-        msg = "ERROR: Redis didn't shut down properly"
-        print(msg)
-        failures.append(msg)
+        fail("ERROR: Redis didn't shut down properly")
 
     # 8. Verify environment variables match TestConfig
     print("Verifying Redis environment variables...")
     config = TestConfig()
     if host != os.environ["REDIS_HOST"] or host != config.redis_host:
-        msg = f"ERROR: Redis host mismatch: {host=}, {os.environ['REDIS_HOST']=}, {config.redis_host=}"
-        print(msg)
-        failures.append(msg)
+        fail(f"ERROR: Redis host mismatch: {host=}, {os.environ['REDIS_HOST']=}, {config.redis_host=}")
 
     if port != os.environ["REDIS_PORT"] or port != config.redis_port:
-        msg = f"ERROR: Redis port mismatch: {port=}, {os.environ['REDIS_PORT']=}, {config.redis_port=}"
-        print(msg)
-        failures.append(msg)
+        fail(f"ERROR: Redis port mismatch: {port=}, {os.environ['REDIS_PORT']=}, {config.redis_port=}")
 
     if password != os.environ["REDIS_PASSWORD"] or password != config.redis_password:
-        msg = f"ERROR: Redis password mismatch: {password=}, config.redis_password=<hidden>"
-        print(msg)
-        failures.append(msg)
+        fail(f"ERROR: Redis password mismatch: {password=}, config.redis_password=<hidden>")
 
     # Print summary
     print("\n" + "=" * 80)
