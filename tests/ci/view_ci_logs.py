@@ -17,6 +17,12 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# TODO: DM-54468 overhaul this utility per some of Jim's review comments.
+# including persisting logs in json format to remove some of the needs for
+# parsing and perhaps using a real database. Obviously these need to have a
+# decent ROI, and given current usage, it's not clear they will, but if this
+# becomes a core part of the CI then this might become worth the effort.
+
 
 class Traceback:
     """Represents a traceback found in a log file."""
@@ -510,7 +516,7 @@ def handleStringSearchMode(logDir: Path) -> None:
     searchString = input("\nEnter search string: ").strip()
     if not searchString:
         print("Empty search string. Aborting.")
-        input("\nPress Enter to continue...")
+        input("\nPress any key to continue...")
         return
 
     caseInput = input("Case-insensitive search? (y/n, default: y): ").strip().lower()
@@ -526,7 +532,7 @@ def handleStringSearchMode(logDir: Path) -> None:
         else:
             displaySearchResults(searchString, resultsByFile)
 
-        input("\nPress Enter to continue...")
+        input("\nPress any key to continue...")
 
     elif choice == "2":
         # Search within a specific log
@@ -534,7 +540,7 @@ def handleStringSearchMode(logDir: Path) -> None:
 
         if not logFiles:
             print("\nNo log files found.")
-            input("\nPress Enter to continue...")
+            input("\nPress any key to continue...")
             return
 
         print(f"\nAvailable log files ({len(logFiles)} total):\n")
@@ -547,7 +553,7 @@ def handleStringSearchMode(logDir: Path) -> None:
             logIndex = int(logChoice) - 1
             if logIndex < 0 or logIndex >= len(logFiles):
                 print("Invalid selection.")
-                input("\nPress Enter to continue...")
+                input("\nPress any key to continue...")
                 return
 
             selectedLog = logFiles[logIndex]
@@ -560,14 +566,14 @@ def handleStringSearchMode(logDir: Path) -> None:
             else:
                 displaySearchResults(searchString, {selectedLog: matches})
 
-            input("\nPress Enter to continue...")
+            input("\nPress any key to continue...")
 
         except ValueError:
             print("Invalid input.")
-            input("\nPress Enter to continue...")
+            input("\nPress any key to continue...")
     else:
         print("Invalid choice.")
-        input("\nPress Enter to continue...")
+        input("\nPress any key to continue...")
 
 
 def handleTracebackMode(logDir: Path) -> None:
@@ -829,7 +835,7 @@ def viewIndividualLogs(logFiles: list[Path]) -> None:
     """
     if not logFiles:
         print("\nNo log files found.")
-        input("\nPress Enter to continue...")
+        input("\nPress any key to continue...")
         return
 
     print(f"\nAvailable log files ({len(logFiles)} total):\n")
@@ -849,10 +855,10 @@ def viewIndividualLogs(logFiles: list[Path]) -> None:
         indices = parseSelection(choice, len(logFiles))
         for idx in indices:
             printLogFile(logFiles[idx])
-        input("\nPress Enter to continue...")
+        input("\nPress any key to continue...")
     except ValueError as e:
         print(f"Error: {e}")
-        input("\nPress Enter to continue...")
+        input("\nPress any key to continue...")
 
 
 def listLogsDisplay(logFiles: list[Path]) -> None:
@@ -871,7 +877,7 @@ def listLogsDisplay(logFiles: list[Path]) -> None:
         for i, logFile in enumerate(logFiles, 1):
             print(f"  {i}. {logFile.name}")
 
-    input("\nPress Enter to continue...")
+    input("\nPress any key to continue...")
 
 
 def searchLogsByName(logDir: Path) -> None:
@@ -892,7 +898,7 @@ def searchLogsByName(logDir: Path) -> None:
 
     if not matchingLogs:
         print(f"\nNo log files found matching '{searchTerm}'")
-        input("\nPress Enter to continue...")
+        input("\nPress any key to continue...")
         return
 
     viewIndividualLogs(matchingLogs)
