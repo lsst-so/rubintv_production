@@ -1,5 +1,5 @@
 
-ARG STACK_TAG="w_2026_12"
+ARG STACK_TAG="w_2026_13"
 # For USDF, UID=17951
 # For summit, UID=GID=73006?
 
@@ -9,15 +9,15 @@ FROM ghcr.io/lsst/scipipe:al9-${STACK_TAG}
 ENV UID=73006
 ENV GID=73006
 
-ENV obs_lsst_branch="w.2026.12"
-ENV drp_pipe_branch="w.2026.12"
-ENV daf_butler_branch="w.2026.12"
-ENV pipe_base_branch="w.2026.12"
-ENV spectractor_branch="w.2026.12"
-ENV atmospec_branch="w.2026.12"
-ENV summit_utils_branch="w.2026.12"
-ENV summit_extras_branch="w.2026.12"
-ENV eo_pipe_branch="w_2025_12"
+ENV obs_lsst_branch="w.2026.13"
+ENV drp_pipe_branch="w.2026.13"
+ENV daf_butler_branch="w.2026.13"
+ENV pipe_base_branch="w.2026.13"
+ENV spectractor_branch="w.2026.13"
+ENV atmospec_branch="w.2026.13"
+ENV summit_utils_branch="w.2026.13"
+ENV summit_extras_branch="w.2026.13"
+ENV eo_pipe_branch="w_2025_13"
 ENV ts_wep_branch="5107292b"
 ENV donut_viz_branch="18ea94d"
 # no tags for TARTS yet, so default to main if not using deployment branch
