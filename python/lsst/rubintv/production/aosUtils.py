@@ -27,6 +27,7 @@ import batoid
 import galsim
 import numpy as np
 import pandas as pd
+import warnings
 from astropy.table import Table
 from batoid_rubin import LSSTBuilder
 
@@ -315,17 +316,29 @@ def estimateWavefrontDataFromDofs(
 
     # Build double Zernike model for the perturbed
     # telescope and the fiducial one
-    doubleZernikesPerturbed = (
-        batoid.doubleZernike(
-            telescope,
-            field=np.deg2rad(fieldRadius),
-            wavelength=wavelength * 1e-6,
-            eps=obscuration,
-            jmax=jMax,
-            kmax=kMax,
+    try:
+        doubleZernikesPerturbed = (
+            batoid.doubleZernike(
+                telescope,
+                field=np.deg2rad(fieldRadius),
+                wavelength=wavelength * 1e-6,
+                eps=obscuration,
+                jmax=jMax,
+                kmax=kMax,
+            )
+            * wavelength
         )
-        * wavelength
-    )
+    except ValueError as e:
+        if "Cannot compute zernike with Gaussian Quadrature with failed rays." in str(e):
+            warnings.warn(
+                "Returning NaNs for perturbed double Zernikes as " +
+                "Batoid failed to compute double Zernike for the perturbed telescope. " +
+                "This likely means that the DOF state is too far from the nominal state, " +
+                f"causing ray tracing issues. Error details: {e}"
+            )
+            doubleZernikesPerturbed = np.full(((kMax + 1), (jMax + 1)), np.nan)
+        else:
+            raise
 
     doubleZernikesFiducial = (
         batoid.doubleZernike(
