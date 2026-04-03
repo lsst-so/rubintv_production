@@ -69,6 +69,7 @@ EXPECTED_PIPELINES = [
     "ISR",
     "SFM",
     "AOS_DANISH",
+    "AOS_WCS_DANISH",
     "AOS_TIE",
     "AOS_REFIT_WCS",
     "AOS_AI_DONUT",
@@ -123,10 +124,9 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
             self.assertIn(pipelineName, self.pipelines)
 
         # check no unexpected pipelines either so that we're always explicit
-        # that we're testing all the ones we know about.  XXX turn this back on
-        # for pipelineName in self.pipelines.keys():
-        #     self.assertIn(pipelineName, EXPECTED_PIPELINES,
-        # f"Unexpected pipeline {pipelineName} found")
+        # that we're testing all the ones we know about.
+        for pipelineName in self.pipelines.keys():
+            self.assertIn(pipelineName, EXPECTED_PIPELINES, f"Unexpected pipeline {pipelineName} found")
 
         where = "exposure.day_obs=20251115 AND exposure.seq_num in (226..228,436) AND instrument='LSSTCam'"
         records = self.minimalButler.query_dimension_records("exposure", where=where)
