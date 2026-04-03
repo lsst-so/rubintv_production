@@ -1828,7 +1828,9 @@ def getEquivalentDataId(
     exposureDataId: DataCoordinate,
     dimensions: list[str] | DimensionGroup,
 ) -> DataCoordinate:
-    """
+    """Construct a data ID by replacing or augmenting the 'exposure' dimension
+    with some combination of the 'visit' and 'group' that should correspond to
+    the same observation.
 
     Parameters
     ----------

@@ -24,6 +24,10 @@ from pathlib import Path
 # becomes a core part of the CI then this might become worth the effort.
 
 
+if __name__ != "__main__":
+    raise ImportError("This script must be run directly, not imported")
+
+
 class Traceback:
     """Represents a traceback found in a log file."""
 
