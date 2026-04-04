@@ -150,6 +150,7 @@ def calculateMountErrors(
     # TODO: DM-33859 remove this once it can be got from the expRecord
     md = butler.get("raw.metadata", expRecord.dataId, detector=0)
     obsInfo = ObservationInfo(md)
+    assert obsInfo.altaz_begin is not None, "ObservationInfo did not have an azimuth value"
     azimuth = obsInfo.altaz_begin.az.value
     logger.debug(f"dataId={dataIdString}, imgType={imgType}, Times={tStart}, {tEnd}")
 

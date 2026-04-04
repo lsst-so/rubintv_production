@@ -287,7 +287,7 @@ class MultiUploader(IUploader):
         elif remoteRequired and self.hasRemote:
             remoteOk = self.remoteUploader.checkAccess()
             if not remoteOk and not allowNoRemote:
-                raise RuntimeError("Failed to connect to remote S3 bucket")
+                self.log.error("Failed to connect to required remote - restart the service once remote us up")
 
         self.log = _LOG.getChild("MultiUploader")
         self.log.info(

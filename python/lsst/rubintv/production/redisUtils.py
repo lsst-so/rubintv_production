@@ -38,7 +38,7 @@ from lsst.daf.butler import DataCoordinate, DimensionRecord
 
 from .payloads import Payload
 from .podDefinition import PodDetails, PodFlavor, getQueueName
-from .utils import expRecordFromJson, removeDetector, summaryStatsToDict
+from .utils import expRecordFromJson, removeDetector, runningPyTest, runningScons, summaryStatsToDict
 
 # Check if the environment is a notebook
 clear_output: Callable | None = None
@@ -198,12 +198,12 @@ def _extractExposureIds(exposureBytes: bytes, instrument: str) -> list[int]:
 
 class RedisHelper:
     def __init__(self, butler: Butler, locationConfig: LocationConfig, isHeadNode: bool = False) -> None:
+        self.log = logging.getLogger("lsst.rubintv.production.redisUtils.RedisHelper")
         self.butler = butler  # needed to expand dataIds when dequeuing payloads
         self.locationConfig = locationConfig
         self.isHeadNode = isHeadNode
         self.redis = self._makeRedis()
         self._testRedisConnection()
-        self.log = logging.getLogger("lsst.rubintv.production.redisUtils.RedisHelper")
         self._loggedAbout: set[str] = set()
 
     def _makeRedis(self) -> redis.Redis:
@@ -229,7 +229,15 @@ class RedisHelper:
             Raised on any other unexpected error.
         """
         try:
-            self.redis.ping()
+            if not runningScons() and not runningPyTest():
+                # note: the actual CI test suite does use redis, but the unit
+                # tests do not. The CI will still execute the ping here, and
+                # will fail without redis. The ping is important because pods
+                # should fail to come up on the summit if redis isn't
+                # contactable.
+                self.redis.ping()
+            else:
+                self.log.warning("Skipping redis ping for unit tests")
         except redis.exceptions.ConnectionError as e:
             raise RuntimeError("Could not connect to redis - is it running?") from e
         except Exception as e:
@@ -513,7 +521,7 @@ class RedisHelper:
             )
 
     def reportDetectorLevelFinished(
-        self, instrument: str, step: str, who: str, processingId: str, failed=False
+        self, instrument: str, step: str, who: str, processingId: int, failed=False
     ) -> None:
         """Count the number of times a detector-level pipeline has finished.
 
@@ -535,13 +543,13 @@ class RedisHelper:
             True if the processing did not fail to complete
         """
         key = f"{instrument}-{step}-{who}-DETECTOR_FINISHED_COUNTER"
-        self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
+        self.redis.hincrby(key, str(processingId), 1)  # creates the key if it doesn't exist
 
         if failed:  # fails have finished too, so increment finished and failed
             key = key.replace("DETECTOR_FINISHED_COUNTER", "DETECTOR_FAILED_COUNTER")
-            self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
+            self.redis.hincrby(key, str(processingId), 1)  # creates the key if it doesn't exist
 
-    def getNumDetectorLevelFinished(self, instrument: str, step: str, who: str, processingId: str) -> int:
+    def getNumDetectorLevelFinished(self, instrument: str, step: str, who: str, processingId: int) -> int:
         """Get the number of times a visit-level pipeline has finished.
 
         Returns the number of times the step has finished for the given
@@ -564,23 +572,23 @@ class RedisHelper:
             The number of times the step has finished.
         """
         key = f"{instrument}-{step}-{who}-DETECTOR_FINISHED_COUNTER"
-        if not self.redis.hexists(key, processingId):
+        if not self.redis.hexists(key, str(processingId)):
             self.log.warning(f"Key {key} with processingId {processingId} does not exist")
-        return int(self.redis.hget(key, processingId) or 0)
+        return int(self.redis.hget(key, str(processingId)) or 0)
 
-    def getAllIdsForDetectorLevel(self, instrument: str, step: str, who: str) -> list[str]:
+    def getAllIdsForDetectorLevel(self, instrument: str, step: str, who: str) -> list[int]:
         """Get a list of processed ids for the specified step."""
         key = f"{instrument}-{step}-{who}-DETECTOR_FINISHED_COUNTER"
         idList = self.redis.hgetall(key).keys()
-        return [procId.decode("utf-8") for procId in idList]
+        return [int(procId.decode("utf-8")) for procId in idList]
 
-    def removeFinishedIdDetectorLevel(self, instrument: str, step: str, who: str, processingId: str) -> None:
+    def removeFinishedIdDetectorLevel(self, instrument: str, step: str, who: str, processingId: int) -> None:
         """Remove the specified counter for the processingId from the list of
         finishing ids.
         """
         key = f"{instrument}-{step}-{who}-DETECTOR_FINISHED_COUNTER"
-        if self.redis.hexists(key, processingId):
-            self.redis.hdel(key, processingId)
+        if self.redis.hexists(key, str(processingId)):
+            self.redis.hdel(key, str(processingId))
         else:
             self.log.warning(
                 f"Key {key} with processingId {processingId} did not exist when removal was attempted"
@@ -676,33 +684,6 @@ class RedisHelper:
         """
         if not self.isHeadNode:
             raise RuntimeError("This function is only for the head node - consume your queue, worker!")
-
-    def getRemoteCommands(self) -> list[dict]:
-        """Get any remote commands that have been sent to the head node.
-
-        Returns
-        -------
-        commands : `list` of `dict` : `dict`
-            The commands that have been sent. As a list of dicts, where each
-            dict has a single string key, which is the function to be called,
-            and dict value, optionally populated with kwargs to call that
-            function with.
-
-            For example, to ensure the guiders are on, the wavefronts are off,
-            and we have a phase-0 per-CCD checkerboard, the received commands
-            would look like:
-
-            commands = [
-                {'setAllOff': {}},
-                {'setFullCheckerboard': {'phase': 0}},
-                {'setGuidersOn': {}},
-            ]
-        """
-        commands = []
-        while command := self.redis.rpop("commands"):  # rpop for FIFO
-            commands.append(json.loads(command.decode("utf-8")))
-
-        return commands
 
     def pushNewExposureToHeadNode(self, expRecord: DimensionRecord) -> None:
         """Send an exposure record for processing.
@@ -809,32 +790,6 @@ class RedisHelper:
             return None
         return expRecordFromJson(expRecordJson, self.locationConfig)
 
-    def checkForOcsDonutPair(self, instrument: str) -> tuple[int, int] | None:
-        """Get the next exposure to process for the specified instrument.
-
-        Parameters
-        ----------
-        instrument : `str`
-            The instrument to get the next exposure for.
-
-        Returns
-        -------
-        expRecord : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
-            The next exposure to process for the specified detector, or
-            ``None`` if the queue is empty.
-        """
-        self._checkIsHeadNode()
-        queueName = f"{instrument}-FROM-OCS_DONUTPAIR"  # defined by Tiago, so just hard-coded here
-        exposurePairBytes = self.redis.lpop(queueName)
-        if exposurePairBytes is not None:
-            exposureIds = _extractExposureIds(exposurePairBytes, instrument)
-            if len(exposureIds) != 2:
-                raise ValueError(f"Expected two exposureIds, got {exposureIds}")
-            expId1, expId2 = exposureIds
-            return expId1, expId2
-        else:
-            return None
-
     def enqueuePayload(self, payload: Payload, destinationPod: PodDetails, top=True) -> None:
         """Send a unit of work to a specific worker-queue.
 
@@ -914,9 +869,17 @@ class RedisHelper:
             self.redis.delete(key)
 
     def writeDetectorsToExpect(
-        self, instrument: str, indentifier: int | str, detectors: list[int], who: str, append: bool = True
+        self, instrument: str, indentifier: int, detectors: list[int], who: str, append: bool = True
     ) -> None:
         """Write the detectors we are processing for a given exposureId.
+
+        Notes
+        -----
+        Whilst this function is only called by the head node, this remains
+        safe, as is the existence of ``removeDetectorsToExpect``, because the
+        head node is single threaded, so this is functioanlly atomic. However,
+        usage of ``removeDetectorsToExpect`` from elsewhere would be non-atomic
+        and thus unsafe.
 
         Parameters
         ----------
@@ -957,8 +920,39 @@ class RedisHelper:
         # and thus no longer check for the expected detectors.
         self.redis.expire(key, int(86400 * 2.5))  # expire in 2.5 days
 
+    def removeDetectorsToExpect(
+        self, instrument: str, indentifier: int, detectors: list[int], who: str
+    ) -> None:
+        """Remove detectors from the expected detectors for a given exposureId.
+
+        Notes
+        -----
+        See notes in ``writeDetectorsToExpect`` about atomicity and safety.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The name of the instrument.
+        indentifier : `int` or `str`
+            The exposure or visit ID(s) the detectors are being processed for.
+        detectors : `list` of `int`
+            The list of detectors to expect.
+        who : `str`
+            Who are we running the pipeline for, e.g. "SFM" or "AOS".
+        """
+        existingDetectors = self.getExpectedDetectors(instrument, indentifier, who, noWarn=False)
+        for det in detectors:
+            if det in existingDetectors:
+                existingDetectors.remove(det)
+            else:
+                self.log.warning(
+                    f"Detector {det} not found in existing detectors for"
+                    f" {instrument} {who} {indentifier} when attempting removal!"
+                )
+        self.writeDetectorsToExpect(instrument, indentifier, existingDetectors, who, append=False)
+
     def getExpectedDetectors(
-        self, instrument: str, indentifier: int | str, who: str, noWarn: bool = False
+        self, instrument: str, indentifier: int, who: str, noWarn: bool = False
     ) -> list[int]:
         """Get the expected detectors for a given exposure or visit ID.
 
@@ -986,7 +980,10 @@ class RedisHelper:
                 self._loggedAbout.add(key)
                 self.log.warning(f"Key {key} not found in redis! Are you processing stale data?")
             return []
-        return [int(det) for det in value.decode("utf-8").split(",")]
+        detectors = value.decode("utf-8").split(",")
+        if not detectors or detectors == [""]:
+            return []
+        return [int(det) for det in detectors]
 
     def recordAosPipelineConfig(self, instrument: str, expId: int, pipelineName: str) -> None:
         """Record the pipeline configuration used for a given exposure ID.
@@ -1143,19 +1140,6 @@ class RedisHelper:
             return int(zernikeCount)
         return None
 
-    def setWorkerAsRecruitable(self, pod: PodDetails) -> None:
-        """Set a worker pod as recruitable.
-
-        This means that the worker is available to process work from other
-        queues, as distributed by the ClusterManager.
-
-        Parameters
-        ----------
-        pod : `lsst.rubintv.production.podDetails.PodDetails`
-            The pod details of the worker to set as recruitable.
-        """
-        self.redis.hset("HEADNODE_RECRUITABLE_WORKERS", pod.queueName, "1")
-
     def setDetectorsIgnoredByHeadNode(self, instrument: str, detectors: list[int]) -> None:
         """Set the detectors that the head node is currently not processing
         data for.
@@ -1272,8 +1256,24 @@ class RedisHelper:
 
         return averagedStats
 
-    def displayRedisContents(self, instrument: str | None = None, ignorePods: bool = True) -> None:
+    def displayRedisContents(
+        self,
+        instrument: str | None = None,
+        ignorePods: bool = True,
+        ignoreKeysStartingWith: list[str] | None = None,
+    ) -> None:
         """Get the next unit of work from a specific worker queue.
+
+        Parameters
+        ----------
+        instrument : `str`, optional
+            Filter to only show keys containing this instrument name.
+        ignorePods : `bool`, optional
+            Whether to ignore pod-related keys (those ending with +EXISTS or
+            +IS_BUSY). Default is ``True``.
+        ignoreKeysStartingWith : `list[str]`, optional
+            List of string prefixes. Keys starting with any of these strings
+            will be ignored. Default is ``None``.
 
         Returns
         -------
@@ -1326,6 +1326,14 @@ class RedisHelper:
         if not keys:
             print("Nothing in the Redis database.")
             return
+
+        # Filter out keys starting with specified prefixes
+        if ignoreKeysStartingWith is not None:
+            keys = [
+                key
+                for key in keys
+                if not any(decode_string(key).startswith(prefix) for prefix in ignoreKeysStartingWith)
+            ]
 
         # Remove consDB announcements from the list
         keys = [key for key in keys if "consdb" not in decode_string(key)]

@@ -1,5 +1,5 @@
 
-ARG STACK_TAG="w_2025_48"
+ARG STACK_TAG="w_2026_03"
 # For USDF, UID=17951
 # For summit, UID=GID=73006?
 
@@ -9,18 +9,21 @@ FROM ghcr.io/lsst/scipipe:al9-${STACK_TAG}
 ENV UID=73006
 ENV GID=73006
 
-ENV obs_lsst_branch="w.2025.48"
-ENV drp_pipe_branch="w.2025.48"
-ENV spectractor_branch="w.2025.48"
-ENV atmospec_branch="w.2025.48"
-ENV summit_utils_branch="w.2025.48"
-ENV summit_extras_branch="w.2025.48"
+ENV obs_lsst_branch="w.2026.03"
+ENV drp_pipe_branch="w.2026.03"
+ENV daf_butler_branch="w.2026.03"
+ENV pipe_base_branch="w.2026.03"
+ENV spectractor_branch="w.2026.03"
+ENV atmospec_branch="w.2026.03"
+ENV summit_utils_branch="w.2026.03"
+ENV summit_extras_branch="w.2026.03"
 ENV eo_pipe_branch="w_2025_12"
 ENV ts_wep_branch="5107292b"
 ENV donut_viz_branch="18ea94d"
 # no tags for TARTS yet, so default to main if not using deployment branch
 ENV tarts_branch="main"
-ENV ts_ofc_branch="main"
+ENV ts_ofc_branch="develop"
+ENV ts_config_mttcs_branch="develop"
 
 ENV USER=${USER:-saluser}
 ENV WORKDIR=/opt/lsst/software/stack
@@ -71,7 +74,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     astrometry \
     redis-py \
     batoid \
-    danish \
+    danish=0.6.0 \
     rubin-libradtran \
     timm \
     peft \
@@ -84,6 +87,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     lsst-efd-client \
     pytorch_lightning \
     easyocr \
+    sentry-sdk \
     && rm -rf ~/.cache/pip
 
 WORKDIR /repos
@@ -97,13 +101,17 @@ RUN git clone https://github.com/lsst/Spectractor.git && \
     git clone https://github.com/lsst-ts/rubintv_analysis_service.git && \
     git clone https://github.com/lsst-ts/ts_wep.git && \
     git clone https://github.com/lsst-ts/ts_ofc.git && \
+    git clone https://github.com/lsst-ts/ts_config_mttcs.git && \
     git clone https://github.com/lsst-ts/donut_viz.git && \
     git clone https://github.com/PetchMa/TARTS.git && \
     git clone https://github.com/lsst-camera-dh/eo_pipe.git
 
 # TODO: (DM-43475) Resync RA images with the rest of the summit.
 RUN git clone https://github.com/lsst/obs_lsst.git && \
+    git clone https://github.com/lsst/daf_butler.git && \
+    git clone https://github.com/lsst/pipe_base.git && \
     git clone https://github.com/lsst/drp_pipe.git
+
 
 WORKDIR /repos/obs_lsst
 
@@ -112,6 +120,22 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     eups declare -r . -t saluser && \
     setup obs_lsst -t saluser && \
     SCONSFLAGS="--no-tests" scons
+
+WORKDIR /repos/daf_butler
+
+RUN source ${WORKDIR}/loadLSST.bash && \
+    /home/saluser/.checkout_repo.sh ${daf_butler_branch} && \
+    eups declare -r . -t saluser && \
+    setup daf_butler -t saluser && \
+    scons version
+
+WORKDIR /repos/pipe_base
+
+RUN source ${WORKDIR}/loadLSST.bash && \
+    /home/saluser/.checkout_repo.sh ${pipe_base_branch} && \
+    eups declare -r . -t saluser && \
+    setup pipe_base -t saluser && \
+    scons version
 
 WORKDIR /repos/drp_pipe
 
@@ -215,6 +239,13 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     setup ts_ofc -t saluser && \
     scons version
 
+WORKDIR /repos/ts_config_mttcs
+
+RUN source ${WORKDIR}/loadLSST.bash && \
+    /home/saluser/.checkout_repo.sh ${ts_config_mttcs_branch} && \
+    eups declare -r . ts_config_mttcs ${ts_config_mttcs} -t saluser && \
+    setup ts_config_mttcs -t saluser
+
 WORKDIR /repos/donut_viz
 
 RUN source ${WORKDIR}/loadLSST.bash && \
@@ -246,6 +277,8 @@ RUN git remote set-url origin https://github.com/lsst-sitcom/rubintv_production.
 RUN source ${WORKDIR}/loadLSST.bash && \
     eups declare -r . -t saluser && \
     setup atmospec -j -t saluser && \
+    setup daf_butler -j -t saluser && \
+    setup pipe_base -j -t saluser && \
     setup summit_utils -j -t saluser && \
     setup summit_extras -j -t saluser && \
     setup rubintv_production -j -t saluser && \
@@ -282,6 +315,8 @@ RUN git config --system --add safe.directory /repos/obs_lsst && \
     git config --system --add safe.directory /repos/drp_pipe && \
     git config --system --add safe.directory /repos/Spectractor && \
     git config --system --add safe.directory /repos/atmospec && \
+    git config --system --add safe.directory /repos/daf_butler && \
+    git config --system --add safe.directory /repos/pipe_base && \
     git config --system --add safe.directory /repos/summit_utils && \
     git config --system --add safe.directory /repos/summit_extras && \
     git config --system --add safe.directory /repos/rubintv_production && \
@@ -289,6 +324,7 @@ RUN git config --system --add safe.directory /repos/obs_lsst && \
     git config --system --add safe.directory /repos/rubintv_analysis_service && \
     git config --system --add safe.directory /repos/ts_wep && \
     git config --system --add safe.directory /repos/ts_ofc && \
+    git config --system --add safe.directory /repos/ts_config_mttcs && \
     git config --system --add safe.directory /repos/donut_viz && \
     git config --system --add safe.directory /repos/TARTS
 

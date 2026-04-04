@@ -24,7 +24,7 @@ __all__ = ("RedisWatcher", "ButlerWatcher")
 
 import logging
 import sys
-from time import sleep
+from time import perf_counter, sleep
 from typing import TYPE_CHECKING
 
 from lsst.daf.butler import Butler
@@ -138,40 +138,46 @@ class ButlerWatcher:
         expRecords : `dict` [`str`, `lsst.daf.butler.DimensionRecord` or `None`]  # noqa: W505
             A dict of the most recent exposure records, keyed by dataProduct.
         """
-        records = self.butler.registry.queryDimensionRecords("exposure", datasets="raw")
+        # runtime is ~200ms on the summit. If the dayObs were added and the
+        # results and then sorted in python this would bring this to ~30ms, but
+        # the change would then need to deal with the change in behaviour when
+        # the list is empty
+        records = self.butler.query_dimension_records("exposure", order_by="-exposure.timespan.end", limit=1)
 
         # we must sort using the timespan because:
         # we can't use exposure.id because it is calculated differently
         # for different instruments, e.g. TS8 is 10x bigger than AuxTel
         # and also C-controller data has expIds like 3YYYMMDDNNNNN so would
         # always be the "most recent".
-        records.order_by("-exposure.timespan.end")  # the minus means descending ordering
-        records.limit(1)
-        recordList = list(records)
-        if len(recordList) != 1:
-            raise RuntimeError(f"Found {len(recordList)} records for 'raw', expected 1")
-        return recordList[0]
+        if len(records) != 1:
+            raise RuntimeError(f"Found {len(records)} records for 'raw', expected 1")
+        return records[0]
 
     def run(self) -> None:
         lastSeen = None
+        warnedAbout: set[int] = set()
         while True:
             try:
+                start = perf_counter()
                 latestRecord = self._getLatestExpRecord()
+                duration = perf_counter() - start
 
                 if lastSeen is None:  # starting up for the first time
                     seenBefore = self.redisHelper.checkButlerWatcherList(self.instrument, latestRecord)
-                    if seenBefore:
+                    if seenBefore and int(latestRecord.id) not in warnedAbout:
                         self.log.info(
                             f"Skipping dispatching {latestRecord.instrument}-{latestRecord.id} as"
                             " it was dispatched by a ButlerWatcher in a previous life. You should only"
                             " ever see this on pod startup."
                         )
+                        warnedAbout.add(int(latestRecord.id))
                         continue
 
                 if latestRecord == lastSeen:
                     sleep(self.cadence)
                     continue
 
+                self.log.info(f"Found new exposure={latestRecord.id}, query took {duration * 1000:.1f} ms")
                 self.redisHelper.pushNewExposureToHeadNode(latestRecord)
                 self.redisHelper.pushToButlerWatcherList(self.instrument, latestRecord)
                 lastSeen = latestRecord

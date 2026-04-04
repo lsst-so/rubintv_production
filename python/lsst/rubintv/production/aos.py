@@ -61,6 +61,8 @@ from lsst.summit.utils import ConsDbClient
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.plotRadialAnalysis import makePanel
 from lsst.summit.utils.utils import getCameraFromInstrumentName, getDetectorIds
+from lsst.ts.ofc import OFCData
+from lsst.utils import getPackageDir
 from lsst.utils.plotting.figures import make_figure
 
 from .aosUtils import (
@@ -71,7 +73,13 @@ from .aosUtils import (
 )
 from .redisUtils import RedisHelper, _extractExposureIds
 from .uploaders import MultiUploader
-from .utils import getRubinTvInstrumentName, makePlotFile, writeExpRecordMetadataShard, writeMetadataShard
+from .utils import (
+    getRubinTvInstrumentName,
+    logDuration,
+    makePlotFile,
+    writeExpRecordMetadataShard,
+    writeMetadataShard,
+)
 
 if TYPE_CHECKING:
     from lsst.daf.butler import Butler, DimensionRecord
@@ -401,6 +409,9 @@ class ZernikePredictedFWHMPlotter:
         self.log = logging.getLogger("lsst.rubintv.production.aos.ZernikePredictedFWHMPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
         self.s3Uploader = MultiUploader()
+        configMttcsDir = getPackageDir("ts_config_mttcs")
+        ofcDir = os.path.join(configMttcsDir, "MTAOS", "ofc")
+        self.ofcData = OFCData("lsst", config_dir=ofcDir)
 
     def makePlots(self, visitId: int) -> None:
         """Make the Zernike FWHM plot and DOF prediction for the visit.
@@ -423,16 +434,17 @@ class ZernikePredictedFWHMPlotter:
             self.log.error(f"Could not find aggregateZernikesAvg for visitId {visitId}")
             return
 
-        for detectorId in detectorIds:
-            try:
-                srcDict[detectorId] = self.butler.get(
-                    "single_visit_star_footprints", visit=visitId, detector=detectorId
-                )
-            except DatasetNotFoundError:
-                pass
-        if not srcDict:
-            self.log.warning(f"Could not find any source catalogs for visitId {visitId}")
-            return
+        with logDuration(self.log, f"Getting source catalogs for {visitId=}"):
+            for detectorId in detectorIds:
+                try:
+                    srcDict[detectorId] = self.butler.get(
+                        "single_visit_star_footprints", visit=visitId, detector=detectorId
+                    )
+                except DatasetNotFoundError:
+                    pass
+            if not srcDict:
+                self.log.warning(f"Could not find any source catalogs for visitId {visitId}")
+                return
 
         visitInfo = None
         for detectorId in detectorIds:
@@ -449,21 +461,26 @@ class ZernikePredictedFWHMPlotter:
             )
             return
 
-        table = makeTableFromSourceCatalogs(srcDict, visitInfo)
-        if len(table) == 0 or "FWHM" not in table.colnames:
-            self.log.error(f"No sources with FWHM found for visitId {visitId}, skipping FWHM plots")
-            return
+        with logDuration(self.log, "Making table from source catalogs"):
+            table = makeTableFromSourceCatalogs(srcDict, visitInfo)
+            if len(table) == 0 or "FWHM" not in table.colnames:
+                self.log.error(f"No sources with FWHM found for visitId {visitId}, skipping FWHM plots")
+                return
 
         tableFiltered = randomRowsPerDetector(table, 60)
 
-        wavefrontResults, rotMat = makeDataframeFromZernikes(zkAvgTable, expRecord.physical_filter)
-        wavefrontData = extractWavefrontData(wavefrontResults, tableFiltered, rotMat)
+        with logDuration(self.log, "Making dataframe from zernikes"):
+            wavefrontResults, rotMat = makeDataframeFromZernikes(
+                zkAvgTable, expRecord.physical_filter, self.ofcData
+            )
+            wavefrontData = extractWavefrontData(wavefrontResults, tableFiltered, rotMat)
 
         plotName = "zernike_predicted_fwhm"
         plotFile = makePlotFile(
             self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "png"
         )
-        makeZernikePredictedFWHMPlot(tableFiltered, wavefrontData, saveAs=plotFile)
+        with logDuration(self.log, "Making the actual Zernike predicted FWHM plot"):
+            makeZernikePredictedFWHMPlot(tableFiltered, wavefrontData, saveAs=plotFile)
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument=getRubinTvInstrumentName(self.instrument) + "_aos",
             plotName=plotName,
@@ -481,41 +498,46 @@ class ZernikePredictedFWHMPlotter:
         else:
             donutBlur = estimatorInfo.get("fwhm")
 
-        try:
-            dofState = estimateTelescopeState(
-                zkAvgTable,
-                wavefrontResults,
-                filterName=expRecord.physical_filter,
-                useDof="0-9,10-16,30-34",
-                nKeep=12,
-            )
-        except RuntimeError as e:
-            self.log.warning(f"Could not estimate DOF state for visitId {visitId}: {e}")
-            return
+        with logDuration(self.log, "Estimating telescope state"):
+            try:
+                dofState = estimateTelescopeState(
+                    self.ofcData,
+                    zkAvgTable,
+                    wavefrontResults,
+                    filterName=expRecord.physical_filter,
+                    useDof="0-9,10-16,30-34",
+                    nKeep=12,
+                )
+            except RuntimeError as e:
+                self.log.warning(f"Could not estimate DOF state for visitId {visitId}: {e}")
+                return
 
-        wavefrontData = estimateWavefrontDataFromDofs(
-            dofState,
-            wavefrontResults,
-            tableFiltered,
-            rotMat,
-            expRecord.physical_filter.split("_")[0],
-            batoidFeaDir=os.path.join(aosDataDir, "batoid_data/fea_legacy"),
-            batoidBendDir=os.path.join(aosDataDir, "batoid_data/bend"),
-            donutBlur=donutBlur,
-        )
+        with logDuration(self.log, "Estimating wavefront data from DOFs"):
+            wavefrontData = estimateWavefrontDataFromDofs(
+                self.ofcData,
+                dofState,
+                wavefrontResults,
+                tableFiltered,
+                rotMat,
+                expRecord.physical_filter.split("_")[0],
+                batoidFeaDir=os.path.join(aosDataDir, "batoid_data/fea_legacy"),
+                batoidBendDir=os.path.join(aosDataDir, "batoid_data/bend"),
+                donutBlur=donutBlur,
+            )
 
         plotName = "dof_predicted_fwhm"
         plotFile = makePlotFile(
             self.locationConfig, self.instrument, expRecord.day_obs, expRecord.seq_num, plotName, "png"
         )
-        makeDofPredictedFWHMPlot(
-            tableFiltered,
-            wavefrontData,
-            donutBlur,
-            dofState,
-            zkAvgTable.meta["nollIndices"],
-            saveAs=plotFile,
-        )
+        with logDuration(self.log, "Making the actual DOF predicted FWHM plot"):
+            makeDofPredictedFWHMPlot(
+                tableFiltered,
+                wavefrontData,
+                donutBlur,
+                dofState,
+                zkAvgTable.meta["nollIndices"],
+                saveAs=plotFile,
+            )
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument=getRubinTvInstrumentName(self.instrument) + "_aos",
             plotName=plotName,
@@ -531,7 +553,8 @@ class ZernikePredictedFWHMPlotter:
             if visitIdBytes is not None:
                 visitId = int(visitIdBytes.decode("utf-8"))
                 self.log.info(f"Making for ZernikePredictedFWHM plots for visitId {visitId}")
-                self.makePlots(visitId)
+                with logDuration(self.log, f"Total time for making zernike prediction plots for {visitId=}"):
+                    self.makePlots(visitId)
             else:
                 sleep(0.5)
 

@@ -42,7 +42,14 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator
 import numpy as np
 import yaml
 
-from lsst.daf.butler import Butler, DataCoordinate, DimensionConfig, DimensionRecord, DimensionUniverse
+from lsst.daf.butler import (
+    Butler,
+    DataCoordinate,
+    DimensionConfig,
+    DimensionGroup,
+    DimensionRecord,
+    DimensionUniverse,
+)
 from lsst.obs.lsst.translators.lsst import FILTER_DELIMITER
 from lsst.resources import ResourcePath
 from lsst.summit.utils.dateTime import dayObsIntToString, getCurrentDayObsInt
@@ -55,6 +62,7 @@ if TYPE_CHECKING:
 
     from lsst.afw.cameraGeom import Camera
     from lsst.afw.image import Exposure, ExposureSummaryStats
+    from lsst.pipe.base import PipelineGraph
 
 __all__ = [
     "writeDimensionUniverseFile",
@@ -81,6 +89,8 @@ __all__ = [
     "removeDetector",
     "getFilterColorName",
     "runningCI",
+    "runningPyTest",
+    "runningScons",
     "ALLOWED_DATASET_TYPES",
     "NumpyEncoder",
     "runningCI",
@@ -115,7 +125,7 @@ SHARDED_DATA_TEMPLATE = os.path.join(
     "{path}", "dataShard-{dataSetName}-{instrument}-dayObs_{dayObs}" "_seqNum_{seqNum}_{suffix}.json"
 )
 
-AOS_CCDS = [191, 192, 195, 196, 199, 200, 203, 204]
+AOS_CCDS = (191, 192, 195, 196, 199, 200, 203, 204)
 AOS_WORKER_MAPPING = {n: (depth, ccd) for n, (depth, ccd) in enumerate(itertools.product(range(9), AOS_CCDS))}
 
 # this file is for low level tools and should therefore not import
@@ -614,6 +624,10 @@ class LocationConfig:
     def aosLSSTCamUnpairedDanishPipelineFile(self) -> str:
         return self._config["aosLSSTCamUnpairedDanishPipelineFile"]
 
+    @cached_property
+    def aosLSSTCamWcsDanishPipelineFile(self) -> str:
+        return self._config["aosLSSTCamWcsDanishPipelineFile"]
+
 
 def getAutomaticLocationConfig() -> LocationConfig:
     """Get a location config, based on RA location and command line args.
@@ -655,7 +669,8 @@ def _loadConfigFile(site: str) -> dict[str, str]:
     """
     packageDir = getPackageDir("rubintv_production")
     configFile = os.path.join(packageDir, "config", f"config_{site}.yaml")
-    config = yaml.safe_load(open(configFile, "rb"))
+    with open(configFile, "rb") as f:
+        config = yaml.safe_load(f)
     return config
 
 
@@ -892,15 +907,17 @@ def writeMetadataShard(path: str, dayObs: int, mdDict: dict[int, dict[str, Any]]
         os.makedirs(path, exist_ok=True)  # exist_ok True despite check to be concurrency-safe just in case
 
     suffix = uuid.uuid1()
-    # this pattern is relied up elsewhere, so don't change it without updating
-    # in at least the following places: mergeShardsAndUpload
+    # the final filename pattern is relied upon elsewhere, so don't change it
+    # without updating in at least the following places: mergeShardsAndUpload
     filename = os.path.join(path, f"metadata-dayObs_{dayObs}_{suffix}.json")
+    tmpFilename = os.path.join(path, f"tmp-metadata-dayObs_{dayObs}_{suffix}.json")
 
-    with open(filename, "w") as f:
+    with open(tmpFilename, "w") as f:
         json.dump(mdDict, f, cls=NumpyEncoder)
+    os.rename(tmpFilename, filename)
     try:
-        if not isFileWorldWritable(filename):
-            os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
+        if not isFileWorldWritable(tmpFilename):
+            os.chmod(tmpFilename, 0o777)  # file may be deleted by another process, so make it world writable
     except FileNotFoundError:
         pass  # it was indeed deleted elsewhere, so just ignore
     return
@@ -1465,6 +1482,16 @@ def runningCI() -> bool:
     return os.environ.get("RAPID_ANALYSIS_CI", "false").lower() == "true"
 
 
+def runningScons() -> bool:
+    """Check if the code is running under scons."""
+    return os.environ.get("SCONS_BUILDING", "false").lower() == "true"
+
+
+def runningPyTest() -> bool:
+    """Check if the code is running inside pytest."""
+    return "PYTEST_CURRENT_TEST" in os.environ
+
+
 def makePlotFileFromRecord(
     locationConfig: LocationConfig, record: DimensionRecord, plotType: str, suffix: str
 ) -> str:
@@ -1533,16 +1560,24 @@ def makeFocalPlaneTitle(record: DimensionRecord) -> str:
     return title
 
 
+@dataclass
+class DurationResult:
+    duration: float | None = None
+
+
 @contextmanager
-def logDuration(logger: Logger, label: str) -> Iterator[None]:
+def logDuration(logger: Logger, label: str) -> Iterator[DurationResult]:
     """Context manager to log the duration of a block of code.
 
-    Example usage:
+    Example usage::
 
-    with logDuration(log, "this block of code"):
-        doSomething()
+        with logDuration(log, "this block of code") as timing:
+            doSomething()
+        duration = timing.duration
+
     This will log the time taken to execute the block of code with the label
-    message "<loggerName>.info this block of code took 1.23s".
+    message "<loggerName>.info this block of code took 1.23s" and return 1.23
+    as the duration attribute of the yielded object.
 
     Parameters
     ----------
@@ -1550,12 +1585,19 @@ def logDuration(logger: Logger, label: str) -> Iterator[None]:
         The logger to use for logging the duration.
     label : `str`
         A label for the block of code being timed, used in the log message.
+
+    Returns
+    -------
+    result : `DurationResult`
+        A context manager that returns a ``DurationResult`` when entered.
     """
     start = perf_counter()
+    result = DurationResult()
     try:
-        yield
+        yield result
     finally:
-        logger.info("%s took %.3fs", label, (perf_counter() - start))
+        result.duration = perf_counter() - start
+        logger.info("%s took %.3fs", label, result.duration)
 
 
 def timeFunction(logger: Logger) -> Callable:
@@ -1629,3 +1671,204 @@ def getAirmass(exp: Exposure) -> float | None:
     if airmass is not None and np.isfinite(airmass):
         return float(airmass)
     return None
+
+
+def hasRaDec(record: DimensionRecord) -> bool:
+    """Check if an exposure record has valid RA and Dec.
+
+    Parameters
+    ----------
+    record : `lsst.daf.butler.DimensionRecord`
+        The exposure record to check.
+
+    Returns
+    -------
+    hasRaDec : `bool`
+        True if the exposure record has valid RA and Dec, else False.
+    """
+    try:
+        ra = float(record.tracking_ra)
+        dec = float(record.tracking_dec)
+    except (AttributeError, TypeError):  # AttributeError for missing, TypeError for None
+        return False
+
+    if ra is None or dec is None:
+        return False
+    if not np.isfinite(ra) or not np.isfinite(dec):
+        return False
+    return True
+
+
+def getExpIdOrVisitId(obj: DimensionRecord | DataCoordinate) -> int:
+    """Get the exposure ID or visit ID from an exposure record.
+
+    Parameters
+    ----------
+    expRecord : `lsst.daf.butler.DimensionRecord` or
+                `lsst.daf.butler.DataCoordinate`
+        The exposure record to get the ID from.
+
+    Returns
+    -------
+    id : `int`
+        The exposure ID if available, else the visit ID.
+    """
+    if isinstance(obj, DimensionRecord):
+        return obj.id
+
+    if obj.hasRecords():
+        if "exposure" in obj.records:
+            record = obj.records["exposure"]
+            assert record is not None
+            return record.id
+        if "visit" in obj.records:
+            record = obj.records["visit"]
+            assert record is not None
+            return record.id
+    else:
+        if "visit" in obj:
+            return int(obj["visit"])
+        elif "exposure" in obj:
+            return int(obj["exposure"])
+    raise ValueError(f"{obj} does not contain an exposure or visit ID")
+
+
+def getExpRecordFromVisitRecord(visitRecord: DimensionRecord, butler: Butler) -> DimensionRecord:
+    """Get the exposure record corresponding to a visit record.
+
+    Parameters
+    ----------
+    visitRecord : `lsst.daf.butler.DimensionRecord`
+        The visit record to get the exposure record for.
+    butler : `lsst.daf.butler.Butler`
+        The butler to use to retrieve the exposure record.
+
+    Returns
+    -------
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record corresponding to the visit record.
+    """
+    (expRecord,) = butler.registry.queryDimensionRecords("exposure", dataId=visitRecord.dataId)
+    return expRecord
+
+
+def getVisitRecordFromExpRecord(expRecord: DimensionRecord, butler: Butler) -> DimensionRecord:
+    """Get the exposure record corresponding to a visit record.
+
+    Parameters
+    ----------
+    visitRecord : `lsst.daf.butler.DimensionRecord`
+        The visit record to get the exposure record for.
+    butler : `lsst.daf.butler.Butler`
+        The butler to use to retrieve the exposure record.
+
+    Returns
+    -------
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record corresponding to the visit record.
+    """
+    if expRecord.can_see_sky is not True:
+        raise ValueError("Cannot get visit record from non-sky exposure record")
+
+    # this line *could* still fail if visits haven't been defined, but it now
+    # never *should* as we've checked that it's on sky, so let that raise
+    (visitRecord,) = butler.registry.queryDimensionRecords("visit", dataId=expRecord.dataId)
+    return visitRecord
+
+
+def getExpRecordFromId(expOrVisitId: int, instrument: str, butler: Butler) -> DimensionRecord:
+    """Get the exposure record corresponding to a visit record.
+
+    Parameters
+    ----------
+    expOrVisitId : `int``
+        The exposure ID or visit ID to get the exposure record for.
+    instrument : `str`
+        The instrument name.
+    butler : `lsst.daf.butler.Butler`
+        The butler to use to retrieve the exposure record.
+
+    Returns
+    -------
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record corresponding to the visit record.
+    """
+    (expR,) = butler.registry.queryDimensionRecords("exposure", exposure=expOrVisitId, instrument=instrument)
+    return expR
+
+
+def getCurrentOutputRun(butler: Butler, locationConfig: LocationConfig, instrument: str) -> str | None:
+    """Get the RUN name at the tip of the current output collection for the
+    given instrument.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The butler to use to retrieve the collection info.
+    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+        The location configuration.
+    instrument : `str`
+        The instrument name.
+    ignoreCiFlag : `bool`, optional
+        If ``True``, ignore the CI environment flag when determining the output
+        collection.
+
+    Returns
+    -------
+    outputCollection : `str`
+        The current output collection for the given instrument.
+    """
+    if runningScons():
+        return None
+    return butler.collections.get_info(locationConfig.getOutputChain(instrument)).children[0]
+
+
+def getEquivalentDataId(
+    butler: Butler,
+    exposureDataId: DataCoordinate,
+    dimensions: list[str] | DimensionGroup,
+) -> DataCoordinate:
+    """Construct a data ID by replacing or augmenting the 'exposure' dimension
+    with some combination of the 'visit' and 'group' that should correspond to
+    the same observation.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The butler to use to retrieve the dimension records.
+    exposureDataId : `lsst.daf.butler.DataCoordinate`
+        The exposure data ID to get an equivalent data ID for.
+    dimensions : `list` of `str` or `lsst.daf.butler.DimensionGroup`
+        The dimensions to use to get the equivalent data ID.
+
+    Returns
+    -------
+    equivalentDataId : `lsst.daf.butler.DataCoordinate`
+        A data ID that is equivalent to the given exposure data ID.
+    """
+    if "exposure" not in exposureDataId:
+        raise ValueError("Input data ID must contain an 'exposure' dimension")
+
+    exposureDataId = butler.registry.expandDataId(exposureDataId)  # no-op if already expanded
+    return butler.registry.expandDataId(
+        exposureDataId,
+        dimensions=dimensions,
+        visit=exposureDataId["exposure"],
+        group=exposureDataId["group"],
+    )
+
+
+def isFamPipeline(pipelineGraph: PipelineGraph) -> bool:
+    """Check if the pipeline graph is a FAM pipeline.
+
+    Parameters
+    ----------
+    pipelineGraph : `lsst.daf.butler.PipelineGraph`
+        The pipeline graph to check.
+
+    Returns
+    -------
+    isFamPipeline : `bool`
+        ``True`` if the pipeline graph is a FAM pipeline, else ``False``.
+    """
+    return pipelineGraph.task_subsets.get("visit-pair-merge-task") is not None
