@@ -139,6 +139,10 @@ AOS_WORKER_MAPPING = {n: (depth, ccd) for n, (depth, ccd) in enumerate(itertools
 def setupSentry() -> None:
     """Set up sentry"""
     sentry_sdk.init()
+    client = sentry_sdk.get_client()  # never None, but inactive if failing to initialize
+    if not client.is_active() or client.dsn is None:
+        logger = logging.getLogger(__name__)
+        logger.warning("Sentry DSN not found or client inactive — events will not be reported")
 
 
 def writeDimensionUniverseFile(butler, locationConfig: LocationConfig) -> None:
