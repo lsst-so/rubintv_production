@@ -21,13 +21,13 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import batoid
 import galsim
 import numpy as np
 import pandas as pd
-import warnings
 from astropy.table import Table
 from batoid_rubin import LSSTBuilder
 
@@ -336,10 +336,10 @@ def estimateWavefrontDataFromDofs(
     except ValueError as e:
         if "Cannot compute zernike with Gaussian Quadrature with failed rays." in str(e):
             warnings.warn(
-                "Returning NaNs for perturbed double Zernikes as " +
-                "Batoid failed to compute double Zernike for the perturbed telescope. " +
-                "This likely means that the DOF state is too far from the nominal state, " +
-                f"causing ray tracing issues. Error details: {e}"
+                "Returning NaNs for perturbed double Zernikes as "
+                + "Batoid failed to compute double Zernike for the perturbed telescope. "
+                + "This likely means that the DOF state is too far from the nominal state, "
+                + f"causing ray tracing issues. Error details: {e}"
             )
             doubleZernikesPerturbed = np.full(((kMax + 1), (jMax + 1)), np.nan)
         else:
