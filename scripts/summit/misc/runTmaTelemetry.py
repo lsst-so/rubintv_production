@@ -20,9 +20,14 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.rubintv.production import TmaTelemetryChannel
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getAutomaticLocationConfig
+from lsst.rubintv.production.utils import (
+    checkRubinTvExternalPackages,
+    getAutomaticLocationConfig,
+    setupSentry,
+)
 from lsst.summit.utils.utils import setupLogging
 
+setupSentry()
 setupLogging()
 checkRubinTvExternalPackages()
 locationConfig = getAutomaticLocationConfig()
