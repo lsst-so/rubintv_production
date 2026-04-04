@@ -20,6 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """Test cases for utils."""
+
 import unittest
 
 import lsst.utils.tests
