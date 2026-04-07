@@ -962,6 +962,8 @@ def writeExpRecordMetadataShard(expRecord: DimensionRecord, metadataShardPath: s
     md["Zenith Angle"] = expRecord.zenith_angle if expRecord.zenith_angle else None
     md["Elevation"] = 90 - expRecord.zenith_angle if expRecord.zenith_angle else None
     md["Can see the sky?"] = f"{expRecord.can_see_sky}"
+    if expRecord.can_see_sky is None:  # None is different to False, and means HeaderService/header problems
+        md["_Can see the sky?"] = "bad"  # flag this cell as red as this should never happen
 
     if expRecord.instrument == "LATISS":
         filt, disperser = expRecord.physical_filter.split(FILTER_DELIMITER)
