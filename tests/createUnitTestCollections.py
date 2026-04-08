@@ -56,6 +56,9 @@ PER_PIPELINE_EXTRAS: dict[str, list[str]] = {
     "AOS_DANISH": [
         "reassignCwfsCutoutsPairTask:customQG=False",
     ],
+    "AOS_WCS_DANISH": [
+        "reassignCwfsCutoutsPairTask:customQG=False",
+    ],
     "AOS_TIE": [
         "reassignCwfsCutoutsPairTask:customQG=False",
     ],

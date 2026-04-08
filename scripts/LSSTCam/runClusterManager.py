@@ -21,9 +21,10 @@
 
 from lsst.daf.butler import Butler
 from lsst.rubintv.production.clusterManagement import ClusterManager
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, setupSentry
 from lsst.summit.utils.utils import setupLogging
 
+setupSentry()
 setupLogging()
 instrument = "LSSTCam"
 

@@ -40,6 +40,7 @@ from time import perf_counter
 from typing import TYPE_CHECKING, Any, Callable, Iterator
 
 import numpy as np
+import sentry_sdk
 import yaml
 
 from lsst.daf.butler import (
@@ -64,7 +65,9 @@ if TYPE_CHECKING:
     from lsst.afw.image import Exposure, ExposureSummaryStats
     from lsst.pipe.base import PipelineGraph
 
+
 __all__ = [
+    "setupSentry",
     "writeDimensionUniverseFile",
     "getDimensionUniverse",
     "expRecordToUploadFilename",
@@ -131,6 +134,15 @@ AOS_WORKER_MAPPING = {n: (depth, ccd) for n, (depth, ccd) in enumerate(itertools
 # this file is for low level tools and should therefore not import
 # anything from elsewhere in the package, this is strictly for importing from
 # only.
+
+
+def setupSentry() -> None:
+    """Set up sentry"""
+    sentry_sdk.init()
+    client = sentry_sdk.get_client()  # never None, but inactive if failing to initialize
+    if not client.is_active() or client.dsn is None:
+        logger = logging.getLogger(__name__)
+        logger.warning("Sentry DSN not found or client inactive — events will not be reported")
 
 
 def writeDimensionUniverseFile(butler, locationConfig: LocationConfig) -> None:
@@ -738,6 +750,7 @@ def raiseIf(doRaise: bool, error: Exception, logger: Logger, msg: str = "") -> N
     AnyException
         Raised if ``self.doRaise`` is True, otherwise swallows and warns.
     """
+    sentry_sdk.capture_exception(error)
     if not msg:
         msg = f"{error}"
     if doRaise:
@@ -949,6 +962,8 @@ def writeExpRecordMetadataShard(expRecord: DimensionRecord, metadataShardPath: s
     md["Zenith Angle"] = expRecord.zenith_angle if expRecord.zenith_angle else None
     md["Elevation"] = 90 - expRecord.zenith_angle if expRecord.zenith_angle else None
     md["Can see the sky?"] = f"{expRecord.can_see_sky}"
+    if expRecord.can_see_sky is None:  # None is different to False, and means HeaderService/header problems
+        md["_Can see the sky?"] = "bad"  # flag this cell as red as this should never happen
 
     if expRecord.instrument == "LATISS":
         filt, disperser = expRecord.physical_filter.split(FILTER_DELIMITER)

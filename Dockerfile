@@ -1,5 +1,5 @@
 
-ARG STACK_TAG="w_2026_03"
+ARG STACK_TAG="w_2026_13"
 # For USDF, UID=17951
 # For summit, UID=GID=73006?
 
@@ -9,15 +9,14 @@ FROM ghcr.io/lsst/scipipe:al9-${STACK_TAG}
 ENV UID=73006
 ENV GID=73006
 
-ENV obs_lsst_branch="w.2026.03"
-ENV drp_pipe_branch="w.2026.03"
-ENV daf_butler_branch="w.2026.03"
-ENV pipe_base_branch="w.2026.03"
-ENV spectractor_branch="w.2026.03"
-ENV atmospec_branch="w.2026.03"
-ENV summit_utils_branch="w.2026.03"
-ENV summit_extras_branch="w.2026.03"
-ENV eo_pipe_branch="w_2025_12"
+ENV obs_lsst_branch="w.2026.13"
+ENV drp_pipe_branch="w.2026.13"
+ENV daf_butler_branch="w.2026.13"
+ENV pipe_base_branch="w.2026.13"
+ENV spectractor_branch="w.2026.13"
+ENV atmospec_branch="w.2026.13"
+ENV summit_utils_branch="w.2026.13"
+ENV summit_extras_branch="w.2026.13"
 ENV ts_wep_branch="5107292b"
 ENV donut_viz_branch="18ea94d"
 # no tags for TARTS yet, so default to main if not using deployment branch
@@ -71,10 +70,9 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     # lsstts channel required for ts-ofc
     -c lsstts \
     rubin-env-rsp \
-    astrometry \
     redis-py \
     batoid \
-    danish=0.6.0 \
+    danish=1.0.0 \
     rubin-libradtran \
     timm \
     peft \
@@ -103,8 +101,7 @@ RUN git clone https://github.com/lsst/Spectractor.git && \
     git clone https://github.com/lsst-ts/ts_ofc.git && \
     git clone https://github.com/lsst-ts/ts_config_mttcs.git && \
     git clone https://github.com/lsst-ts/donut_viz.git && \
-    git clone https://github.com/PetchMa/TARTS.git && \
-    git clone https://github.com/lsst-camera-dh/eo_pipe.git
+    git clone https://github.com/PetchMa/TARTS.git
 
 # TODO: (DM-43475) Resync RA images with the rest of the summit.
 RUN git clone https://github.com/lsst/obs_lsst.git && \
@@ -193,20 +190,6 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     setup sconsUtils && \
     scons version
 
-
-WORKDIR /repos/eo_pipe
-
-RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${eo_pipe_branch} && \
-    eups declare -r . -t saluser && \
-    setup lsst_distrib && \
-    setup obs_lsst && \
-    setup atmospec -j -t saluser && \
-    setup summit_utils -j -t saluser && \
-    setup summit_extras -j -t saluser && \
-    setup eo_pipe -j -t saluser && \
-    setup sconsUtils && \
-    scons version
 
 WORKDIR /repos/rubintv_analysis_service
 
@@ -320,7 +303,6 @@ RUN git config --system --add safe.directory /repos/obs_lsst && \
     git config --system --add safe.directory /repos/summit_utils && \
     git config --system --add safe.directory /repos/summit_extras && \
     git config --system --add safe.directory /repos/rubintv_production && \
-    git config --system --add safe.directory /repos/eo_pipe && \
     git config --system --add safe.directory /repos/rubintv_analysis_service && \
     git config --system --add safe.directory /repos/ts_wep && \
     git config --system --add safe.directory /repos/ts_ofc && \

@@ -23,9 +23,10 @@ import logging
 import time
 
 from lsst.daf.butler import Butler, DataCoordinate
-from lsst.rubintv.production.utils import getAutomaticLocationConfig
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, setupSentry
 from lsst.summit.utils.utils import setupLogging
 
+setupSentry()
 setupLogging()
 
 log = logging.getLogger(__name__)
