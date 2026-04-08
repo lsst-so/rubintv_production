@@ -270,6 +270,7 @@ class IUploader(ABC):
 
 class MultiUploader(IUploader):
     def __init__(self, allowNoRemote: bool = False) -> None:
+        self.log = _LOG.getChild("MultiUploader")
 
         self.localUploader = createLocalS3UploaderForSite()
         localOk = self.localUploader.checkAccess()
@@ -289,7 +290,6 @@ class MultiUploader(IUploader):
             if not remoteOk and not allowNoRemote:
                 self.log.error("Failed to connect to required remote - restart the service once remote us up")
 
-        self.log = _LOG.getChild("MultiUploader")
         self.log.info(
             f"Created MultiUploader with local: {self.localUploader}" f" and remote: {self.remoteUploader}"
         )
