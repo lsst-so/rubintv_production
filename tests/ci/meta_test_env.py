@@ -60,8 +60,16 @@ def start_test_redis():
     )
     print(f"Started Redis server with PID: {redis_process.pid}")
 
-    # Wait for Redis to initialize
-    time.sleep(3)
+    # Wait a maximum of 15 seconds for Redis to start and accept connections.
+    # Return regardless, as the real check is elsewhere, this is just so we
+    # don't do a blind sleep or an indefinite wait.
+    start_time = time.time()
+    while time.time() - start_time < 15:
+        if check_redis_connection(host, port, password):
+            print(f"Redis server came up fully in {time.time() - start_time:.2f} seconds")
+            break
+        print("Waiting for Redis server to start...")
+        time.sleep(0.5)
 
     return redis_process, host, port, password
 
