@@ -82,13 +82,84 @@ tests/ci/                          # CI integration suite
 
 ## Development
 
-- **Naming**: camelCase for all variables, functions, and methods. All
-  function/method names must contain a verb (including private ones),
+### Naming
+
+- camelCase for all variables, functions, methods, and attributes.
+- PascalCase for classes.
+- No snake_case except when required by external APIs.
+- All function/method names must contain a verb (including private ones),
   e.g. ``getTrackingKey`` not ``trackingKey``. Exception: ``fromX``
-  class methods for constructors do not need a verb
-- **Formatting**: black (line-length 110), isort (black profile)
+  class methods for constructors do not need a verb.
+- Prefer longer, descriptive variable names over short, abbreviated ones. For
+  example, ``step1aDispatched = isStep1aDispatched()`` rather than ``s1aD =
+  self.isStep1aDispatched()``. This is not a hard rule though, and as long as
+  it's clearly human-readable its fine to abbreviate a bit, so saying ``dets``
+  for ``detectors`` is fine. It is also important to stick to established
+  abbreviations already in use, as some of these are "terms of art" e.g.
+  ``expId`` vs ``exposureIdentifier``.
+
+### Formatting
+
+- black (line-length 110), isort (black profile)
+
+### Type Annotations
+
+- Use built-in types (``int``, ``str``, ``float``, ``dict``, ``list``,
+  ``tuple``, etc.).
+- Never import ``Dict``, ``List``, ``Tuple``, ``Optional``, or ``Union``
+  from ``typing``.
+- Use ``| None`` instead of ``Optional[...]``.
+
+### Docstrings
+
+- Use numpydoc format.
+- Include types for every parameter and for the return value (if not
+  ``None``).
+- Always name the return value unless the return type is ``None`` (omit
+  the Returns section in that case).
+- If a parameter is ``| None``, describe its type as ``<type>, optional``.
+- Argument order in docstrings must match the function signature, and
+  types must be correct.
+- No docstrings for class ``__init__``; document the class instead.
+
+Example:
+
+```python
+def myFunction(param1: int, param2: str | None = None) -> bool:
+    """This function does something.
+
+    Parameters
+    ----------
+    param1 : `int`
+        The first parameter.
+    param2 : `str`, optional
+        The second parameter.
+
+    Returns
+    -------
+    result : `bool`
+        The result of the function.
+    """
+    return param1 > 0 and param2 != "hello"
+```
+
+### Environment Setup
+
+To access the full DM Stack (everything in the ``lsst.*`` namespace),
+source the following in order:
+
+```bash
+source ~/stack.sh
+. ~/setup_packages.sh
+```
+
+This is needed when importing code from other ``lsst.*`` packages or
+locating dependencies outside this repo.
+
+### Linting & Tooling
+
 - **Linting**: flake8
-- **Type checking**: mypy (Python 3.13 target, use builtins and | instead of Union)
+- **Type checking**: mypy (Python 3.13 target)
 - **Pre-commit hooks**: trailing whitespace, YAML, isort, black, flake8
 - **Build system**: LSST SCons + pyproject.toml
 - **License**: GPLv3
