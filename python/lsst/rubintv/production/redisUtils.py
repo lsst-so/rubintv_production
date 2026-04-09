@@ -37,6 +37,7 @@ import numpy as np
 import redis
 
 from lsst.daf.butler import DataCoordinate, DimensionRecord
+from lsst.utils.iteration import sequence_to_string
 
 from .payloads import Payload
 from .podDefinition import PodDetails, PodFlavor, getQueueName
@@ -245,6 +246,84 @@ class ExposureProcessingInfo:
             if dets and not self.step1aDispatched.get(who, False):
                 return False
         return True
+
+    def _formatDetectors(self, detectors: set[int]) -> str:
+        """Format a set of detector IDs as a compact string.
+
+        Parameters
+        ----------
+        detectors : `set` [`int`]
+            The detector IDs to format.
+
+        Returns
+        -------
+        formatted : `str`
+            Compact string representation, or "none" if empty.
+        """
+        if not detectors:
+            return "none"
+        return sequence_to_string(sorted(detectors))
+
+    def __repr__(self) -> str:
+        whos = sorted(self.expected.keys())
+        parts = [f"ExposureProcessingInfo(expId={self.expId}"]
+        for who in whos:
+            nExpected = len(self.getExpectedDetectors(who))
+            nFinished = len(self.getFinishedDetectors(who))
+            nFailed = len(self.getFailedDetectors(who))
+            step1aDispatched = self.isStep1aDispatched(who)
+            step1bDispatched = self.isStep1bDispatched(who)
+            step1bFinished = self.isStep1bFinished(who)
+            parts.append(
+                f"  {who}: {nFinished}/{nExpected} finished"
+                f"{f', {nFailed} failed' if nFailed else ''}"
+                f", step1a_dispatched={step1aDispatched}"
+                f", step1b_dispatched={step1bDispatched}"
+                f", step1b_finished={step1bFinished}"
+            )
+        if self.pipelineConfig:
+            parts.append(f"  pipeline_config={self.pipelineConfig}")
+        return "\n".join(parts) + ")"
+
+    def __str__(self) -> str:
+        whos = sorted(self.expected.keys())
+        lines = [f"Exposure {self.expId}:"]
+        for who in whos:
+            expectedDets = self.getExpectedDetectors(who)
+            finishedDets = self.getFinishedDetectors(who)
+            failedDets = self.getFailedDetectors(who)
+            missingDets = self.getMissingDetectors(who)
+
+            status = "complete" if self.isComplete(who) else "in progress"
+            line = f"  {who}: {len(finishedDets)}/{len(expectedDets)} detectors ({status})"
+            if failedDets:
+                line += f", {len(failedDets)} failed"
+            lines.append(line)
+
+            lines.append(f"    expected:  {self._formatDetectors(expectedDets)}")
+            lines.append(f"    finished:  {self._formatDetectors(finishedDets)}")
+            if failedDets:
+                lines.append(f"    failed:    {self._formatDetectors(failedDets)}")
+            if missingDets:
+                lines.append(f"    missing:   {self._formatDetectors(missingDets)}")
+
+            flags = []
+            if self.isStep1aDispatched(who):
+                flags.append("step1a dispatched")
+            if self.isStep1bDispatched(who):
+                flags.append("step1b dispatched")
+            if self.isStep1bFinished(who):
+                flags.append("step1b finished")
+            if flags:
+                lines.append(f"    flags:     {', '.join(flags)}")
+
+        if self.pipelineConfig:
+            lines.append(f"  AOS pipeline: {self.pipelineConfig}")
+        return "\n".join(lines)
+
+    def _repr_pretty_(self, p: Any, cycle: bool) -> None:
+        """IPython pretty-print hook — displays ``__str__`` output."""
+        p.text(str(self))
 
 
 def decode_string(value: bytes) -> str:
