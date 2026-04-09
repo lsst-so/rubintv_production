@@ -74,20 +74,25 @@ if TYPE_CHECKING:
     from lsst.pipe.base.pipeline_graph import TaskNode
 
 PIPELINE_NAMES: tuple[str, ...] = (
+    # Science pipeline processing
     "SFM",
+    # Calib processing - cp_verify style
     "BIAS",
     "DARK",
     "FLAT",
+    # Just running isr, for off-sky images
     "ISR",
+    # CWFS pipelines (corner chips only)
     "AOS_DANISH",
     "AOS_WCS_DANISH",
     "AOS_TIE",
     "AOS_REFIT_WCS",
     "AOS_AI_DONUT",
     "AOS_TARTS_UNPAIRED",
+    "AOS_UNPAIRED_DANISH",
+    # Full-array-mode AOS pipelines
     "AOS_FAM_TIE",
     "AOS_FAM_DANISH",
-    "AOS_UNPAIRED_DANISH",
 )
 
 
