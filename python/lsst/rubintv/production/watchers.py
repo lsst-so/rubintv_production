@@ -155,7 +155,6 @@ class ButlerWatcher:
 
     def run(self) -> None:
         lastSeen = None
-        warnedAbout: set[int] = set()
         while True:
             try:
                 start = perf_counter()
@@ -164,13 +163,13 @@ class ButlerWatcher:
 
                 if lastSeen is None:  # starting up for the first time
                     seenBefore = self.redisHelper.checkButlerWatcherList(self.instrument, latestRecord)
-                    if seenBefore and int(latestRecord.id) not in warnedAbout:
+                    if seenBefore:
                         self.log.info(
                             f"Skipping dispatching {latestRecord.instrument}-{latestRecord.id} as"
                             " it was dispatched by a ButlerWatcher in a previous life. You should only"
                             " ever see this on pod startup."
                         )
-                        warnedAbout.add(int(latestRecord.id))
+                        lastSeen = latestRecord
                         continue
 
                 if latestRecord == lastSeen:
