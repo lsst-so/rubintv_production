@@ -886,6 +886,10 @@ class HeadProcessController:
         # run isr only for calibs, otherwise run the appropriate step1a
         targetPipelineBytes: bytes = b""
         imageType = expRecord.observation_type.lower()
+        instrument: str = str(expRecord.instrument)
+
+        if instrument not in ["LATISS", "LSSTCam"]:
+            raise ValueError(f"Unknown instrument {instrument} in expRecord {expRecord.id}")
 
         # TODO: DM-50003 Make this data-driven dispatch config instead of code
         match imageType:
@@ -910,10 +914,20 @@ class HeadProcessController:
                 targetPipelineGraph = self.pipelines["ISR"].graphs["step1a"]
                 who = "ISR"
             case "cwfs":
-                self.log.info(f"Sending {expRecord.id} {imageType=} for step1a FAM processing")
-                targetPipelineBytes = self.pipelines[self.currentAosFamPipeline].graphBytes["step1a"]
-                targetPipelineGraph = self.pipelines[self.currentAosFamPipeline].graphs["step1a"]
-                who = "AOS"
+                if instrument == "LSSTCam":
+                    self.log.info(f"Sending {expRecord.id} {imageType=} for step1a FAM processing")
+                    targetPipelineBytes = self.pipelines[self.currentAosFamPipeline].graphBytes["step1a"]
+                    targetPipelineGraph = self.pipelines[self.currentAosFamPipeline].graphs["step1a"]
+                    who = "AOS"
+                else:
+                    # TODO: once we move LATISS WEP to RA this will do the real
+                    # dispatch. For now, just send off and probably fail
+                    # downstream in SFM somewhere, but this will stop the
+                    # LATISS head node crashing.
+                    self.log.info(f"Sending LATISS CWFS image {expRecord.id} {imageType=} for step1a SFM")
+                    targetPipelineBytes = self.pipelines["SFM"].graphBytes["step1a"]
+                    targetPipelineGraph = self.pipelines["SFM"].graphs["step1a"]
+                    who = "SFM"
             case _:  # all non-calib, properly headered images
                 self.log.info(f"Sending {expRecord.id} {imageType=} for full step1a SFM")
                 targetPipelineBytes = self.pipelines["SFM"].graphBytes["step1a"]
