@@ -1,0 +1,137 @@
+# Testing Guide
+
+## Unit Tests (`tests/`)
+
+Run with pytest. Some tests require a live Butler connection (only available on
+`staff-rsp` or `rubin-devl` hosts) and are skipped otherwise.
+
+### Test Files
+
+| File | What it tests | Butler needed? |
+|------|---------------|----------------|
+| `test_utils.py` | `isDayObsContiguous`, `sanitizeNans`, `getSite` | No |
+| `test_timing.py` | `BoxCarTimer` (lap timing, statistics, pause/resume) | No |
+| `test_processingControl.py` | `CameraControlConfig` (focal plane detector patterns) | No |
+| `test_podDefinition.py` | `PodDetails` construction, queue name round-trips | No |
+| `test_payloads.py` | `Payload` construction, equality, JSON round-trip | Partially |
+| `test_metadataService.py` | `TimedMetadataServer` shard merging, NaN sanitization | No |
+| `test_s3_uploader.py` | `S3Uploader` using moto (mock AWS) | No |
+| `test_exposureLogUtils.py` | `getLogsForDayObs` with mocked HTTP responses | No |
+| `test_pipelines.py` | Full pipeline graph generation and validation | Yes |
+
+### Test Data
+
+- `tests/data/sampleExpRecord.json` - sample Butler exposure record
+- `tests/data/butlerDimensionUniverse.json` - Butler dimension configuration
+- `tests/data/LATISS_raw_2023101100291.json` - LATISS raw exposure metadata
+- `tests/files/test_file_0001.txt` - test file for S3 uploader
+
+### Mocking Patterns
+
+- **S3**: `moto` library (`mock_aws()` context manager) for full S3 simulation
+- **HTTP**: `responses` library (`@responses.activate`) for REST API mocking
+- **Butler**: conditional skip with `@unittest.skipIf(NO_BUTLER, ...)` when
+  Butler is not available
+- **No Redis mocking in unit tests**: Redis-dependent code is tested in the
+  CI suite instead
+
+## CI Integration Suite (`tests/ci/`)
+
+The CI suite is a custom test framework (not pytest) that spins up a real Redis
+server and runs actual processing scripts as subprocesses. It validates the
+full distributed system and pipelines end-to-end, including all work
+distribution, payload handling, and S3 uploads (mocked).
+
+### Entry Point
+
+```bash
+python tests/ci/test_rapid_analysis.py -l <label_name>
+```
+
+### Architecture
+
+The CI suite has its own mini-framework:
+
+- **`TestConfig`** - centralized config (timeouts, Redis port, test scripts)
+- **`RedisManager`** - starts/stops a local Redis server on port 6111
+- **`LogManager`** - creates timestamped log directories under `ci_logs/`
+- **`ProcessManager`** - launches test scripts as `multiprocessing.Process`
+- **`ResultCollector`** - aggregates pass/fail results
+
+### Test Phases
+
+**Phase 1: Meta Tests** (30 s timeout)
+Small scripts validating the test framework itself:
+- `meta_test_runs_ok.py` - verifies process management works
+- `meta_test_raise.py` - verifies exception capture
+- `meta_test_sys_exit_non_zero.py` - verifies exit code handling
+- `meta_test_patching.py` - verifies lsstDebug patching
+- `meta_test_logging_capture.py` - verifies log capture
+- `meta_test_s3_upload.py` - verifies uploader mock
+- `meta_test_debug_config.py` - verifies debug config
+- `meta_test_env.py` - verifies env vars and Redis lifecycle
+
+**Phase 2: Round 1** (900 s / 15 min timeout)
+Full pipeline execution:
+- Head node + SFM workers + step1b workers for LATISS and LSSTCam
+- 18 SFM detectors for LSSTCam (90-98, 144-152)
+- Real Butler queries against test data (dayObs=20251115)
+- Test exposures: 226 (SFM), 227+228 (FAM CWFS pair), 436 (bias)
+
+**Phase 3: Round 2** (200 s timeout)
+Post-processing and visualization:
+- Plotting scripts (PSF, FWHM, Zernike, radial)
+- Step1b gather processing
+- Nightly rollup workers
+
+### Data Feeding
+
+`drip_feed_data.py` pre-loads test exposures into Redis:
+1. Initializes Butler and RedisHelper
+2. Waits for SFM workers and head node to come online
+3. Pushes exposures to Redis with specific ordering and delays:
+   - 227 first (intra-focal, must arrive before 228)
+   - Then 436 (bias), 226 (SFM), 228 (extra-focal)
+   - 2 s delays between pushes
+4. Announces FAM pair via `LSSTCam-FROM-OCS_DONUTPAIR`
+5. Also tests LATISS with exposure 20240813/632
+
+### Redis in CI
+
+- Real Redis server started on `127.0.0.1:6111` with password `redis_password`
+- `FLUSHALL` between test phases for isolation
+- All S3 uploaders are mocked via `MockUploader` (tracks uploads without I/O)
+
+### Log Analysis
+
+After a CI run, use the interactive log viewer:
+
+```bash
+python tests/ci/view_ci_logs.py
+```
+
+Features:
+- Browse test runs chronologically
+- View individual pod logs
+- Search across all logs
+- Extract tracebacks with context
+- Filter by PID
+
+### Test Collection Setup
+
+`tests/createUnitTestCollections.py` builds Butler collections for CI:
+- Sets `RAPID_ANALYSIS_LOCATION=usdf_testing`
+- Runs pipelines in parallel via `ThreadPoolExecutor`
+- Creates collections for: FAM, AOS, SFM, calibration pipelines
+- Used to create the underlying collections for `test_pipelines.py` unit tests
+- Only needs to be rerun when outputs change
+
+## Key Testing Notes
+
+- The CI suite uses real Butler and real (local) Redis, but mocked S3 uploaders
+- Pipeline tests (`test_pipelines.py`) are the most comprehensive unit tests
+  but require a Butler connection (1600+ lines, 14 pipeline variants)
+- `CameraControlConfig` tests validate all named focal plane patterns and
+  detector count arithmetic (no external dependencies needed)
+- The CI suite validates the full head-node-to-worker flow including Redis
+  queue dispatch, payload serialization, and task completion tracking
