@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import gc
+from time import sleep
 from typing import TYPE_CHECKING, Any
 
 import astropy.units as u  # type: ignore[import-untyped]
@@ -650,6 +651,7 @@ class OneOffProcessor(BaseButlerChannel):
         else:
             try:  # this often fails due to missing mount data, catch so other plots can still work
                 if expRecord.zenith_angle is not None and hasRaDec(expRecord):
+                    sleep(3)  # temporary fix while hinfo gets sped up
                     self._doMountAnalysisSimonyi(expRecord)
                 else:
                     self.log.warning(f"Skipping mount analysis for {expRecord.id} - no zenith angle")
