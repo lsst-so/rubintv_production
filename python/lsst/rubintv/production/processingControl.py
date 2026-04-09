@@ -53,7 +53,7 @@ from lsst.utils.packages import Packages
 
 from .payloads import Payload, pipelineGraphToBytes
 from .podDefinition import PodDetails, PodFlavor
-from .redisUtils import RedisHelper
+from .redisUtils import ExposureProcessingInfo, RedisHelper
 from .timing import BoxCarTimer
 from .utils import (
     LocationConfig,
@@ -957,11 +957,14 @@ class HeadProcessController:
             )
             payloads[detId] = payload
 
-        self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, list(detectorIds), "AOS")
+        self.redisHelper.initExposureTracking(self.instrument, expRecord.id)
+        self.redisHelper.setExpectedDetectors(self.instrument, expRecord.id, list(detectorIds), "AOS")
         # AOS is running ISR (for now, at least) so we need to write that we
         # expected the detectors from that processing too.
-        self.redisHelper.writeDetectorsToExpect(self.instrument, expRecord.id, list(detectorIds), "ISR")
-        self.redisHelper.recordAosPipelineConfig(self.instrument, expRecord.id, self.currentAosPipeline)
+        self.redisHelper.setExpectedDetectors(
+            self.instrument, expRecord.id, list(detectorIds), "ISR", append=True
+        )
+        self.redisHelper.setAosPipelineConfig(self.instrument, expRecord.id, self.currentAosPipeline)
 
         self._dispatchPayloads(payloads, PodFlavor.AOS_WORKER)
 
@@ -1003,6 +1006,10 @@ class HeadProcessController:
         instrument = expRecord.instrument
         assert instrument == self.instrument, f"instrument {instrument} does not match head node instance!"
 
+        # Initialize tracking before any writes to ensure the hash exists
+        # and has a TTL, even for FAM images where doAosFanout is skipped.
+        self.redisHelper.initExposureTracking(instrument, expRecord.id)
+
         if self.instrument != "LATISS":
             if not isFam:  # dispatch corner chips for normal images first
                 self.doAosFanout(expRecord)
@@ -1012,7 +1019,7 @@ class HeadProcessController:
                 self.log.info(f"Sending {expRecord.id} to {self.currentAosFamPipeline} pipeline")
                 # record pipeline config so the step1b dispatch knows what the
                 # active pipeline was
-                self.redisHelper.recordAosPipelineConfig(instrument, expRecord.id, self.currentAosFamPipeline)
+                self.redisHelper.setAosPipelineConfig(instrument, expRecord.id, self.currentAosFamPipeline)
 
         # data driven section
         targetPipelineBytes, targetPipelineGraph, who = self.getPipelineConfig(expRecord)
@@ -1030,8 +1037,8 @@ class HeadProcessController:
             results = set(self.butler.registry.queryDataIds(["detector"], instrument=instrument))
             detectorIds = sorted([item["detector"] for item in results])  # type: ignore
 
-        self.redisHelper.writeDetectorsToExpect(instrument, expRecord.id, detectorIds, "ISR")
-        self.redisHelper.writeDetectorsToExpect(instrument, expRecord.id, detectorIds, who)
+        self.redisHelper.setExpectedDetectors(instrument, expRecord.id, detectorIds, "ISR", append=True)
+        self.redisHelper.setExpectedDetectors(instrument, expRecord.id, detectorIds, who)
 
         namedPattern = self.focalPlaneControl.currentNamedPattern if self.focalPlaneControl else None
         self.log.info(
@@ -1133,7 +1140,7 @@ class HeadProcessController:
                 # remove in addition
                 pipelines = ["ISR"] if failure.who == "ISR" else ["ISR", failure.who]
                 for who in pipelines:
-                    self.redisHelper.removeDetectorsToExpect(self.instrument, expId, [det], who)
+                    self.redisHelper.removeExpectedDetectors(self.instrument, expId, [det], who)
 
     def dispatchOneOffProcessing(self, expRecord: DimensionRecord, podFlavor: PodFlavor) -> None:
         """Send the expRecord out for processing based on current selection.
@@ -1215,8 +1222,9 @@ class HeadProcessController:
     def dispatchGatherSteps(self, who: str) -> bool:
         """Dispatch any gather steps as needed.
 
-        Note that the return value is currently unused, but is planned to be
-        built upon in the next few tickets.
+        Iterates over the active exposures set, checks the per-exposure
+        tracking hash for completion (finished detectors >= expected),
+        and dispatches step1b and downstream work when complete.
 
         Returns
         -------
@@ -1224,20 +1232,34 @@ class HeadProcessController:
             Was anything sent out?
         """
         assert who in ("SFM", "AOS", "ISR"), f"Unknown pipeline {who=}"
-        processedIds = self.redisHelper.getAllIdsForDetectorLevel(self.instrument, step="step1a", who=who)
+        activeIds = self.redisHelper.getActiveExposures(self.instrument)
 
-        if not processedIds:
+        if not activeIds:
             return False
 
         completeIds: list[int] = []
-        for expId in processedIds:
-            nFinished = self.redisHelper.getNumDetectorLevelFinished(self.instrument, "step1a", who, expId)
-            nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, expId, who))
-            if nFinished >= nExpected:
+        infoMap: dict[int, ExposureProcessingInfo] = {}
+
+        for expId in activeIds:
+            info = self.redisHelper.getExposureProcessingInfo(self.instrument, expId)
+            if info is None:
+                # Tracking hash expired — clean up stale active set entry
+                self.redisHelper.completeExposure(self.instrument, expId)
+                continue
+
+            expectedDets = info.getExpectedDetectors(who)
+            if not expectedDets or info.isStep1aDispatched(who):
+                continue  # no work for this who, or already dispatched
+
+            finishedDets = info.getFinishedDetectors(who)
+            if finishedDets >= expectedDets:
                 completeIds.append(expId)
-            if nFinished > nExpected:
+                infoMap[expId] = info
+
+            if len(finishedDets) > len(expectedDets):
                 self.log.warning(
-                    f"Found {nFinished} step1as finished for {expId=}, but expected {nExpected} for {who=}"
+                    f"Found {len(finishedDets)} step1as finished for {expId=},"
+                    f" but expected {len(expectedDets)} for {who=}"
                 )
 
         if not completeIds:
@@ -1250,6 +1272,7 @@ class HeadProcessController:
         self.log.debug(f"For {who}: Found {completeIds=} for step1a for {who}")
 
         for expId in completeIds:
+            info = infoMap[expId]
             dataCoord = DataCoordinate.standardize(
                 instrument=self.instrument, visit=expId, universe=self.butler.dimensions
             )
@@ -1291,17 +1314,19 @@ class HeadProcessController:
                         f"Dispatching step1b for {whoToUse} with complete inputs: {dataCoord} to {worker}"
                     )
                     self.redisHelper.enqueuePayload(payload, worker)
+                    self.redisHelper.markStep1bDispatched(self.instrument, expId, who)
                     if who == "AOS":
                         intraId = visitRecord.id  # got from dataCoords[0] above so is intra
-                        numZernikesFinished = self.redisHelper.getNumDetectorLevelFinished(
-                            self.instrument, "step1a", who, expId
-                        )
+                        numZernikesFinished = len(info.getFinishedDetectors(who))
                         self.redisHelper.sendZernikeCountToMTAOS(
                             self.instrument, intraId, numZernikesFinished
                         )
 
-            self.log.debug(f"Removing step1a finished counter for {expId=}")
-            self.redisHelper.removeFinishedIdDetectorLevel(self.instrument, "step1a", who, expId)
+            # Mark this who's gather as dispatched and check if all are done
+            self.redisHelper.markStep1aDispatched(self.instrument, expId, who)
+            info.markStep1aDispatched(who)
+            if info.allGathersDispatched():
+                self.redisHelper.completeExposure(self.instrument, expId)
 
             # never dispatch this incomplete because it relies on a specific
             # detector having finished. It might have failed, but that's OK
@@ -1387,7 +1412,7 @@ class HeadProcessController:
             nFinished = self.redisHelper.getNumTaskFinished(self.instrument, triggeringTask, _id)
             expOrVisitId = int(_id["exposure"]) if "exposure" in _id else int(_id["visit"])
             nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, expOrVisitId, who="ISR"))
-            if nFinished >= nExpected:
+            if nExpected > 0 and nFinished >= nExpected:
                 completeIds.append(_id)
             if nFinished > nExpected:
                 msg = f"Found {nFinished=} for {triggeringTask} for {_id=}, but expected only {nExpected}"

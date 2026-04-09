@@ -82,6 +82,10 @@ tests/ci/                          # CI integration suite
 
 ## Development
 
+- **Naming**: camelCase for all variables, functions, and methods. All
+  function/method names must contain a verb (including private ones),
+  e.g. ``getTrackingKey`` not ``trackingKey``. Exception: ``fromX``
+  class methods for constructors do not need a verb
 - **Formatting**: black (line-length 110), isort (black profile)
 - **Linting**: flake8
 - **Type checking**: mypy (Python 3.13 target, use builtins and | instead of Union)

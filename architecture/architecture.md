@@ -279,13 +279,14 @@ The pattern can be changed at runtime via the RubinTV control interface.
 When a new exposure arrives, `doDetectorFanout()` in the head node:
 
 1. **AOS first** (non-FAM images only): calls `doAosFanout()` which always
-   sends all 8 CWFS detectors to `AOS_WORKER` pods. Writes
-   `EXPECTED_DETECTORS` for both "AOS" and "ISR" who-tags.
+   sends all 8 CWFS detectors to `AOS_WORKER` pods. Writes expected
+   detectors into the tracking hash for both "AOS" and "ISR" who-tags.
 
 2. **Imaging detectors**: gets the enabled detector list from
    `CameraControlConfig`, creates a `Payload` per detector, and writes
-   `EXPECTED_DETECTORS` for both "ISR" and the pipeline's who-tag (e.g.
-   "SFM"). Dispatches all payloads to `SFM_WORKER` pods.
+   expected detectors into the tracking hash for both "ISR" and the
+   pipeline's who-tag (e.g. "SFM"). Dispatches all payloads to
+   `SFM_WORKER` pods.
 
 The dispatch in `_dispatchPayloads()` uses **detector affinity**: each
 `PER_DETECTOR` worker pod is permanently assigned to one detector (the
@@ -314,58 +315,60 @@ have finished so it can trigger the visit-level step1b.
 
 **Setup (head node, at fanout time):**
 ```
-writeDetectorsToExpect("LSSTCam", expId=2025040800123, [10,12,...,188], "SFM")
+initExposureTracking("LSSTCam", expId=2025040800123)
+setExpectedDetectors("LSSTCam", expId=2025040800123, [10,12,...,188], "SFM")
 ```
-This writes a Redis STRING key with a CSV list of expected detector IDs.
+This creates a per-exposure tracking hash in Redis and writes the
+expected detector IDs as a comma-separated field.
 
 **Reporting (each worker, after finishing step1a):**
 ```
-reportDetectorLevelFinished("LSSTCam", "step1a", who="SFM", processingId=2025040800123)
+reportDetectorFinished("LSSTCam", expId=2025040800123, who="SFM", detector=94)
 ```
-This does `HINCRBY` on a Redis HASH, incrementing the count for that
-exposure ID. Failed tasks also call this with `failed=True` (incrementing
-both the finished and failed counters).
+This does `HSET` on the tracking hash, writing a single field
+`SFM:finished:94`. Failed tasks also call this with `failed=True`
+(writing both a `finished` and `failed` field for that detector).
 
 **Checking (head node, every loop iteration at 5 Hz):**
 `dispatchGatherSteps("SFM")` runs each iteration:
-1. `getAllIdsForDetectorLevel()` - `HGETALL` on the finished counter hash
-   to get all exposure IDs that have any finished detectors
-2. For each ID, compare `getNumDetectorLevelFinished()` vs
-   `len(getExpectedDetectors())`
-3. If `nFinished >= nExpected`, the exposure is complete
+1. `getActiveExposures()` - `SMEMBERS` on the active exposures set
+   to get all exposure IDs currently being tracked
+2. For each ID, `getExposureProcessingInfo()` - `HGETALL` on the
+   tracking hash, parsed into an `ExposureProcessingInfo` object
+3. Compare `finishedDetectors >= expectedDetectors` (set comparison)
 
 **Triggering step1b:**
 When an exposure is complete:
 1. Create a visit-level `Payload` with the step1b pipeline graph
 2. Enqueue to `STEP1B_WORKER` (SFM) or `STEP1B_AOS_WORKER` (AOS)
-3. Clean up: `removeFinishedIdDetectorLevel()` deletes the hash field
-4. Dispatch downstream one-off workers (postISR mosaic, visit image, etc.)
-5. For SFM: also dispatch `ONE_OFF_POSTISR_WORKER`, `ONE_OFF_VISITIMAGE_WORKER`,
+3. Mark dispatched: `markStep1aDispatched()` + `markStep1bDispatched()`
+4. If all whos are dispatched: `completeExposure()` (SREM from active set)
+5. Dispatch downstream one-off workers (postISR mosaic, visit image, etc.)
+6. For SFM: also dispatch `ONE_OFF_POSTISR_WORKER`, `ONE_OFF_VISITIMAGE_WORKER`,
    `MOSAIC_WORKER`, and radial plotter
 
 **The same pattern runs independently for three who-tags**: "SFM", "AOS",
-and "ISR". Each has its own expected-detector key and its own finished
-counter hash. The head node calls `dispatchGatherSteps()` for each one
-every loop iteration.
+and "ISR". All share the same per-exposure tracking hash. The head node
+calls `dispatchGatherSteps()` for each one every loop iteration.
 
 ### Handling Failures and Edge Cases
 
 - **Dispatch failures**: if no worker exists for a detector, that detector
-  is removed from the expected list via `removeDetectorsToExpect()`. This
+  is removed from the expected set via `removeExpectedDetectors()`. This
   prevents the gather step from waiting forever.
 
 - **Worker failures**: if a worker crashes mid-processing, it still calls
-  `reportDetectorLevelFinished(failed=True)`. The finished counter
-  increments regardless, so the gather step still triggers. The failed
-  counter tracks how many detectors failed for diagnostics.
+  `reportDetectorFinished(failed=True)`. The detector is marked as both
+  finished and failed in the tracking hash, so the gather step still
+  triggers. The failed set tracks which detectors failed for diagnostics.
 
-- **Stale expected-detector keys**: the 2.5-day TTL on `EXPECTED_DETECTORS`
-  keys means that if something goes completely wrong and workers never
-  report back, the key eventually expires. When it does, `nExpected`
-  becomes 0 while `nFinished` is nonzero, so `nFinished >= nExpected`
-  becomes true and the gather triggers (with potentially incomplete data).
-  The TTL is set to 2.5 days so this recovery happens outside observing
-  hours.
+- **Tracking hash TTL**: the 2.5-day TTL on the per-exposure tracking hash
+  means that if something goes completely wrong and workers never report
+  back, the hash eventually expires. Because expected and finished
+  detectors share the same hash and TTL, they always expire together —
+  there is no state where finished data persists after expected data
+  disappears. The head node detects expired hashes and removes stale
+  entries from the active exposures set.
 
 - **FAM pair safety**: `isBetweenFamPair()` prevents the RubinTV control
   interface from switching AOS pipelines between the intra and extra focal
