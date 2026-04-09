@@ -594,13 +594,13 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
             # finished looping over nodes
             if self.step == "step1a":
-                self.log.debug(f"Announcing completion of step1a for {expId} for {who}")
-                self.redisHelper.reportDetectorLevelFinished(
-                    self.instrument, "step1a", who=who, processingId=expId
-                )
+                detector = int(payload.dataId["detector"])
+                self.log.debug(f"Announcing completion of step1a for {expId} det {detector} for {who}")
+                self.redisHelper.reportDetectorFinished(self.instrument, expId, who=who, detector=detector)
             if self.step == "step1b":
                 self.log.debug(f"Announcing completion of step1b for {expId} for {who}")
                 self.redisHelper.reportVisitLevelFinished(self.instrument, "step1b", who=who)
+                self.redisHelper.markStep1bFinished(self.instrument, expId, who=who)
                 # TODO: probably add a utility function on the helper for this
                 # and one for getting the most recent visit from the queue
                 # which does the decoding too to provide a unified interface.
@@ -618,8 +618,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         except Exception as e:
             if self.step == "step1a":
-                self.redisHelper.reportDetectorLevelFinished(
-                    self.instrument, "step1a", who=who, processingId=expId, failed=True
+                detector = int(payload.dataId["detector"])
+                self.redisHelper.reportDetectorFinished(
+                    self.instrument, expId, who=who, detector=detector, failed=True
                 )
             if self.step == "step1b":
                 self.redisHelper.reportVisitLevelFinished(self.instrument, "step1b", who=who, failed=True)
