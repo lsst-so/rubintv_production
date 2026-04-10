@@ -58,6 +58,7 @@ from lsst.summit.utils.utils import (
 from lsst.utils.plotting.figures import make_figure
 
 from .baseChannels import BaseButlerChannel
+from .butlerQueries import getAirmass
 from .consdbUtils import ConsDBPopulator
 from .exposureLogUtils import LOG_ITEM_MAPPINGS, getLogsForDayObs
 from .formatters import (
@@ -72,7 +73,6 @@ from .mountTorques import calculateMountErrors as _calculateMountErrors_oldVersi
 from .predicates import hasRaDec, isCalibration, raiseIf, runningCI
 from .redisUtils import RedisHelper
 from .shardIo import getShardPath, writeMetadataShard
-from .utils import getAirmass
 
 if TYPE_CHECKING:
     from lsst.afw.image import Exposure

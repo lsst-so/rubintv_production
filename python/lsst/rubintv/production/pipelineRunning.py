@@ -55,6 +55,12 @@ from lsst.summit.utils.utils import getCameraFromInstrumentName
 from lsst.ts.ofc import OFCData
 
 from .baseChannels import BaseButlerChannel
+from .butlerQueries import (
+    getCurrentOutputRun,
+    getEquivalentDataId,
+    getExpIdOrVisitId,
+    getExpRecordFromId,
+)
 from .consdbUtils import ConsDBPopulator
 from .payloads import pipelineGraphFromBytes
 from .plotting.mosaicing import writeBinnedImage
@@ -62,13 +68,7 @@ from .predicates import raiseIf
 from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
 from .shardIo import getShardPath, writeMetadataShard
-from .utils import (
-    getCurrentOutputRun,
-    getEquivalentDataId,
-    getExpIdOrVisitId,
-    getExpRecordFromId,
-    logDuration,
-)
+from .utils import logDuration
 
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
