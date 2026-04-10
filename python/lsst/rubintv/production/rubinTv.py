@@ -21,10 +21,13 @@
 
 from __future__ import annotations
 
+import io
 import json
 import logging
 import os
 import time
+from contextlib import redirect_stdout
+from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -55,7 +58,6 @@ from .parsers import NumpyEncoder
 from .plotting import latissNightReportPlots
 from .predicates import hasDayRolledOver, raiseIf
 from .shardIo import writeMetadataShard
-from .utils import catchPrintOutput
 
 __all__ = [
     "CalibrateCcdRunner",
@@ -63,6 +65,18 @@ __all__ = [
 ]
 
 _LOG = logging.getLogger(__name__)
+
+
+def _catchPrintOutput(functionToCall: Callable, *args, **kwargs) -> str:
+    """Capture stdout from a function call into a string.
+
+    Used by `NightReportChannel` to grab the printed output of helper
+    methods like ``NightReport.printShutterTimes``.
+    """
+    f = io.StringIO()
+    with redirect_stdout(f):
+        functionToCall(*args, **kwargs)
+    return f.getvalue()
 
 
 class CalibrateCcdRunner(BaseButlerChannel):
@@ -615,10 +629,10 @@ class NightReportChannel(BaseButlerChannel):
                 )
 
                 # Add text items here
-                shutterTimes = catchPrintOutput(self.report.printShutterTimes)
+                shutterTimes = _catchPrintOutput(self.report.printShutterTimes)
                 md["text_010"] = shutterTimes
 
-                obsGaps = catchPrintOutput(self.report.printObsGaps)
+                obsGaps = _catchPrintOutput(self.report.printObsGaps)
                 md["text_020"] = obsGaps
 
                 # Upload the text here

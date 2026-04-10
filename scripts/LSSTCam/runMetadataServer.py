@@ -21,8 +21,8 @@
 
 from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
 from lsst.rubintv.production.predicates import getDoRaise
+from lsst.rubintv.production.startupChecks import checkRubinTvExternalPackages, setupSentry
 from lsst.rubintv.production.timedServices import TimedMetadataServer
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, setupSentry
 from lsst.summit.utils.utils import setupLogging
 
 setupSentry()
