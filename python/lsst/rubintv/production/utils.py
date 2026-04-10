@@ -33,7 +33,6 @@ import time
 import uuid
 from contextlib import contextmanager, redirect_stdout
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 from functools import cached_property, wraps
 from pathlib import Path
 from time import perf_counter
@@ -53,17 +52,17 @@ from lsst.daf.butler import (
 )
 from lsst.obs.lsst.translators.lsst import FILTER_DELIMITER
 from lsst.resources import ResourcePath
-from lsst.summit.utils.dateTime import dayObsIntToString, getCurrentDayObsInt
+from lsst.summit.utils.dateTime import dayObsIntToString
 from lsst.utils import getPackageDir
 
 from .channels import PREFIXES
+from .predicates import isFileWorldWritable, runningScons
 
 if TYPE_CHECKING:
     from logging import Logger
 
     from lsst.afw.cameraGeom import Camera
     from lsst.afw.image import Exposure, ExposureSummaryStats
-    from lsst.pipe.base import PipelineGraph
 
 
 __all__ = [
@@ -72,13 +71,9 @@ __all__ = [
     "getDimensionUniverse",
     "expRecordToUploadFilename",
     "checkRubinTvExternalPackages",
-    "raiseIf",
-    "getDoRaise",
-    "isDayObsContiguous",
     "writeMetadataShard",
     "writeDataShard",
     "getShardedData",
-    "isFileWorldWritable",
     "LocationConfig",
     "getAutomaticLocationConfig",
     "sanitizeNans",
@@ -87,16 +82,10 @@ __all__ = [
     "getShardPath",
     "getRubinTvInstrumentName",
     "getPodWorkerNumber",
-    "isCalibration",
-    "isWepImage",
     "removeDetector",
     "getFilterColorName",
-    "runningCI",
-    "runningPyTest",
-    "runningScons",
     "ALLOWED_DATASET_TYPES",
     "NumpyEncoder",
-    "runningCI",
     "makePlotFile",
     "makePlotFileFromRecord",
     "makeWitnessDetectorTitle",
@@ -731,107 +720,6 @@ def checkRubinTvExternalPackages(exitIfNotFound: bool = True, logger: Logger | N
         exit()
 
 
-def raiseIf(doRaise: bool, error: Exception, logger: Logger, msg: str = "") -> None:
-    """Raises the error if ``doRaise`` otherwise logs it as a warning.
-
-    Parameters
-    ----------
-    doRaise : `bool`
-        Raise the error if True, otherwise logs it as a warning.
-    error : `Exception`
-        The error that has been raised.
-    logger : `logging.Logger`
-        The logger to warn with if ``doRaise`` is False.
-    msg : `str`, optional
-        Additional error message to log with the error.
-
-    Raises
-    ------
-    AnyException
-        Raised if ``self.doRaise`` is True, otherwise swallows and warns.
-    """
-    sentry_sdk.capture_exception(error)
-    if not msg:
-        msg = f"{error}"
-    if doRaise:
-        logger.exception(msg)
-        raise error
-    else:
-        logger.exception(msg)
-
-
-def getDoRaise() -> bool:
-    """Get the value of ``RAPID_ANALYSIS_DO_RAISE`` as a bool from the env.
-
-    Defaults to False if not present or if the value cannot be interpreted as a
-    boolean.
-
-    Returns
-    -------
-    do_raise : `bool`
-        Whether to raise exceptions or not.
-    """
-    doRaiseString = os.getenv("RAPID_ANALYSIS_DO_RAISE", "False").strip().lower()
-    return doRaiseString in ["true", "1", "yes"]
-
-
-def isDayObsContiguous(dayObs: int, otherDayObs: int) -> bool:
-    """Check if two dayObs integers are coniguous or not.
-
-    DayObs take forms like 20220727 and therefore don't trivially compare.
-
-    Parameters
-    ----------
-    dayObs : `int`
-        The first dayObs to compare.
-    otherDayObs : `int`
-        The second dayObs to compare.
-
-    Returns
-    -------
-    contiguous : `bool`
-        Are the days contiguous?
-    """
-    d1 = datetime.strptime(str(dayObs), "%Y%m%d")
-    d2 = datetime.strptime(str(otherDayObs), "%Y%m%d")
-    deltaDays = d2.date() - d1.date()
-    return deltaDays == timedelta(days=1) or deltaDays == timedelta(days=-1)
-
-
-def hasDayRolledOver(dayObs: int, logger: Logger | None = None) -> bool:
-    """Check if the dayObs has rolled over when running constantly.
-
-    Checks if supplied dayObs is the current dayObs and returns False
-    if it is.
-
-    Parameters
-    ----------
-    dayObs : `int`
-        The dayObs to check if current
-    logger : `logging.Logger`, optional
-        The logger, created if not supplied
-
-    Returns
-    -------
-    hasDayRolledOver : `bool`
-        Whether the day has rolled over?
-    """
-    if not logger:
-        logger = logging.getLogger(__name__)
-    currentDay = getCurrentDayObsInt()
-    if currentDay == dayObs:
-        return False
-    elif currentDay == dayObs + 1:
-        return True
-    else:
-        if not isDayObsContiguous(currentDay, dayObs):
-            logger.warning(
-                f"Encountered non-linear time! dayObs supplied was {dayObs}"
-                f" and now the current dayObs is {currentDay}!"
-            )
-        return True  # the day has still rolled over, just in an unexpected way
-
-
 def catchPrintOutput(functionToCall: Callable, *args, **kwargs) -> str:
     f = io.StringIO()
     with redirect_stdout(f):
@@ -1166,25 +1054,6 @@ def getShardedData(
     return data, len(files)
 
 
-def isFileWorldWritable(filename: str) -> bool:
-    """Check that the file has the correct permissions for write access.
-
-    Parameters
-    ----------
-    filename : `str`
-        The filename to check.
-
-    Returns
-    -------
-    ok : `bool`
-        True if the file has the correct permissions, False otherwise.
-    """
-    # XXX remove this function once we've done the S3 move. Removing it will
-    # also help find other bits of file use.
-    stat = os.stat(filename)
-    return stat.st_mode & 0o777 == 0o777
-
-
 def safeJsonOpen(filename: str, timeout=0.3) -> str:
     """Open a JSON file, waiting for it to be populated if necessary.
 
@@ -1379,46 +1248,6 @@ def getPodWorkerNumber() -> int:
     return workerNum
 
 
-def isCalibration(expRecord: DimensionRecord) -> bool:
-    """Check if the exposure is a calibration exposure.
-
-    Parameters
-    ----------
-    expRecord : `lsst.daf.butler.DimensionRecord`
-        The exposure record to check.
-
-    Returns
-    -------
-    isCalibration : `bool`
-        ``True`` if the exposure is a calibration exposure, else ``False``.
-    """
-    if expRecord.observation_type in ["bias", "dark", "flat"]:
-        return True
-    return False
-
-
-def isWepImage(expRecord: DimensionRecord) -> bool:
-    """Check if the exposure is one of a donut-pair.
-
-    All images with a cwfs observation_type are one of a donut-pair, or
-    otherwise destined for the WEP pipeline, and conversely, all images
-    destined for the WEP pipeline have a cwfs observation_type. Other images
-    can contain donuts, e.g. in focus sweeps, but these are not designed to
-    have WEP run on them.
-
-    Parameters
-    ----------
-    expRecord : `lsst.daf.butler.DimensionRecord`
-        The exposure record to check.
-
-    Returns
-    -------
-    isCalibration : `bool`
-        ``True`` if the exposure is a calibration exposure, else ``False``.
-    """
-    return expRecord.observation_type.lower() == "cwfs"
-
-
 def removeDetector(dataCoord: DataCoordinate, butler: Butler) -> DataCoordinate:
     """Remove the detector from a DataCoordinate and return it in minimal form.
 
@@ -1490,21 +1319,6 @@ def getFilterColorName(physicalFilter: str) -> str | None:
         "y_10": "y_color",
     }
     return filterMap.get(physicalFilter)
-
-
-def runningCI() -> bool:
-    """Check if the code is running in a CI environment."""
-    return os.environ.get("RAPID_ANALYSIS_CI", "false").lower() == "true"
-
-
-def runningScons() -> bool:
-    """Check if the code is running under scons."""
-    return os.environ.get("SCONS_BUILDING", "false").lower() == "true"
-
-
-def runningPyTest() -> bool:
-    """Check if the code is running inside pytest."""
-    return "PYTEST_CURRENT_TEST" in os.environ
 
 
 def makePlotFileFromRecord(
@@ -1688,32 +1502,6 @@ def getAirmass(exp: Exposure) -> float | None:
     return None
 
 
-def hasRaDec(record: DimensionRecord) -> bool:
-    """Check if an exposure record has valid RA and Dec.
-
-    Parameters
-    ----------
-    record : `lsst.daf.butler.DimensionRecord`
-        The exposure record to check.
-
-    Returns
-    -------
-    hasRaDec : `bool`
-        True if the exposure record has valid RA and Dec, else False.
-    """
-    try:
-        ra = float(record.tracking_ra)
-        dec = float(record.tracking_dec)
-    except (AttributeError, TypeError):  # AttributeError for missing, TypeError for None
-        return False
-
-    if ra is None or dec is None:
-        return False
-    if not np.isfinite(ra) or not np.isfinite(dec):
-        return False
-    return True
-
-
 def getExpIdOrVisitId(obj: DimensionRecord | DataCoordinate) -> int:
     """Get the exposure ID or visit ID from an exposure record.
 
@@ -1871,19 +1659,3 @@ def getEquivalentDataId(
         visit=exposureDataId["exposure"],
         group=exposureDataId["group"],
     )
-
-
-def isFamPipeline(pipelineGraph: PipelineGraph) -> bool:
-    """Check if the pipeline graph is a FAM pipeline.
-
-    Parameters
-    ----------
-    pipelineGraph : `lsst.daf.butler.PipelineGraph`
-        The pipeline graph to check.
-
-    Returns
-    -------
-    isFamPipeline : `bool`
-        ``True`` if the pipeline graph is a FAM pipeline, else ``False``.
-    """
-    return pipelineGraph.task_subsets.get("visit-pair-merge-task") is not None

@@ -40,9 +40,9 @@ from lsst.obs.lsst.translators.lsst import SIMONYI_LOCATION
 from lsst.summit.utils.dateTime import getCurrentDayObsInt, offsetDayObs
 
 from .highLevelTools import deleteAllSkyStills, deleteNonFinalAllSkyMovies, syncBuckets
+from .predicates import raiseIf
 from .resources import getBasePath, getSubDirs, rmtree
 from .uploaders import MultiUploader
-from .utils import raiseIf
 
 if TYPE_CHECKING:
     from lsst.rubintv.production.utils import LocationConfig

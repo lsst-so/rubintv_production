@@ -53,16 +53,13 @@ from lsst.utils.packages import Packages
 
 from .payloads import Payload, pipelineGraphToBytes
 from .podDefinition import PodDetails, PodFlavor
+from .predicates import isCalibration, isWepImage, raiseIf, runningCI
 from .redisUtils import ExposureProcessingInfo, RedisHelper
 from .timing import BoxCarTimer
 from .utils import (
     LocationConfig,
     getExpIdOrVisitId,
     getShardPath,
-    isCalibration,
-    isWepImage,
-    raiseIf,
-    runningCI,
     writeExpRecordMetadataShard,
     writeMetadataShard,
 )

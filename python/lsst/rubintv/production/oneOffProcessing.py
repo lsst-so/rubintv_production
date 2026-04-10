@@ -63,18 +63,15 @@ from .exposureLogUtils import LOG_ITEM_MAPPINGS, getLogsForDayObs
 from .mountTorques import MOUNT_IMAGE_BAD_LEVEL as MOUNT_IMAGE_BAD_LEVEL_AUXTEL
 from .mountTorques import MOUNT_IMAGE_WARNING_LEVEL as MOUNT_IMAGE_WARNING_LEVEL_AUXTEL
 from .mountTorques import calculateMountErrors as _calculateMountErrors_oldVersion
+from .predicates import hasRaDec, isCalibration, raiseIf, runningCI
 from .redisUtils import RedisHelper
 from .utils import (
     getAirmass,
     getFilterColorName,
     getRubinTvInstrumentName,
     getShardPath,
-    hasRaDec,
-    isCalibration,
     makePlotFile,
     makeWitnessDetectorTitle,
-    raiseIf,
-    runningCI,
     writeMetadataShard,
 )
 

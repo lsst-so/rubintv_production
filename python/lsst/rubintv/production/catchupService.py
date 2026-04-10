@@ -36,8 +36,8 @@ from lsst.summit.utils.dateTime import getCurrentDayObsInt
 
 from .allSky import cleanupAllSkyIntermediates
 from .highLevelTools import remakeDay
+from .predicates import hasDayRolledOver, raiseIf
 from .uploaders import MultiUploader
-from .utils import hasDayRolledOver, raiseIf
 
 if TYPE_CHECKING:
     from .utils import LocationConfig

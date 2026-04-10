@@ -8,7 +8,7 @@ import redis
 # Import the TestConfig class to access Redis configuration
 from test_rapid_analysis import TestConfig
 
-from lsst.rubintv.production.utils import getDoRaise
+from lsst.rubintv.production.predicates import getDoRaise
 
 
 def check_redis_process(expect_running=False):

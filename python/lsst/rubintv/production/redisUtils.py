@@ -41,6 +41,7 @@ from lsst.utils.iteration import sequence_to_string
 
 from .payloads import Payload
 from .podDefinition import PodDetails, PodFlavor, getQueueName
+from .predicates import runningPyTest, runningScons
 from .redisKeys import (
     QUEUE_LENGTHS_KEY,
     TRACKING_INITIALIZED_FIELD,
@@ -71,7 +72,7 @@ from .redisKeys import (
     getVisitFinishedCounterKey,
     getVisitSummaryStatsKey,
 )
-from .utils import expRecordFromJson, removeDetector, runningPyTest, runningScons, summaryStatsToDict
+from .utils import expRecordFromJson, removeDetector, summaryStatsToDict
 
 # Check if the environment is a notebook
 clear_output: Callable | None = None

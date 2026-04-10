@@ -58,6 +58,7 @@ from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
 from .payloads import pipelineGraphFromBytes
 from .plotting.mosaicing import writeBinnedImage
+from .predicates import raiseIf
 from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
 from .utils import (
@@ -67,7 +68,6 @@ from .utils import (
     getExpRecordFromId,
     getShardPath,
     logDuration,
-    raiseIf,
     writeMetadataShard,
 )
 

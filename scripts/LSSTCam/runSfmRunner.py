@@ -26,9 +26,9 @@ from time import sleep
 from lsst.daf.butler import Butler
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
+from lsst.rubintv.production.predicates import getDoRaise
 from lsst.rubintv.production.utils import (
     getAutomaticLocationConfig,
-    getDoRaise,
     getPodWorkerNumber,
     setupSentry,
 )

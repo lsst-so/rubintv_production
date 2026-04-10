@@ -30,21 +30,23 @@ from unittest.mock import patch
 
 import lsst.utils.tests
 from lsst.daf.butler import DimensionRecord
-from lsst.rubintv.production.utils import (
-    AOS_CCDS,
-    AOS_WORKER_MAPPING,
+from lsst.rubintv.production.predicates import (
     getDoRaise,
-    getFilterColorName,
-    getRubinTvInstrumentName,
     hasRaDec,
     isCalibration,
     isDayObsContiguous,
     isWepImage,
-    mapAosWorkerNumber,
     raiseIf,
     runningCI,
     runningPyTest,
     runningScons,
+)
+from lsst.rubintv.production.utils import (
+    AOS_CCDS,
+    AOS_WORKER_MAPPING,
+    getFilterColorName,
+    getRubinTvInstrumentName,
+    mapAosWorkerNumber,
     sanitizeNans,
 )
 from lsst.summit.utils.utils import getSite

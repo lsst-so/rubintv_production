@@ -21,7 +21,8 @@
 
 from lsst.daf.butler import Butler
 from lsst.rubintv.production import ButlerWatcher
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, writeDimensionUniverseFile
+from lsst.rubintv.production.predicates import getDoRaise
+from lsst.rubintv.production.utils import getAutomaticLocationConfig, writeDimensionUniverseFile
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
