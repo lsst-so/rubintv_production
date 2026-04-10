@@ -22,7 +22,8 @@
 import sys
 
 from lsst.rubintv.production.catchupService import RubinTvBackgroundService
-from lsst.rubintv.production.utils import LocationConfig, checkRubinTvExternalPackages
+from lsst.rubintv.production.locationConfig import LocationConfig
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()

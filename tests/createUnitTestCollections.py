@@ -27,8 +27,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils import getUserRunCollectionName, removeUserRunCollection  # type: ignore[import]
 
 import lsst.summit.utils.butlerUtils as butlerUtils
+from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
 from lsst.rubintv.production.processingControl import PIPELINE_NAMES, PipelineComponents, buildPipelines
-from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 ALL_VISIT_QUERY = "visit in (202511150026,2025111500227,2025111500228)"

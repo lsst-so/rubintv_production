@@ -49,8 +49,8 @@ from lsst.utils.iteration import sequence_to_string
 from .channels import CHANNELS, PREFIXES
 from .consdbUtils import CCD_VISIT_MAPPING, ConsDBPopulator, changeType
 from .formatters import FakeExposureRecord, expRecordToUploadFilename
+from .locationConfig import LocationConfig
 from .uploaders import Uploader
-from .utils import LocationConfig
 
 HAS_EFD_CLIENT = True
 try:

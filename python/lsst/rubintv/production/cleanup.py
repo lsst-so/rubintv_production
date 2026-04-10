@@ -45,7 +45,7 @@ from .resources import getBasePath, getSubDirs, rmtree
 from .uploaders import MultiUploader
 
 if TYPE_CHECKING:
-    from lsst.rubintv.production.utils import LocationConfig
+    from lsst.rubintv.production.locationConfig import LocationConfig
 
 
 __all__ = ["TempFileCleaner"]

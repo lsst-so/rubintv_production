@@ -20,11 +20,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.rubintv.production.allSky import AllSkyMovieChannel
-from lsst.rubintv.production.utils import (
-    checkRubinTvExternalPackages,
-    getAutomaticLocationConfig,
-    setupSentry,
-)
+from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
+from lsst.rubintv.production.utils import checkRubinTvExternalPackages, setupSentry
 from lsst.summit.utils.utils import setupLogging
 
 setupSentry()

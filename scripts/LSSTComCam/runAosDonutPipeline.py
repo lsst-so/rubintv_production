@@ -21,7 +21,7 @@
 
 from lsst.daf.butler import Butler
 from lsst.rubintv.production.aos import DonutLauncher
-from lsst.rubintv.production.utils import getAutomaticLocationConfig
+from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()

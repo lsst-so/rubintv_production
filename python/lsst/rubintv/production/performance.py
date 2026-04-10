@@ -53,10 +53,11 @@ from lsst.utils.plotting.figures import make_figure
 
 from .baseChannels import BaseButlerChannel
 from .formatters import makePlotFile
+from .locationConfig import LocationConfig
 from .predicates import runningCI
 from .processingControl import CameraControlConfig, PipelineComponents, buildPipelines
 from .shardIo import writeMetadataShard
-from .utils import LocationConfig, getCurrentOutputRun
+from .utils import getCurrentOutputRun
 
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient

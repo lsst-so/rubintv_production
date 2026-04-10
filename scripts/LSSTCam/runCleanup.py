@@ -20,7 +20,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.rubintv.production.cleanup import TempFileCleaner
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, setupSentry
+from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
+from lsst.rubintv.production.utils import setupSentry
 from lsst.summit.utils.utils import setupLogging
 
 setupSentry()

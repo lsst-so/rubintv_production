@@ -39,7 +39,7 @@ import numpy as np
 from lsst.daf.butler import DimensionConfig, DimensionRecord, DimensionUniverse
 
 if TYPE_CHECKING:
-    from .utils import LocationConfig
+    from .locationConfig import LocationConfig
 
 
 __all__ = [

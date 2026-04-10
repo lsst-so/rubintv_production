@@ -49,7 +49,7 @@ except ImportError:
 if TYPE_CHECKING:
     from logging import Logger
 
-    from lsst.rubintv.production.utils import LocationConfig
+    from lsst.rubintv.production.locationConfig import LocationConfig
 
 __all__ = ["DayAnimator", "AllSkyMovieChannel", "dayObsFromDirName", "cleanupAllSkyIntermediates"]
 

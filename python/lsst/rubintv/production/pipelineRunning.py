@@ -77,9 +77,9 @@ if TYPE_CHECKING:
     from lsst.pipe.base.graph.quantumNode import QuantumNode
     from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilder
 
+    from .locationConfig import LocationConfig
     from .payloads import Payload
     from .podDefinition import PodDetails
-    from .utils import LocationConfig
 
 
 __all__ = [

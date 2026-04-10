@@ -30,9 +30,9 @@ from lsst.summit.utils.utils import getCameraFromInstrumentName
 from lsst.utils.plotting.figures import make_figure
 
 from ..formatters import makeFocalPlaneTitle, makePlotFile
+from ..locationConfig import LocationConfig
 from ..redisUtils import RedisHelper
 from ..uploaders import MultiUploader
-from ..utils import LocationConfig
 from ..watchers import RedisWatcher
 from .mosaicing import plotFocalPlaneMosaic
 

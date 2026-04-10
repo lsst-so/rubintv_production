@@ -41,7 +41,7 @@ from .workerSets import AosWorkerSet, SfmWorkerSet, Step1bWorkerSet
 if TYPE_CHECKING:
     from lsst.daf.butler import Butler
 
-    from .utils import LocationConfig
+    from .locationConfig import LocationConfig
 
 
 step1aMap = {

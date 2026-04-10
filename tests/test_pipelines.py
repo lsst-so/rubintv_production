@@ -31,11 +31,11 @@ from utils import getUserRunCollectionName  # type: ignore[import]
 import lsst.utils.tests
 from lsst.daf.butler import Butler, DimensionRecord
 from lsst.pipe.base.quantum_graph import PredictedQuantumGraph
+from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
 from lsst.rubintv.production.payloads import Payload
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
 from lsst.rubintv.production.processingControl import buildPipelines
-from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import getSite
 
 _LOG = logging.getLogger("lsst.rubintv.production.tests.test_pipelines")
