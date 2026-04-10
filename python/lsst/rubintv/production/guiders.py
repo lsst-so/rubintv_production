@@ -44,10 +44,11 @@ from lsst.summit.utils.utils import getCameraFromInstrumentName
 from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
 from .formatters import getRubinTvInstrumentName, makePlotFile
+from .locationConfig import LocationConfig
 from .predicates import raiseIf
 from .redisUtils import RedisHelper
 from .shardIo import writeExpRecordMetadataShard, writeMetadataShard
-from .utils import LocationConfig, logDuration
+from .utils import logDuration
 
 if TYPE_CHECKING:
     from pandas import DataFrame

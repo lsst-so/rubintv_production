@@ -80,7 +80,7 @@ from .utils import logDuration
 if TYPE_CHECKING:
     from lsst.daf.butler import Butler, DimensionRecord
 
-    from .utils import LocationConfig
+    from .locationConfig import LocationConfig
 
 
 class DonutLauncher:

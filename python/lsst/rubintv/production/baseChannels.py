@@ -35,9 +35,9 @@ if TYPE_CHECKING:
 
     from lsst.daf.butler import Butler, DataCoordinate, LimitedButler
 
+    from .locationConfig import LocationConfig
     from .podDefinition import PodDetails
     from .starTracker import StarTrackerWatcher
-    from .utils import LocationConfig
 
 
 __all__ = [

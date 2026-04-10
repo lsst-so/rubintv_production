@@ -78,9 +78,9 @@ if TYPE_CHECKING:
     from lsst.afw.image import Exposure
     from lsst.daf.butler import Butler, DataCoordinate, DimensionRecord
 
+    from .locationConfig import LocationConfig
     from .payloads import Payload
     from .podDefinition import PodDetails
-    from .utils import LocationConfig
 
 __all__ = [
     "OneOffProcessor",

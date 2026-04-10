@@ -63,7 +63,7 @@ from lsst.summit.utils.tmaUtils import (
 if TYPE_CHECKING:
     from lsst.summit.utils.tmaUtils import TMAEvent
 
-    from .utils import LocationConfig
+    from .locationConfig import LocationConfig
 
 _LOG = logging.getLogger(__name__)
 

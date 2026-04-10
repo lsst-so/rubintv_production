@@ -44,7 +44,7 @@ if TYPE_CHECKING:
     from lsst.afw.cameraGeom import Camera
     from lsst.daf.butler import DimensionRecord
 
-    from .utils import LocationConfig
+    from .locationConfig import LocationConfig
 
 
 __all__ = [

@@ -20,10 +20,11 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.daf.butler import Butler
+from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
 from lsst.rubintv.production.oneOffProcessing import OneOffProcessorAuxTel
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
 from lsst.rubintv.production.predicates import getDoRaise
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, setupSentry
+from lsst.rubintv.production.utils import setupSentry
 from lsst.summit.utils.utils import setupLogging
 
 setupSentry()

@@ -100,7 +100,7 @@ if TYPE_CHECKING:
     from lsst.afw.image import ExposureSummaryStats
     from lsst.daf.butler import Butler
 
-    from .utils import LocationConfig
+    from .locationConfig import LocationConfig
 
 
 CONSDB_ANNOUNCE_EXPIRY_TIME = 86400 * 2

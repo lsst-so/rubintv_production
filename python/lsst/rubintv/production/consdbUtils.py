@@ -46,7 +46,7 @@ from lsst.summit.utils.utils import computeCcdExposureId, getDetectorIds
 from .redisUtils import RedisHelper
 
 if TYPE_CHECKING:
-    from .utils import LocationConfig
+    from .locationConfig import LocationConfig
 
 logger = logging.getLogger(__name__)
 

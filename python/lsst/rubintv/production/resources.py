@@ -28,7 +28,7 @@ from lsst.resources import ResourcePath
 from lsst.summit.utils.utils import getSite
 
 if TYPE_CHECKING:
-    from lsst.rubintv.production.utils import LocationConfig
+    from lsst.rubintv.production.locationConfig import LocationConfig
 
 
 __all__ = ["getBasePath"]

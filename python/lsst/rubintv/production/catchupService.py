@@ -40,7 +40,7 @@ from .predicates import hasDayRolledOver, raiseIf
 from .uploaders import MultiUploader
 
 if TYPE_CHECKING:
-    from .utils import LocationConfig
+    from .locationConfig import LocationConfig
 
 __all__ = ["RubinTvBackgroundService"]
 

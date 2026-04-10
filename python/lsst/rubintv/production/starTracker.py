@@ -66,7 +66,7 @@ if TYPE_CHECKING:
     from lsst.afw.image import Exposure
     from lsst.summit.utils.starTracker import StarTrackerCamera
 
-    from .utils import LocationConfig
+    from .locationConfig import LocationConfig
 
 
 __all__ = (

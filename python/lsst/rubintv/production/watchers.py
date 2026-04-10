@@ -29,10 +29,10 @@ from typing import TYPE_CHECKING
 
 from lsst.daf.butler import Butler
 
+from .locationConfig import LocationConfig
 from .payloads import isRestartPayload
 from .predicates import raiseIf
 from .redisUtils import RedisHelper
-from .utils import LocationConfig
 
 if TYPE_CHECKING:
     from lsst.daf.butler import DimensionRecord
