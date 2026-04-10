@@ -74,8 +74,8 @@ from .aosUtils import (
 from .formatters import getRubinTvInstrumentName, makePlotFile
 from .redisUtils import RedisHelper, _extractExposureIds
 from .shardIo import writeExpRecordMetadataShard, writeMetadataShard
+from .timing import logDuration
 from .uploaders import MultiUploader
-from .utils import logDuration
 
 if TYPE_CHECKING:
     from lsst.daf.butler import Butler, DimensionRecord
