@@ -71,15 +71,10 @@ from .aosUtils import (
     extractWavefrontData,
     makeDataframeFromZernikes,
 )
+from .formatters import getRubinTvInstrumentName, makePlotFile
 from .redisUtils import RedisHelper, _extractExposureIds
 from .uploaders import MultiUploader
-from .utils import (
-    getRubinTvInstrumentName,
-    logDuration,
-    makePlotFile,
-    writeExpRecordMetadataShard,
-    writeMetadataShard,
-)
+from .utils import logDuration, writeExpRecordMetadataShard, writeMetadataShard
 
 if TYPE_CHECKING:
     from lsst.daf.butler import Butler, DimensionRecord

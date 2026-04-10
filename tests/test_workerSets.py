@@ -29,8 +29,8 @@ from lsst.rubintv.production.clusterManagement import (
     FlavorStatus,
     WorkerStatus,
 )
+from lsst.rubintv.production.formatters import AOS_CCDS
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.utils import AOS_CCDS
 from lsst.rubintv.production.workerSets import (
     AosWorkerSet,
     BacklogWorkerSet,

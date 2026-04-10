@@ -27,8 +27,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Sequence
 
+from .formatters import mapAosWorkerNumber
 from .podDefinition import PodDetails, PodFlavor
-from .utils import mapAosWorkerNumber
 
 if TYPE_CHECKING:
     from .clusterManagement import ClusterStatus, WorkerStatus
