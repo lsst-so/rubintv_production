@@ -48,7 +48,7 @@ from .locationConfig import LocationConfig
 from .predicates import raiseIf
 from .redisUtils import RedisHelper
 from .shardIo import writeExpRecordMetadataShard, writeMetadataShard
-from .utils import logDuration
+from .timing import logDuration
 
 if TYPE_CHECKING:
     from pandas import DataFrame

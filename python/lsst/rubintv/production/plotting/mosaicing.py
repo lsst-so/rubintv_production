@@ -41,7 +41,7 @@ from lsst.resources import ResourcePath
 from lsst.summit.utils import getQuantiles
 
 from ..resources import getBasePath, listDir
-from ..utils import logDuration, timeFunction
+from ..timing import logDuration, timeFunction
 
 if TYPE_CHECKING:
     from logging import Logger

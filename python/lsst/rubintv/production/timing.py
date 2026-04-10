@@ -24,9 +24,92 @@ from __future__ import annotations
 import statistics
 import time
 from collections import deque
-from typing import Deque
+from contextlib import contextmanager
+from dataclasses import dataclass
+from functools import wraps
+from time import perf_counter
+from typing import TYPE_CHECKING, Callable, Deque, Iterator
 
-__all__ = ["BoxCarTimer"]
+if TYPE_CHECKING:
+    from logging import Logger
+
+__all__ = [
+    "BoxCarTimer",
+    "DurationResult",
+    "logDuration",
+    "timeFunction",
+]
+
+
+@dataclass
+class DurationResult:
+    duration: float | None = None
+
+
+@contextmanager
+def logDuration(logger: Logger, label: str) -> Iterator[DurationResult]:
+    """Context manager to log the duration of a block of code.
+
+    Example usage::
+
+        with logDuration(log, "this block of code") as timing:
+            doSomething()
+        duration = timing.duration
+
+    This will log the time taken to execute the block of code with the label
+    message "<loggerName>.info this block of code took 1.23s" and return 1.23
+    as the duration attribute of the yielded object.
+
+    Parameters
+    ----------
+    logger : `logging.Logger`
+        The logger to use for logging the duration.
+    label : `str`
+        A label for the block of code being timed, used in the log message.
+
+    Returns
+    -------
+    result : `DurationResult`
+        A context manager that returns a ``DurationResult`` when entered.
+    """
+    start = perf_counter()
+    result = DurationResult()
+    try:
+        yield result
+    finally:
+        result.duration = perf_counter() - start
+        logger.info("%s took %.3fs", label, result.duration)
+
+
+def timeFunction(logger: Logger) -> Callable:
+    """Decorator to log the duration of a function call.
+
+    Example usage:
+    @timeFunc(logger)
+    def my_function():
+        doSomething()
+
+    This will log the time taken to execute the function with the label
+    message "<loggerName>.info my_function took 1.23s".
+
+    Parameters
+    ----------
+    logger : `logging.Logger`
+        The logger to use for logging the duration of the function call.
+    """
+
+    def decorate(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            start = perf_counter()
+            try:
+                return func(*args, **kwargs)
+            finally:
+                logger.info("%s took %.3fs", func.__qualname__, (perf_counter() - start))
+
+        return wrapper
+
+    return decorate
 
 
 class BoxCarTimer:

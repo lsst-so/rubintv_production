@@ -68,7 +68,7 @@ from .predicates import raiseIf
 from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
 from .shardIo import getShardPath, writeMetadataShard
-from .utils import logDuration
+from .timing import logDuration
 
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient

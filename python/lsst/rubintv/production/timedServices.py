@@ -39,8 +39,8 @@ import matplotlib.pyplot as plt
 from .parsers import sanitizeNans
 from .predicates import hasDayRolledOver, isFileWorldWritable, raiseIf
 from .shardIo import writeMetadataShard
+from .timing import logDuration
 from .uploaders import MultiUploader
-from .utils import logDuration
 
 try:
     from lsst_efd_client import EfdClient  # noqa: F401 just check we have it, but don't use it
