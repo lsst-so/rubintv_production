@@ -21,15 +21,19 @@
 
 """Test cases for utils."""
 
+import logging
+import os
 import unittest
 from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import patch
 
 import lsst.utils.tests
 from lsst.daf.butler import DimensionRecord
 from lsst.rubintv.production.utils import (
     AOS_CCDS,
     AOS_WORKER_MAPPING,
+    getDoRaise,
     getFilterColorName,
     getRubinTvInstrumentName,
     hasRaDec,
@@ -37,6 +41,10 @@ from lsst.rubintv.production.utils import (
     isDayObsContiguous,
     isWepImage,
     mapAosWorkerNumber,
+    raiseIf,
+    runningCI,
+    runningPyTest,
+    runningScons,
     sanitizeNans,
 )
 from lsst.summit.utils.utils import getSite
@@ -233,6 +241,88 @@ class MapAosWorkerNumberTestCase(lsst.utils.tests.TestCase):
 
     def test_mappingHasNoGaps(self) -> None:
         self.assertEqual(set(AOS_WORKER_MAPPING.keys()), set(range(9 * len(AOS_CCDS))))
+
+
+class GetDoRaiseTestCase(lsst.utils.tests.TestCase):
+    """Tests for `getDoRaise`."""
+
+    def test_unsetDefaultsToFalse(self) -> None:
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("RAPID_ANALYSIS_DO_RAISE", None)
+            self.assertFalse(getDoRaise())
+
+    def test_truthyValues(self) -> None:
+        for value in ("true", "True", "TRUE", "1", "yes", "YES", "  yes  "):
+            with patch.dict(os.environ, {"RAPID_ANALYSIS_DO_RAISE": value}):
+                self.assertTrue(getDoRaise(), f"value {value!r} should be truthy")
+
+    def test_falsyValues(self) -> None:
+        for value in ("false", "False", "0", "no", "", "maybe", "2"):
+            with patch.dict(os.environ, {"RAPID_ANALYSIS_DO_RAISE": value}):
+                self.assertFalse(getDoRaise(), f"value {value!r} should be falsy")
+
+
+class RunningEnvFlagsTestCase(lsst.utils.tests.TestCase):
+    """Tests for `runningCI`, `runningScons`, `runningPyTest`."""
+
+    def test_runningCITrueWhenSet(self) -> None:
+        for value in ("true", "True", "TRUE"):
+            with patch.dict(os.environ, {"RAPID_ANALYSIS_CI": value}):
+                self.assertTrue(runningCI())
+
+    def test_runningCIFalseWhenAbsentOrFalse(self) -> None:
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("RAPID_ANALYSIS_CI", None)
+            self.assertFalse(runningCI())
+        with patch.dict(os.environ, {"RAPID_ANALYSIS_CI": "false"}):
+            self.assertFalse(runningCI())
+        with patch.dict(os.environ, {"RAPID_ANALYSIS_CI": "1"}):
+            # Note: only "true" (case-insensitive) counts; "1" does not.
+            self.assertFalse(runningCI())
+
+    def test_runningSconsTrueWhenSet(self) -> None:
+        with patch.dict(os.environ, {"SCONS_BUILDING": "true"}):
+            self.assertTrue(runningScons())
+
+    def test_runningSconsFalseWhenAbsent(self) -> None:
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("SCONS_BUILDING", None)
+            self.assertFalse(runningScons())
+
+    def test_runningPyTestTrueInsidePytest(self) -> None:
+        # We are running under pytest right now, so this should be True.
+        self.assertTrue(runningPyTest())
+
+    def test_runningPyTestFalseWhenAbsent(self) -> None:
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("PYTEST_CURRENT_TEST", None)
+            self.assertFalse(runningPyTest())
+
+
+class RaiseIfTestCase(lsst.utils.tests.TestCase):
+    """Tests for `raiseIf`."""
+
+    def test_raisesWhenFlagTrue(self) -> None:
+        logger = logging.getLogger("test_raiseIf.raises")
+        error = ValueError("boom")
+        with self.assertLogs(logger, level="ERROR"):
+            with self.assertRaises(ValueError):
+                raiseIf(True, error, logger)
+
+    def test_swallowsWhenFlagFalse(self) -> None:
+        logger = logging.getLogger("test_raiseIf.swallows")
+        error = RuntimeError("boom")
+        # Should not raise, but should log the exception.
+        with self.assertLogs(logger, level="ERROR") as cm:
+            raiseIf(False, error, logger)
+        self.assertTrue(any("boom" in line for line in cm.output))
+
+    def test_useGivenMessage(self) -> None:
+        logger = logging.getLogger("test_raiseIf.message")
+        error = RuntimeError("real error")
+        with self.assertLogs(logger, level="ERROR") as cm:
+            raiseIf(False, error, logger, msg="custom prefix")
+        self.assertTrue(any("custom prefix" in line for line in cm.output))
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
