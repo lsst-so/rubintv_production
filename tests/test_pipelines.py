@@ -62,6 +62,13 @@ HAS_BUTLER = False
 if getSite() in ["staff-rsp", "rubin-devl"]:
     HAS_BUTLER = True
 
+# This whole test class builds real pipelines against a real Butler repo
+# seeded with fixture data; there is no meaningful way to run it on a
+# laptop. Skip the whole class when we don't have a butler to talk to.
+SKIP_NO_BUTLER_REASON = (
+    "These tests require a real Butler repo (staff-rsp or rubin-devl); " f"getSite() returned {getSite()!r}."
+)
+
 EXPECTED_PIPELINES = [
     "BIAS",
     "DARK",
@@ -89,15 +96,7 @@ EXPECTED_AOS_NON_FAM_PIPELINES = [
 # TODO: still need to add step1b tests for all the other pipelines
 
 
-# Pipeline generation goes through ``getAutomaticLocationConfig``,
-# which expects a real production site (TTS/BTS/SUMMIT/USDF) so it
-# can resolve butler paths, S3 endpoints, etc. ``gha`` (CI) and
-# ``local`` (dev laptop) don't satisfy that, so skip the whole
-# class on those sites instead of papering over each test.
-@unittest.skipIf(
-    getSite() in ("gha", "local"),
-    f"butler-bound pipeline tests are not supported on site={getSite()!r}",
-)
+@unittest.skipIf(not HAS_BUTLER, SKIP_NO_BUTLER_REASON)
 class TestPipelineGeneration(lsst.utils.tests.TestCase):
     def _makeMinimalButler(self) -> Butler:
         butler = Butler.from_config(

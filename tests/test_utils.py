@@ -90,7 +90,10 @@ class RubinTVUtilsTestCase(lsst.utils.tests.TestCase):
 
     def test_getSite(self) -> None:
         site = getSite()
+        # "local" is the new fallback for developer machines; "unknown" /
+        # "unkown" was the old one and should never be returned now.
         self.assertNotEqual(site.lower(), "unknown")
+        self.assertNotEqual(site.lower(), "unkown")
         # ``local`` is the developer-laptop fallback; ``gha`` is what
         # summit_utils returns when ``GITHUB_ACTIONS=true`` (set by
         # the GHA runner), so both are valid in CI / dev contexts.

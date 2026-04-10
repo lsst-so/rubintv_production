@@ -100,7 +100,7 @@ class TimedMetadataServer:
 
     Parameters
     ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location configuration.
     metadataDirectory : `str`
         The name of the directory for which the metadata is being served. Note
@@ -117,6 +117,10 @@ class TimedMetadataServer:
         The name of the channel to serve the metadata files to.
     doRaise : `bool`
         If True, raise exceptions instead of logging them.
+    s3Uploader : `MultiUploader`, optional
+        Uploader used to push merged metadata files to S3. Defaults to a
+        freshly-constructed ``MultiUploader()``, which is what production
+        pods want. Tests can inject a stub to avoid hitting real S3.
     """
 
     # The time between searches of the metadata shard directory to merge the
@@ -131,6 +135,7 @@ class TimedMetadataServer:
         shardsDirectory: str,
         channelName: str,
         doRaise: bool = False,
+        s3Uploader: MultiUploader | None = None,
     ) -> None:
         self.locationConfig = locationConfig
         self.metadataDirectory = metadataDirectory
@@ -138,7 +143,7 @@ class TimedMetadataServer:
         self.channelName = channelName
         self.doRaise = doRaise
         self.log = _LOG.getChild(self.channelName)
-        self.s3Uploader = MultiUploader()
+        self.s3Uploader = s3Uploader if s3Uploader is not None else MultiUploader()
         self.longestGlobDuration = 0.0
 
         if not os.path.isdir(self.metadataDirectory):
