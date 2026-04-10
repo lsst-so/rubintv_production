@@ -7,6 +7,29 @@ ingest raw telescope exposures, run LSST Science Pipeline tasks on them,
 and publish results (images, plots, metadata) to S3 buckets consumed by the
 RubinTV web frontend.
 
+## This is an application, not a library
+
+`rubintv_production` is the *end consumer* of everything it imports. Nothing
+external imports from this package — there are no downstream library users,
+no API contract to preserve across releases, no `__all__` exposed for
+third-party reuse. The package is shipped as a set of pod images that run
+the scripts in `scripts/`, and that is the only consumer.
+
+What this means in practice for refactors:
+- API changes inside the package are completely fine. Renaming a function,
+  splitting a module, moving a symbol from one file to another, deleting
+  unused code — none of these break anyone. The only requirement is that
+  the package remains *self-consistent*: every internal call site must be
+  updated in the same change so the package still imports cleanly and the
+  CI integration tests still pass.
+- Do **not** add backwards-compatibility shims, deprecated re-exports,
+  alias wrappers, or "compatibility" modules when refactoring. They are
+  pure deadweight here. If a symbol moves, move every call site at the
+  same time and delete the old name outright.
+- Versioning the public surface, deprecation warnings, and "leave the old
+  name in place for one release" are all anti-patterns in this codebase —
+  there are no downstream releases.
+
 ## Architecture Documentation
 
 Detailed architecture docs live in `architecture/` and MUST be kept up to date
