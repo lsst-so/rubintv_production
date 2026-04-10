@@ -46,7 +46,8 @@ from .consdbUtils import ConsDBPopulator
 from .formatters import getRubinTvInstrumentName, makePlotFile
 from .predicates import raiseIf
 from .redisUtils import RedisHelper
-from .utils import LocationConfig, logDuration, writeExpRecordMetadataShard, writeMetadataShard
+from .shardIo import writeExpRecordMetadataShard, writeMetadataShard
+from .utils import LocationConfig, logDuration
 
 if TYPE_CHECKING:
     from pandas import DataFrame

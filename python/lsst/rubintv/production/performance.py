@@ -55,7 +55,8 @@ from .baseChannels import BaseButlerChannel
 from .formatters import makePlotFile
 from .predicates import runningCI
 from .processingControl import CameraControlConfig, PipelineComponents, buildPipelines
-from .utils import LocationConfig, getCurrentOutputRun, writeMetadataShard
+from .shardIo import writeMetadataShard
+from .utils import LocationConfig, getCurrentOutputRun
 
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient

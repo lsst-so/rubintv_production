@@ -71,7 +71,8 @@ from .mountTorques import MOUNT_IMAGE_WARNING_LEVEL as MOUNT_IMAGE_WARNING_LEVEL
 from .mountTorques import calculateMountErrors as _calculateMountErrors_oldVersion
 from .predicates import hasRaDec, isCalibration, raiseIf, runningCI
 from .redisUtils import RedisHelper
-from .utils import getAirmass, getShardPath, writeMetadataShard
+from .shardIo import getShardPath, writeMetadataShard
+from .utils import getAirmass
 
 if TYPE_CHECKING:
     from lsst.afw.image import Exposure
