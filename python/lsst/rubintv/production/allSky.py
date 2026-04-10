@@ -35,9 +35,9 @@ from PIL.ExifTags import TAGS
 from lsst.summit.utils.dateTime import dayObsIntToString, getCurrentDayObsDatetime, getCurrentDayObsInt
 from lsst.utils.iteration import ensure_iterable
 
+from .formatters import FakeExposureRecord, expRecordToUploadFilename
 from .predicates import hasDayRolledOver, raiseIf
 from .uploaders import MultiUploader, Uploader
-from .utils import FakeExposureRecord, expRecordToUploadFilename
 
 try:
     from google.cloud import storage

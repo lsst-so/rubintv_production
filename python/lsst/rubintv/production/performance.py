@@ -44,7 +44,7 @@ from matplotlib.markers import CARETLEFTBASE, MarkerStyle
 from matplotlib.patches import Patch
 
 from lsst.daf.butler import MissingDatasetTypeError
-from lsst.rubintv.production.utils import getFilterColorName
+from lsst.rubintv.production.formatters import getFilterColorName
 from lsst.summit.utils.dateTime import dayObsIntToString
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.utils import getCameraFromInstrumentName
@@ -52,9 +52,10 @@ from lsst.utils.plotting import get_multiband_plot_colors
 from lsst.utils.plotting.figures import make_figure
 
 from .baseChannels import BaseButlerChannel
+from .formatters import makePlotFile
 from .predicates import runningCI
 from .processingControl import CameraControlConfig, PipelineComponents, buildPipelines
-from .utils import LocationConfig, getCurrentOutputRun, makePlotFile, writeMetadataShard
+from .utils import LocationConfig, getCurrentOutputRun, writeMetadataShard
 
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient

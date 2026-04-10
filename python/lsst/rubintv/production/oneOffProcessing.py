@@ -60,20 +60,18 @@ from lsst.utils.plotting.figures import make_figure
 from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
 from .exposureLogUtils import LOG_ITEM_MAPPINGS, getLogsForDayObs
+from .formatters import (
+    getFilterColorName,
+    getRubinTvInstrumentName,
+    makePlotFile,
+    makeWitnessDetectorTitle,
+)
 from .mountTorques import MOUNT_IMAGE_BAD_LEVEL as MOUNT_IMAGE_BAD_LEVEL_AUXTEL
 from .mountTorques import MOUNT_IMAGE_WARNING_LEVEL as MOUNT_IMAGE_WARNING_LEVEL_AUXTEL
 from .mountTorques import calculateMountErrors as _calculateMountErrors_oldVersion
 from .predicates import hasRaDec, isCalibration, raiseIf, runningCI
 from .redisUtils import RedisHelper
-from .utils import (
-    getAirmass,
-    getFilterColorName,
-    getRubinTvInstrumentName,
-    getShardPath,
-    makePlotFile,
-    makeWitnessDetectorTitle,
-    writeMetadataShard,
-)
+from .utils import getAirmass, getShardPath, writeMetadataShard
 
 if TYPE_CHECKING:
     from lsst.afw.image import Exposure

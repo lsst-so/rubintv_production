@@ -29,9 +29,10 @@ import lsst.afw.display as afwDisplay
 from lsst.summit.utils.utils import getCameraFromInstrumentName
 from lsst.utils.plotting.figures import make_figure
 
+from ..formatters import makeFocalPlaneTitle, makePlotFile
 from ..redisUtils import RedisHelper
 from ..uploaders import MultiUploader
-from ..utils import LocationConfig, makeFocalPlaneTitle, makePlotFile
+from ..utils import LocationConfig
 from ..watchers import RedisWatcher
 from .mosaicing import plotFocalPlaneMosaic
 
