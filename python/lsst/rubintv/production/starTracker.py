@@ -57,8 +57,8 @@ from lsst.summit.utils.utils import getAltAzFromSkyPosition, starTrackerFileToEx
 from .baseChannels import BaseChannel
 from .plotting import starTrackerNightReportPlots
 from .predicates import hasDayRolledOver, raiseIf
+from .shardIo import writeMetadataShard
 from .uploaders import MultiUploader
-from .utils import writeMetadataShard
 
 if TYPE_CHECKING:
     from pandas import DataFrame

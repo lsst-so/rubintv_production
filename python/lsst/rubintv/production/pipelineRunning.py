@@ -61,14 +61,13 @@ from .plotting.mosaicing import writeBinnedImage
 from .predicates import raiseIf
 from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
+from .shardIo import getShardPath, writeMetadataShard
 from .utils import (
     getCurrentOutputRun,
     getEquivalentDataId,
     getExpIdOrVisitId,
     getExpRecordFromId,
-    getShardPath,
     logDuration,
-    writeMetadataShard,
 )
 
 if TYPE_CHECKING:

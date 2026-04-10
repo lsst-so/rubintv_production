@@ -29,8 +29,8 @@ import unittest
 import numpy as np
 
 import lsst.utils.tests
+from lsst.rubintv.production.shardIo import writeMetadataShard
 from lsst.rubintv.production.timedServices import TimedMetadataServer
-from lsst.rubintv.production.utils import writeMetadataShard
 
 
 class TimedMetadataServerTestCase(lsst.utils.tests.TestCase):

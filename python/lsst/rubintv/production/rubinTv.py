@@ -54,7 +54,8 @@ from .baseChannels import BaseButlerChannel
 from .parsers import NumpyEncoder
 from .plotting import latissNightReportPlots
 from .predicates import hasDayRolledOver, raiseIf
-from .utils import catchPrintOutput, writeMetadataShard
+from .shardIo import writeMetadataShard
+from .utils import catchPrintOutput
 
 __all__ = [
     "CalibrateCcdRunner",
