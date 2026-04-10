@@ -39,6 +39,7 @@ import redis
 from lsst.daf.butler import DataCoordinate, DimensionRecord
 from lsst.utils.iteration import sequence_to_string
 
+from .butlerQueries import removeDetector, summaryStatsToDict
 from .parsers import expRecordFromJson
 from .payloads import Payload
 from .podDefinition import PodDetails, PodFlavor, getQueueName
@@ -73,7 +74,6 @@ from .redisKeys import (
     getVisitFinishedCounterKey,
     getVisitSummaryStatsKey,
 )
-from .utils import removeDetector, summaryStatsToDict
 
 # Check if the environment is a notebook
 clear_output: Callable | None = None

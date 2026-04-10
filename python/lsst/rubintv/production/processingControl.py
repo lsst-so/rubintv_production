@@ -51,6 +51,7 @@ from lsst.pipe.base import Instrument, Pipeline, PipelineGraph, TaskFactory
 from lsst.utils import getPackageDir
 from lsst.utils.packages import Packages
 
+from .butlerQueries import getExpIdOrVisitId
 from .locationConfig import LocationConfig
 from .payloads import Payload, pipelineGraphToBytes
 from .podDefinition import PodDetails, PodFlavor
@@ -58,7 +59,6 @@ from .predicates import isCalibration, isWepImage, raiseIf, runningCI
 from .redisUtils import ExposureProcessingInfo, RedisHelper
 from .shardIo import getShardPath, writeExpRecordMetadataShard, writeMetadataShard
 from .timing import BoxCarTimer
-from .utils import getExpIdOrVisitId
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
