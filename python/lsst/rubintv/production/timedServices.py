@@ -36,13 +36,10 @@ from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
 
+from .parsers import sanitizeNans
 from .predicates import hasDayRolledOver, isFileWorldWritable, raiseIf
 from .uploaders import MultiUploader
-from .utils import (
-    logDuration,
-    sanitizeNans,
-    writeMetadataShard,
-)
+from .utils import logDuration, writeMetadataShard
 
 try:
     from lsst_efd_client import EfdClient  # noqa: F401 just check we have it, but don't use it

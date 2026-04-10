@@ -37,6 +37,7 @@ from lsst.rubintv.production.formatters import (
     getRubinTvInstrumentName,
     mapAosWorkerNumber,
 )
+from lsst.rubintv.production.parsers import sanitizeNans
 from lsst.rubintv.production.predicates import (
     getDoRaise,
     hasRaDec,
@@ -48,7 +49,6 @@ from lsst.rubintv.production.predicates import (
     runningPyTest,
     runningScons,
 )
-from lsst.rubintv.production.utils import sanitizeNans
 from lsst.summit.utils.utils import getSite
 
 
