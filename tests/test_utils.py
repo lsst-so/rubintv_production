@@ -90,9 +90,22 @@ class RubinTVUtilsTestCase(lsst.utils.tests.TestCase):
 
     def test_getSite(self) -> None:
         site = getSite()
+        # "local" is the new fallback for developer machines; "unknown" /
+        # "unkown" was the old one and should never be returned now.
         self.assertNotEqual(site.lower(), "unknown")
+        self.assertNotEqual(site.lower(), "unkown")
         self.assertIn(
-            site.lower(), ["tucson", "summit", "base", "staff-rsp", "rubin-devl", "jenkins", "usdf-k8s"]
+            site.lower(),
+            [
+                "tucson",
+                "summit",
+                "base",
+                "staff-rsp",
+                "rubin-devl",
+                "jenkins",
+                "usdf-k8s",
+                "local",
+            ],
         )
 
 

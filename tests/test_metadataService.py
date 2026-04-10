@@ -91,20 +91,20 @@ class TimedMetadataServerTestCase(lsst.utils.tests.TestCase):
             }
             writeMetadataShard(shardsDir, dayObs, shard3)
 
-            # Build server with a no-op uploader
+            # Build server with a no-op uploader injected directly so the
+            # test never tries to talk to S3 (and never needs a real site).
+            class _NoopUploader:
+                def uploadMetdata(self, *args, **kwargs):
+                    return
+
             server = TimedMetadataServer(
                 locationConfig=None,  # type: ignore[arg-type]
                 metadataDirectory=metadataDir,
                 shardsDirectory=shardsDir,
                 channelName="test_metadata",
                 doRaise=True,
+                s3Uploader=_NoopUploader(),  # type: ignore[arg-type]
             )
-
-            class _NoopUploader:
-                def uploadMetdata(self, *args, **kwargs):
-                    return
-
-            server.s3Uploader = _NoopUploader()
 
             # Execute merge
             server.mergeShardsAndUpload()
