@@ -52,8 +52,9 @@ from lsst.utils.plotting import get_multiband_plot_colors
 from lsst.utils.plotting.figures import make_figure
 
 from .baseChannels import BaseButlerChannel
+from .predicates import runningCI
 from .processingControl import CameraControlConfig, PipelineComponents, buildPipelines
-from .utils import LocationConfig, getCurrentOutputRun, makePlotFile, runningCI, writeMetadataShard
+from .utils import LocationConfig, getCurrentOutputRun, makePlotFile, writeMetadataShard
 
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient

@@ -43,13 +43,13 @@ from lsst.summit.utils.utils import getCameraFromInstrumentName
 
 from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
+from .predicates import raiseIf
 from .redisUtils import RedisHelper
 from .utils import (
     LocationConfig,
     getRubinTvInstrumentName,
     logDuration,
     makePlotFile,
-    raiseIf,
     writeExpRecordMetadataShard,
     writeMetadataShard,
 )

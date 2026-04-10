@@ -36,12 +36,10 @@ from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
 
+from .predicates import hasDayRolledOver, isFileWorldWritable, raiseIf
 from .uploaders import MultiUploader
 from .utils import (
-    hasDayRolledOver,
-    isFileWorldWritable,
     logDuration,
-    raiseIf,
     sanitizeNans,
     writeMetadataShard,
 )

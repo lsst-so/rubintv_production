@@ -52,7 +52,8 @@ from lsst.summit.utils.dateTime import getCurrentDayObsInt
 
 from .baseChannels import BaseButlerChannel
 from .plotting import latissNightReportPlots
-from .utils import NumpyEncoder, catchPrintOutput, hasDayRolledOver, raiseIf, writeMetadataShard
+from .predicates import hasDayRolledOver, raiseIf
+from .utils import NumpyEncoder, catchPrintOutput, writeMetadataShard
 
 __all__ = [
     "CalibrateCcdRunner",
