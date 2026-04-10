@@ -19,12 +19,19 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+"""Process-startup checks called from the script wrappers.
+
+`setupSentry` and `checkRubinTvExternalPackages` are called near the top
+of every script in `scripts/` to make sure the process is in a runnable
+state before it starts doing anything. They used to live in `utils.py`
+and have been moved here to keep them grouped (and to let `utils.py` go
+away entirely).
+"""
+
 from __future__ import annotations
 
-import io
 import logging
-from contextlib import redirect_stdout
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 import sentry_sdk
 
@@ -37,6 +44,7 @@ __all__ = [
     "checkRubinTvExternalPackages",
 ]
 
+
 EFD_CLIENT_MISSING_MSG = (
     "ImportError: lsst_efd_client not found. Please install with:\n" "    pip install lsst-efd-client"
 )
@@ -45,10 +53,6 @@ GOOGLE_CLOUD_MISSING_MSG = (
     "ImportError: Google cloud storage not found. Please install with:\n"
     "    pip install google-cloud-storage"
 )
-
-# this file is for low level tools and should therefore not import
-# anything from elsewhere in the package, this is strictly for importing from
-# only.
 
 
 def setupSentry() -> None:
@@ -103,10 +107,3 @@ def checkRubinTvExternalPackages(exitIfNotFound: bool = True, logger: Logger | N
 
     if exitIfNotFound and (not hasGoogleStorage or not hasEfdClient):
         exit()
-
-
-def catchPrintOutput(functionToCall: Callable, *args, **kwargs) -> str:
-    f = io.StringIO()
-    with redirect_stdout(f):
-        functionToCall(*args, **kwargs)
-    return f.getvalue()

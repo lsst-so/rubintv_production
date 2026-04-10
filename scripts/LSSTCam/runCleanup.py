@@ -21,7 +21,7 @@
 
 from lsst.rubintv.production.cleanup import TempFileCleaner
 from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
-from lsst.rubintv.production.utils import setupSentry
+from lsst.rubintv.production.startupChecks import setupSentry
 from lsst.summit.utils.utils import setupLogging
 
 setupSentry()

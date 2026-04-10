@@ -21,7 +21,7 @@
 
 from lsst.rubintv.production.allSky import AllSkyMovieChannel
 from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, setupSentry
+from lsst.rubintv.production.startupChecks import checkRubinTvExternalPackages, setupSentry
 from lsst.summit.utils.utils import setupLogging
 
 setupSentry()
