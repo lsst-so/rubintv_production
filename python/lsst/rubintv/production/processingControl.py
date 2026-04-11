@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import enum
 import logging
+import operator
 import sys
 import time
 from dataclasses import dataclass
@@ -255,35 +256,54 @@ def getVisitId(butler: Butler, expRecord: DimensionRecord) -> int | None:
         return None
 
 
+# Data-driven dispatch table for simple image types: the observation_type
+# string determines which entry in ``self.pipelines`` to use and who is
+# responsible ("ISR", "SFM" or "AOS"). ``cwfs`` and the default case are
+# handled separately in the call site because they depend on the
+# instrument or on per-head-node state (``currentAosFamPipeline``), not
+# just on the image type.
+_SIMPLE_IMAGE_TYPE_DISPATCH: dict[str, tuple[str, str]] = {
+    "bias": ("BIAS", "ISR"),
+    "dark": ("DARK", "ISR"),
+    "flat": ("FLAT", "ISR"),
+    "unknown": ("ISR", "ISR"),
+}
+
+
+# Config flags on the ISR task that we surface on RubinTV. Dotted paths
+# reach into sub-configs (e.g. ``ampOffset.doApplyAmpOffset``). Order is
+# preserved in the emitted dict so the front end sees a stable column
+# ordering.
+ISR_CONFIG_KEYS: tuple[str, ...] = (
+    "doDiffNonLinearCorrection",
+    "doCorrectGains",
+    "doSaturation",
+    "doApplyGains",
+    "doCrosstalk",
+    "doLinearize",
+    "doDeferredCharge",
+    "doITLEdgeBleedMask",
+    "doITLSatSagMask",
+    "doITLDipMask",
+    "doBias",
+    "doDark",
+    "doDefect",
+    "doBrighterFatter",
+    "doFlat",
+    "doInterpolate",
+    "doAmpOffset",
+    "ampOffset.doApplyAmpOffset",
+)
+
+
 def getIsrConfigDict(graph: PipelineGraph) -> dict[str, str]:
-    # TODO: DM-50003 Make this config dumping more robust
     isrTasks = [task for name, task in graph.tasks.items() if "isr" in name.lower()]
     if len(isrTasks) != 1:
         log = logging.getLogger("lsst.rubintv.production.processControl.getIsrConfigDict")
         log.warning(f"Found {len(isrTasks)} isr tasks in pipeline graph!")
         return {}
-    isrTask = isrTasks[0]
-    isrDict: dict[str, str] = {}
-    config: Any = isrTask.config  # annotate as Any to save having to do all the type ignores
-    isrDict["doDiffNonLinearCorrection"] = f"{config.doDiffNonLinearCorrection}"
-    isrDict["doCorrectGains"] = f"{config.doCorrectGains}"
-    isrDict["doSaturation"] = f"{config.doSaturation}"
-    isrDict["doApplyGains"] = f"{config.doApplyGains}"
-    isrDict["doCrosstalk"] = f"{config.doCrosstalk}"
-    isrDict["doLinearize"] = f"{config.doLinearize}"
-    isrDict["doDeferredCharge"] = f"{config.doDeferredCharge}"
-    isrDict["doITLEdgeBleedMask"] = f"{config.doITLEdgeBleedMask}"
-    isrDict["doITLSatSagMask"] = f"{config.doITLSatSagMask}"
-    isrDict["doITLDipMask"] = f"{config.doITLDipMask}"
-    isrDict["doBias"] = f"{config.doBias}"
-    isrDict["doDark"] = f"{config.doDark}"
-    isrDict["doDefect"] = f"{config.doDefect}"
-    isrDict["doBrighterFatter"] = f"{config.doBrighterFatter}"
-    isrDict["doFlat"] = f"{config.doFlat}"
-    isrDict["doInterpolate"] = f"{config.doInterpolate}"
-    isrDict["doAmpOffset"] = f"{config.doAmpOffset}"
-    isrDict["ampOffset.doApplyAmpOffset"] = f"{config.ampOffset.doApplyAmpOffset}"
-    return isrDict
+    config: Any = isrTasks[0].config  # Any to save having to do all the type ignores
+    return {key: f"{operator.attrgetter(key)(config)}" for key in ISR_CONFIG_KEYS}
 
 
 def configToReadableDict(config: PipelineTaskConfig) -> dict[str, str]:
@@ -841,49 +861,27 @@ class HeadProcessController:
         if instrument not in ["LATISS", "LSSTCam"]:
             raise ValueError(f"Unknown instrument {instrument} in expRecord {expRecord.id}")
 
-        # TODO: DM-50003 Make this data-driven dispatch config instead of code
-        match imageType:
-            case "bias":
-                self.log.info(f"Sending {expRecord.id} {imageType=} for cp_verify style bias processing")
-                targetPipelineBytes = self.pipelines["BIAS"].graphBytes["step1a"]
-                targetPipelineGraph = self.pipelines["BIAS"].graphs["step1a"]
-                who = "ISR"
-            case "dark":
-                self.log.info(f"Sending {expRecord.id} {imageType=} for cp_verify style dark processing")
-                targetPipelineBytes = self.pipelines["DARK"].graphBytes["step1a"]
-                targetPipelineGraph = self.pipelines["DARK"].graphs["step1a"]
-                who = "ISR"
-            case "flat":
-                self.log.info(f"Sending {expRecord.id} {imageType=} for cp_verify style flat processing")
-                targetPipelineBytes = self.pipelines["FLAT"].graphBytes["step1a"]
-                targetPipelineGraph = self.pipelines["FLAT"].graphs["step1a"]
-                who = "ISR"
-            case "unknown":
-                self.log.info(f"Sending {expRecord.id} {imageType=} for full ISR processing")
-                targetPipelineBytes = self.pipelines["ISR"].graphBytes["step1a"]
-                targetPipelineGraph = self.pipelines["ISR"].graphs["step1a"]
-                who = "ISR"
-            case "cwfs":
-                if instrument == "LSSTCam":
-                    self.log.info(f"Sending {expRecord.id} {imageType=} for step1a FAM processing")
-                    targetPipelineBytes = self.pipelines[self.currentAosFamPipeline].graphBytes["step1a"]
-                    targetPipelineGraph = self.pipelines[self.currentAosFamPipeline].graphs["step1a"]
-                    who = "AOS"
-                else:
-                    # TODO: once we move LATISS WEP to RA this will do the real
-                    # dispatch. For now, just send off and probably fail
-                    # downstream in SFM somewhere, but this will stop the
-                    # LATISS head node crashing.
-                    self.log.info(f"Sending LATISS CWFS image {expRecord.id} {imageType=} for step1a SFM")
-                    targetPipelineBytes = self.pipelines["SFM"].graphBytes["step1a"]
-                    targetPipelineGraph = self.pipelines["SFM"].graphs["step1a"]
-                    who = "SFM"
-            case _:  # all non-calib, properly headered images
-                self.log.info(f"Sending {expRecord.id} {imageType=} for full step1a SFM")
-                targetPipelineBytes = self.pipelines["SFM"].graphBytes["step1a"]
-                targetPipelineGraph = self.pipelines["SFM"].graphs["step1a"]
-                who = "SFM"
+        if imageType in _SIMPLE_IMAGE_TYPE_DISPATCH:
+            pipelineKey, who = _SIMPLE_IMAGE_TYPE_DISPATCH[imageType]
+            self.log.info(f"Sending {expRecord.id} {imageType=} for step1a {pipelineKey} processing")
+        elif imageType == "cwfs":
+            if instrument == "LSSTCam":
+                self.log.info(f"Sending {expRecord.id} {imageType=} for step1a FAM processing")
+                pipelineKey = self.currentAosFamPipeline
+                who = "AOS"
+            else:
+                # TODO: once we move LATISS WEP to RA this will do the real
+                # dispatch. For now, just send off and probably fail
+                # downstream in SFM somewhere, but this will stop the
+                # LATISS head node crashing.
+                self.log.info(f"Sending LATISS CWFS image {expRecord.id} {imageType=} for step1a SFM")
+                pipelineKey, who = "SFM", "SFM"
+        else:  # all non-calib, properly headered images
+            self.log.info(f"Sending {expRecord.id} {imageType=} for full step1a SFM")
+            pipelineKey, who = "SFM", "SFM"
 
+        targetPipelineBytes = self.pipelines[pipelineKey].graphBytes["step1a"]
+        targetPipelineGraph = self.pipelines[pipelineKey].graphs["step1a"]
         return targetPipelineBytes, targetPipelineGraph, who
 
     def doAosFanout(self, expRecord: DimensionRecord) -> None:
