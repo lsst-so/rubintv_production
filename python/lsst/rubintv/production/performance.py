@@ -207,7 +207,11 @@ def getExpRecord(butler: Butler, dayObs: int, seqNum: int) -> DimensionRecord | 
             "exposure", where=f"exposure.day_obs={dayObs} and exposure.seq_num={seqNum}"
         )
         return expRecord
-    except Exception:  # XXX make this a little less broad
+    except ValueError:
+        # ``(x,) = it`` raises ValueError when ``it`` is empty or has
+        # more than one element — i.e. the day_obs/seq_num combination
+        # is unknown to the butler. Any other exception (bad query,
+        # missing collection, etc.) is a real bug and should propagate.
         return None
 
 
@@ -230,7 +234,10 @@ def getVisitRecord(butler: Butler, expRecord: DimensionRecord) -> DimensionRecor
     try:
         (visitRecord,) = butler.registry.queryDimensionRecords("visit", where=f"visit={expRecord.id}")
         return visitRecord
-    except Exception:  # XXX make this a little less broad
+    except ValueError:
+        # ``(x,) = it`` raises ValueError when the visit hasn't been
+        # defined yet — i.e. ``define-visits`` hasn't run for this
+        # exposure. Any other exception is a real bug.
         return None
 
 
