@@ -29,7 +29,6 @@ from lsst.rubintv.production.processingControl import (
     CameraControlConfig,
     VisitProcessingMode,
     WorkerProcessingMode,
-    getNightlyRollupTriggerTask,
 )
 
 
@@ -226,47 +225,6 @@ class PipelineNamesTestCase(lsst.utils.tests.TestCase):
         # The "SFM" entry is the science pipeline and is referenced by
         # name throughout the package — guard it explicitly.
         self.assertIn("SFM", PIPELINE_NAMES)
-
-
-class GetNightlyRollupTriggerTaskTestCase(lsst.utils.tests.TestCase):
-    """Tests for `getNightlyRollupTriggerTask`."""
-
-    def test_nightlyValidationPipeline(self) -> None:
-        task = getNightlyRollupTriggerTask("/path/to/nightly-validation.yaml")
-        self.assertEqual(
-            task,
-            "lsst.analysis.tools.tasks.refCatSourceAnalysis.RefCatSourceAnalysisTask",
-        )
-
-    def test_nightlyValidationSubstringMatch(self) -> None:
-        # Substring match — any path containing "nightly-validation" works.
-        task = getNightlyRollupTriggerTask("foo/nightly-validation-extra.yaml#step1b")
-        self.assertEqual(
-            task,
-            "lsst.analysis.tools.tasks.refCatSourceAnalysis.RefCatSourceAnalysisTask",
-        )
-
-    def test_quickLookPipeline(self) -> None:
-        task = getNightlyRollupTriggerTask("/path/to/quickLook.yaml")
-        self.assertEqual(task, "lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask")
-
-    def test_quickLookSubstringMatch(self) -> None:
-        task = getNightlyRollupTriggerTask("foo/quickLook-bar.yaml#step1b")
-        self.assertEqual(task, "lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask")
-
-    def test_unknownPipelineRaises(self) -> None:
-        with self.assertRaises(ValueError):
-            getNightlyRollupTriggerTask("/path/to/something-else.yaml")
-        with self.assertRaises(ValueError):
-            getNightlyRollupTriggerTask("")
-
-    def test_caseSensitive(self) -> None:
-        # The matching is case-sensitive — pin so a future change to
-        # case-insensitive matching has to be deliberate.
-        with self.assertRaises(ValueError):
-            getNightlyRollupTriggerTask("QUICKLOOK.yaml")
-        with self.assertRaises(ValueError):
-            getNightlyRollupTriggerTask("Nightly-Validation.yaml")
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
