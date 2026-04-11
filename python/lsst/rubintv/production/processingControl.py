@@ -1177,8 +1177,7 @@ class HeadProcessController:
             instrument=self.instrument, visit=visitId, universe=self.butler.dimensions
         )
 
-        # TODO: this abuse of Payload really needs improving
-        payload = Payload(dataCoord, b"", dataProduct, who="SFM")
+        payload = Payload(dataId=dataCoord, pipelineGraphBytes=b"", run="", who="SFM", taskName=dataProduct)
         worker = self.redisHelper.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
         if worker is None:
             self.log.warning(f"No workers AT ALL for {dataProduct} mosaic - should be impossible, check k8s")
@@ -1374,8 +1373,7 @@ class HeadProcessController:
         self.log.info(f"Dispatching complete {dataProduct} mosaic for {idString}")
 
         for dataId in completeIds:  # intExpId because mypy doesn't like reusing loop variables?!
-            # TODO: this abuse of Payload really needs improving
-            payload = Payload(dataId, b"", dataProduct, who="SFM")
+            payload = Payload(dataId=dataId, pipelineGraphBytes=b"", run="", who="SFM", taskName=dataProduct)
             worker = self.redisHelper.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
             if worker is None:
                 self.log.error(f"No free workers available for {dataProduct} mosaic")

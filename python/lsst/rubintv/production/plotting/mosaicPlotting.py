@@ -213,7 +213,10 @@ class Plotter:
             what we have.
         """
         dataId = payload.dataId
-        dataProduct = payload.run  # TODO: this really needs improving
+        dataProduct = payload.taskName
+        if dataProduct is None:
+            self.log.warning(f"Mosaic dispatch missing taskName on payload for {dataId}, dropping")
+            return
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
         self.log.info(f"Making plots for {expRecord.dataId}")
         dayObs = expRecord.day_obs
