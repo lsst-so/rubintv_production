@@ -1635,8 +1635,6 @@ class RedisHelper:
             return False
 
         def getPayloadDataId(jsonData) -> str:
-            # XXX pretty sure this now crashes due to it being dataIds plural
-            # check if you can get mypy to catch this when fixing
             loaded = json.loads(jsonData)
             return f"{loaded['dataId']}, run={loaded['run']}"
 
