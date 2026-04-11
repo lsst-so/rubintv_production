@@ -96,7 +96,6 @@ class ZeroPointPlot(LatissPlot):
                 self.log.warning(msg)
                 return False
 
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
         plt.figure(constrained_layout=True)
 
         datesDict = nightReport.getDatesForSeqNums()
@@ -168,7 +167,6 @@ class SkyMeanPlot(LatissPlot):
                 self.log.warning(msg)
                 return False
 
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
         plt.figure(constrained_layout=True)
 
         datesDict = nightReport.getDatesForSeqNums()
@@ -236,7 +234,6 @@ class PsfFwhmPlot(LatissPlot):
         success : `bool`
             Did the plotting succeed, and thus upload should be performed?
         """
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
         plt.figure(constrained_layout=True)
 
         datesDict = nightReport.getDatesForSeqNums()
@@ -328,7 +325,6 @@ class PsfE1Plot(LatissPlot):
         success : `bool`
             Did the plotting succeed, and thus upload should be performed?
         """
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
         plt.figure(constrained_layout=True)
 
         datesDict = nightReport.getDatesForSeqNums()
@@ -403,7 +399,6 @@ class PsfE2Plot(LatissPlot):
         success : `bool`
             Did the plotting succeed, and thus upload should be performed?
         """
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
         plt.figure(constrained_layout=True)
 
         datesDict = nightReport.getDatesForSeqNums()
@@ -479,7 +474,6 @@ class SourceCountsPlot(LatissPlot):
         success : `bool`
             Did the plotting succeed, and thus upload should be performed?
         """
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
         plt.figure(constrained_layout=True)
 
         datesDict = nightReport.getDatesForSeqNums()
@@ -549,7 +543,6 @@ class TelescopeAzElPlot(LatissPlot):
         success : `bool`
             Did the plotting succeed, and thus upload should be performed?
         """
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
         datesDict = nightReport.getDatesForSeqNums()
 
         for item in ["PSF FWHM"]:
@@ -649,7 +642,6 @@ class MountMotionPlot(LatissPlot):
         success : `bool`
             Did the plotting succeed, and thus upload should be performed?
         """
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
         plt.figure(constrained_layout=True)
 
         datesDict = nightReport.getDatesForSeqNums()
@@ -721,7 +713,6 @@ class AstrometricOffsetMeanPlot(LatissPlot):
                 self.log.warning(msg)
                 return False
 
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
         plt.figure(constrained_layout=True)
         fig, ax1 = plt.subplots(1)
 
@@ -800,7 +791,6 @@ class MountMotionVsZenith(LatissPlot):
                 self.log.warning(msg)
                 return False
 
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
         plt.figure(constrained_layout=True)
 
         zenith = np.asarray(metadata["Zenith angle"])
@@ -867,7 +857,6 @@ class SkyMeanVsSkyRms(LatissPlot):
                 self.log.warning(msg)
                 return False
 
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
         plt.figure(constrained_layout=True)
 
         skyRms = np.asarray(metadata["Sky RMS"])
@@ -934,7 +923,6 @@ class PsfVsSkyRms(LatissPlot):
                 self.log.warning(msg)
                 return False
 
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
         plt.figure(constrained_layout=True)
 
         skyRms = np.asarray(metadata["Sky RMS"])
@@ -1001,7 +989,6 @@ class PsfVsZenith(LatissPlot):
                 self.log.warning(msg)
                 return False
 
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
         plt.figure(constrained_layout=True)
 
         zenith = np.asarray(metadata["Zenith angle"])
@@ -1068,7 +1055,6 @@ class PsfVsMountMotion(LatissPlot):
                 self.log.warning(msg)
                 return False
 
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
         plt.figure(constrained_layout=True)
 
         mountMotion = np.asarray(metadata["Mount motion image degradation"])

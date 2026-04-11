@@ -169,14 +169,22 @@ class LatissPlot(BasePlot):
         if self.locationConfig is None or self.s3Uploader is None:
             raise RuntimeError("locationConfig and uploader can only be None for development work.")
 
-        success = self.plot(nightReport, metadata, ccdVisitTable)
-        if not success:
-            self.log.warning(f"Plot {self.plotName} failed to create")
-            return
+        try:
+            success = self.plot(nightReport, metadata, ccdVisitTable)
+            if not success:
+                self.log.warning(f"Plot {self.plotName} failed to create")
+                return
 
-        saveFile = self.getSaveFilename()
-        plt.savefig(saveFile)
-        plt.close()
+            saveFile = self.getSaveFilename()
+            plt.savefig(saveFile)
+        finally:
+            # Close any figures the ``plot`` method left behind, even if
+            # it raised before reaching the explicit close in the happy
+            # path. Each subclass's ``plot`` opens a fresh figure via
+            # ``plt.figure(...)`` or ``plt.subplots(...)``; without this
+            # finally clause an exception would leak it into the pyplot
+            # registry forever.
+            plt.close("all")
 
         self.s3Uploader.uploadNightReportData(
             instrument="auxtel",
@@ -241,14 +249,17 @@ class StarTrackerPlot(BasePlot):
         if self.locationConfig is None or self.s3Uploader is None:
             raise RuntimeError("locationConfig and uploader can only be None for development work.")
 
-        success = self.plot(tableData)
-        if not success:
-            self.log.warning(f"Plot {self.plotName} failed to create")
-            return
+        try:
+            success = self.plot(tableData)
+            if not success:
+                self.log.warning(f"Plot {self.plotName} failed to create")
+                return
 
-        saveFile = self.getSaveFilename()
-        plt.savefig(saveFile)
-        plt.close()
+            saveFile = self.getSaveFilename()
+            plt.savefig(saveFile)
+        finally:
+            # See the matching comment in ``LatissPlot.createAndUpload``.
+            plt.close("all")
 
         self.s3Uploader.uploadNightReportData(
             instrument="startracker",
