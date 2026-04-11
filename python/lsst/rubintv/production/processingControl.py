@@ -1248,6 +1248,21 @@ class HeadProcessController:
         self.redisHelper.enqueuePayload(payload, worker)
         return
 
+    def dispatchRadialPlot(self, expRecord: DimensionRecord) -> None:
+        """Dispatch a radial-analysis plot for the given exposure.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record to dispatch the radial plot for.
+        """
+        worker = self.getSingleWorker(self.instrument, PodFlavor.RADIAL_PLOTTER)
+        if worker is None:
+            self.log.error(f"No workers available for {PodFlavor.RADIAL_PLOTTER}, dropping radial plot")
+            return
+        payload = Payload(dataId=expRecord.dataId, pipelineGraphBytes=b"", run="", who="SFM")
+        self.redisHelper.enqueuePayload(payload, worker)
+
     def dispatchGatherSteps(self, who: str) -> bool:
         """Dispatch any gather steps as needed.
 
@@ -1377,7 +1392,7 @@ class HeadProcessController:
                     self.log.info(f"Sending {expRecord.id} for one-off visit image processing")
                     self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_VISITIMAGE_WORKER)
                     self.log.info(f"Sending {expRecord.id} for radial plot processing")
-                    self.redisHelper.sendExpRecordToQueue(expRecord, f"{self.instrument}-RADIALPLOTTER")
+                    self.dispatchRadialPlot(expRecord)
             if who == "AOS":
                 (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoord)
                 self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)

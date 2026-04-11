@@ -379,9 +379,10 @@ calls `dispatchGatherSteps()` for each one every loop iteration.
 
 After step1b completes on a worker, the worker itself triggers further
 downstream processing via Redis:
-- SFM step1b completion pushes the visit ID to `{instrument}-PSFPLOTTER`,
-  `{instrument}-FWHMPLOTTER`, and `{instrument}-ZERNIKE_PREDICTION_PLOTTER`
-  queues
+- SFM step1b completion picks one free pod of each plotter flavor
+  (`PSF_PLOTTER`, `FWHM_PLOTTER`, `ZERNIKE_PREDICTED_FWHM_PLOTTER`) via
+  `RedisHelper.getSingleWorker()` and enqueues a visit-level `Payload`
+  on that pod's queue
 - AOS step1b completion reports the Zernike count to MTAOS
 
 ### PostISR Mosaic Dispatch
