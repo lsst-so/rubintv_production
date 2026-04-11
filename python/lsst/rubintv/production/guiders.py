@@ -49,6 +49,7 @@ from .predicates import raiseIf
 from .redisUtils import RedisHelper
 from .shardIo import writeExpRecordMetadataShard, writeMetadataShard
 from .timing import logDuration
+from .uploaders import MultiUploader
 
 if TYPE_CHECKING:
     from pandas import DataFrame
@@ -239,10 +240,8 @@ class GuiderWorker(BaseButlerChannel):
             butler=butler,
             podDetails=podDetails,
             doRaise=doRaise,
-            addUploader=True,
         )
-        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-        assert self.podDetails is not None  # XXX why is this necessary? Fix mypy better!
+        self.s3Uploader: MultiUploader = MultiUploader()
         self.log.info(f"Guider worker running, consuming from {self.podDetails.queueName}")
         self.shardsDirectory = locationConfig.guiderShardsDirectory
         self.consdbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
@@ -339,7 +338,6 @@ class GuiderWorker(BaseButlerChannel):
             record = dataId.records["visit"]
 
         assert record is not None, f"Failed to find exposure or visit record in {dataId=}"
-        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
 
         if record.definition.name == "exposure" and not record.can_see_sky:
             # can_see_sky only on exposure records, all visits should be on-sky

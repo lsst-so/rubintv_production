@@ -73,6 +73,7 @@ from .mountTorques import calculateMountErrors as _calculateMountErrors_oldVersi
 from .predicates import hasRaDec, isCalibration, raiseIf, runningCI
 from .redisUtils import RedisHelper
 from .shardIo import getShardPath, writeMetadataShard
+from .uploaders import MultiUploader
 
 if TYPE_CHECKING:
     from lsst.afw.image import Exposure
@@ -133,8 +134,8 @@ class OneOffProcessor(BaseButlerChannel):
             butler=butler,
             podDetails=podDetails,
             doRaise=doRaise,
-            addUploader=True,
         )
+        self.s3Uploader: MultiUploader = MultiUploader()
         self.dataProduct = processingStage
         self.instrument = instrument
         self.butler = butler
@@ -396,7 +397,6 @@ class OneOffProcessor(BaseButlerChannel):
         )
         fig.tight_layout()
         fig.savefig(plotFile)
-        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument=getRubinTvInstrumentName(expRecord.instrument),
             plotName=plotName,
@@ -523,7 +523,6 @@ class OneOffProcessor(BaseButlerChannel):
         )
         fig = make_figure(figsize=(12, 8))
         plotMountErrors(data, errors, fig, saveFilename=plotFile)
-        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument=getRubinTvInstrumentName(expRecord.instrument),
             plotName=plotName,
@@ -672,7 +671,6 @@ class OneOffProcessor(BaseButlerChannel):
         plotName = "event_timeline"
         plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "png")
         fig.savefig(plotFile)
-        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument=getRubinTvInstrumentName(expRecord.instrument),
             plotName=plotName,
@@ -702,7 +700,6 @@ class OneOffProcessor(BaseButlerChannel):
                 return
 
             self.log.info("Uploading mount torque plot to storage bucket")
-            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
             self.s3Uploader.uploadPerSeqNumPlot(
                 instrument="auxtel",
                 plotName=plotName,
@@ -839,7 +836,6 @@ class OneOffProcessorAuxTel(OneOffProcessor):
             imExam = ImageExaminer(exp, savePlots=plotFile, doTweakCentroid=True)
             imExam.plot()
             self.log.info("Uploading imExam to storage bucket")
-            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
             self.s3Uploader.uploadPerSeqNumPlot(
                 instrument="auxtel",
                 plotName=plotName,
@@ -871,7 +867,6 @@ class OneOffProcessorAuxTel(OneOffProcessor):
             summary = SpectrumExaminer(exp, savePlotAs=plotFile)
             summary.run()
             self.log.info("Uploading specExam to storage bucket")
-            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
             self.s3Uploader.uploadPerSeqNumPlot(
                 instrument="auxtel",
                 plotName=plotName,
