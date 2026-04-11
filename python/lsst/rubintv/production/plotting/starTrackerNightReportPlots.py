@@ -70,7 +70,6 @@ class RaDecAltAzOverTime(StarTrackerPlot):
         success : `bool`
             Did the plotting succeed, and thus upload should be performed?
         """
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
         axisLabelSize = 18
         nPlots = 4
 
@@ -132,7 +131,6 @@ class DeltasPlot(StarTrackerPlot):
         success : `bool`
             Did the plotting succeed, and thus upload should be performed?
         """
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
         axisLabelSize = 18
         nPlots = 5
 
@@ -192,7 +190,6 @@ class SourcesAndScatters(StarTrackerPlot):
         success : `bool`
             Did the plotting succeed, and thus upload should be performed?
         """
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
         axisLabelSize = 18
         nPlots = 4
 
@@ -246,7 +243,6 @@ class AltAzCoverageTopDown(StarTrackerPlot):
         success : `bool`
             Did the plotting succeed, and thus upload should be performed?
         """
-        # TODO: get a figure you can reuse to avoid matplotlib memory leak
         _ = plt.figure(figsize=(10, 10))
         ax = plt.subplot(111, polar=True)
 
