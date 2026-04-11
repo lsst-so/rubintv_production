@@ -195,7 +195,7 @@ def defineVisit(butler: Butler, expRecord: DimensionRecord) -> None:
 
     Only runs if the visit hasn't already been defined. Previously, it was
     thought to be fine to run repeatedly, but updates in the stack can cause
-    slight differences in the calcualted region, which causes a ConflictError,
+    slight differences in the calculated region, which causes a ConflictError,
     so only run if we don't already have a visit id available.
 
     NB: butler must be writeable for this to work.
@@ -714,7 +714,7 @@ class HeadProcessController:
         self.runningAos = True
         self.log.info(
             f"Head node ready and {'IS' if self.runningAos else 'NOT'} running AOS."
-            f"Data will be writen data to {self.outputRun}"
+            f" Data will be written to {self.outputRun}"
         )
 
     def getLatestRunAndPrep(self, forceNewRun: bool) -> str:
@@ -904,17 +904,17 @@ class HeadProcessController:
         # TODO: DM-50003 Make this data-driven dispatch config instead of code
         match imageType:
             case "bias":
-                self.log.info(f"Sending {expRecord.id} {imageType=} to for cp_verify style bias processing")
+                self.log.info(f"Sending {expRecord.id} {imageType=} for cp_verify style bias processing")
                 targetPipelineBytes = self.pipelines["BIAS"].graphBytes["step1a"]
                 targetPipelineGraph = self.pipelines["BIAS"].graphs["step1a"]
                 who = "ISR"
             case "dark":
-                self.log.info(f"Sending {expRecord.id} {imageType=} to for cp_verify style dark processing")
+                self.log.info(f"Sending {expRecord.id} {imageType=} for cp_verify style dark processing")
                 targetPipelineBytes = self.pipelines["DARK"].graphBytes["step1a"]
                 targetPipelineGraph = self.pipelines["DARK"].graphs["step1a"]
                 who = "ISR"
             case "flat":
-                self.log.info(f"Sending {expRecord.id} {imageType=}  to for cp_verify style flat processing")
+                self.log.info(f"Sending {expRecord.id} {imageType=} for cp_verify style flat processing")
                 targetPipelineBytes = self.pipelines["FLAT"].graphBytes["step1a"]
                 targetPipelineGraph = self.pipelines["FLAT"].graphs["step1a"]
                 who = "ISR"
@@ -1649,10 +1649,9 @@ class CameraControlConfig:
 
         Parameters
         ----------
-        other : `bool`, optional
-            If True, set the cardinal2 pattern instead of the default cardinal.
-            Default is False.
-
+        horizontal : `bool`, optional
+            If True, turn on the horizontal cardinal line of detectors.
+            Otherwise turn on the vertical cardinal line. Default is False.
         """
         dets = self.HORIZONTAL_IDS if horizontal else self.VERTICAL_IDS
         for det in dets:
@@ -1803,7 +1802,7 @@ class CameraControlConfig:
             self._detectorStates[detectorId] = True
 
     def setGuidersOff(self) -> None:
-        """Turn all the wavefront sensors off."""
+        """Turn all the guider sensors off."""
         for detectorId in self._guiderIds:
             self._detectorStates[detectorId] = False
 

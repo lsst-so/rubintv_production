@@ -339,7 +339,7 @@ class OneOffProcessor(BaseButlerChannel):
 
         visitImageWcs = visitImage.wcs
         if visitImageWcs is None:
-            self.log.warning(f"Astrometic failed for {dataId} - no pointing offsets calculated")
+            self.log.warning(f"Astrometric failed for {dataId} - no pointing offsets calculated")
             md = {expRecord.seq_num: offsets}
             writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
             return
@@ -464,7 +464,7 @@ class OneOffProcessor(BaseButlerChannel):
         # is triggered once all CCDs have finished step1a so should be instant
         visitImage = self._waitForDataProduct(visitDataId, gettingButler=self.butler, timeout=3)
         if visitImage is None:
-            self.log.warning(f"Failed to get post_isr_image for {dataId}")
+            self.log.warning(f"Failed to get preliminary_visit_image for {dataId}")
             return
 
         self.log.info("Publishing visit summary stats...")
@@ -673,7 +673,7 @@ class OneOffProcessor(BaseButlerChannel):
                 self.log.warning(f"Failed to create exposure timing plot for {expRecord.id}")
                 return
         except KeyError as e:  # this often fails due to missing mount data, so this is just a warn
-            self.log.warning(f"KeyError during plotting mount torques for LSSTCam: {e}")
+            self.log.warning(f"KeyError while creating exposure timing plot for {expRecord.id}: {e}")
             return
         except Exception as e:  # but all others are a raiseIf
             raiseIf(self.doRaise, e, self.log)
@@ -772,8 +772,8 @@ class OneOffProcessor(BaseButlerChannel):
 
         # the contribution to the image error from the mount. This is the part
         # that matters and gets a quality flag. Note that the rotator error
-        # contibution is zero at the field centre and increases radially, and
-        # is usually very small, so we don't add that here as its contrinution
+        # contribution is zero at the field centre and increases radially, and
+        # is usually very small, so we don't add that here as its contribution
         # is not really well defined and including it would be misleading.
         image_az_rms = errors["image_az_rms"]
         image_el_rms = errors["image_el_rms"]

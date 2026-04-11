@@ -76,7 +76,7 @@ def sanitizeNans(obj: Any) -> Any:
     Parameters
     ----------
     obj : `object`
-        The object to santitize, expected to be dict-like: either a single
+        The object to sanitize, expected to be dict-like: either a single
         ``dict`` or a ``list`` or ``dict`` of ``dict``s.
 
     Returns
@@ -112,7 +112,7 @@ def safeJsonOpen(filename: str, timeout=0.3) -> str:
 
     JSON doesn't like opening zero-byte files, so try to open it, and if it's
     empty, add a series of small waits until it's not empty and reads
-    correctly, or the timeout is reachecd.
+    correctly, or the timeout is reached.
 
     Parameters
     ----------
@@ -124,13 +124,13 @@ def safeJsonOpen(filename: str, timeout=0.3) -> str:
 
     Returns
     -------
-    jsonData : `str`
-        The data from the json file as a string, i.e. not put back into a
-        python object.
+    jsonData : `object`
+        The deserialized contents of the JSON file (typically a dict or list).
 
     Raises
     ------
-    RuntimeError: Raised if the file is not populated within the timeout.
+    RuntimeError
+        Raised if the file is not populated within the timeout.
     """
     start = time.time()
     while time.time() - start < timeout:
@@ -162,10 +162,17 @@ def getDimensionUniverse(locationConfig: LocationConfig) -> DimensionUniverse:
 def expRecordFromJson(expRecordJson: str | bytes, locationConfig: LocationConfig) -> DimensionRecord | None:
     """Deserialize a DimensionRecord from a JSON string.
 
+    Parameters
+    ----------
     expRecordJson : `str` or `bytes`
         The JSON string to deserialize, as either a string or bytes.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location configuration, used to determine the dimension universe.
+
+    Returns
+    -------
+    expRecord : `lsst.daf.butler.DimensionRecord` or `None`
+        The deserialized record, or ``None`` if ``expRecordJson`` is empty.
     """
     if not expRecordJson:
         return None

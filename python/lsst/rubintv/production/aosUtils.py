@@ -574,15 +574,17 @@ def getCameraRotatedPositions(rotMat: np.ndarray) -> np.ndarray:
 
 
 def parseDofStr(dofStr: str) -> dict[str, np.ndarray]:
-    """Parse a string representation of integer ranges into a sorted list of
-    integers.
+    """Parse a DOF index string into per-group boolean activation arrays.
 
     The input string may contain comma-separated integers and/or ranges of the
-    form "start-end".
+    form "start-end" (with each integer being a flat DOF index across all
+    groups). For example::
 
-    For example:
-        "0-4,10-14" -> [0, 1, 2, 3, 4, 10, 11, 12, 13, 14]
-        "3,7,9-11"  -> [3, 7, 9, 10, 11]
+        "0-4,10-14" -> indices [0, 1, 2, 3, 4, 10, 11, 12, 13, 14]
+        "3,7,9-11"  -> indices [3, 7, 9, 10, 11]
+
+    These flat indices are then split into the per-group boolean arrays
+    described in the Returns section.
 
     Parameters
     ----------
@@ -591,8 +593,9 @@ def parseDofStr(dofStr: str) -> dict[str, np.ndarray]:
 
     Returns
     -------
-    newCompDofIdx : `dict`
+    newCompDofIdx : `dict` [`str`, `numpy.ndarray`]
         Dictionary with boolean arrays indicating active DOFs per group:
+
         - 'm2HexPos': `numpy.ndarray` of shape (5,) for M2 hexapod
         - 'camHexPos': `numpy.ndarray` of shape (5,) for Camera hexapod
         - 'M1M3Bend': `numpy.ndarray` of shape (20,) for M1M3 bending modes

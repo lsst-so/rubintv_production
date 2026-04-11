@@ -35,7 +35,7 @@ class PodType(Enum):
 
 
 class PodFlavor(Enum):
-    # all items much contain WORKER if they're not the head node
+    # all items must contain WORKER if they're not the head node
     # all items must also provide their type via an entry in podFlavorToPodType
     SFM_WORKER = auto()
     AOS_WORKER = auto()

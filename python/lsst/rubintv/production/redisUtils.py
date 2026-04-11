@@ -449,17 +449,16 @@ def _extractExposureIds(exposureBytes: bytes, instrument: str) -> list[int]:
     Parameters
     ----------
     exposureBytes : `bytes`
-        The byte string containing the exposure IDs.
+        The byte string containing the comma-separated exposure IDs.
+    instrument : `str`
+        The instrument the IDs belong to. ``LSSTComCamSim`` simulated IDs are
+        offset to put them in the simulated year, since OCS does not know about
+        the offset that the butler applies.
 
     Returns
     -------
-    expIds : `list` of `int`
-        A list of two exposure IDs extracted from the byte string.
-
-    Raises
-    ------
-    ValueError
-        If the number of exposure IDs extracted is not equal to 2.
+    expIds : `list` [`int`]
+        The exposure IDs extracted from the byte string.
     """
     exposureIdStrs = exposureBytes.decode("utf-8").split(",")
     exposureIds = [int(v) for v in exposureIdStrs]
@@ -527,11 +526,11 @@ class RedisHelper:
 
         Parameters
         ----------
-        podName : `str`
-            The name of the pod.
-        timePeriod : `float`
-            The amount of time after which the pod would be considered dead if
-            not reaffirmed by.
+        pod : `PodDetails`
+            The pod whose liveness key should be refreshed.
+        timePeriod : `int` or `float`
+            The amount of time after which the pod will be considered dead if
+            not reaffirmed.
         """
         self.redis.setex(getPodRunningKey(pod.queueName), timedelta(seconds=timePeriod), value=1)
 
@@ -540,8 +539,13 @@ class RedisHelper:
 
         Parameters
         ----------
-        podName : `str`
-            The name of the pod.
+        pod : `PodDetails`
+            The pod whose liveness key should be checked.
+
+        Returns
+        -------
+        running : `bool`
+            ``True`` if the pod's running key is still set in Redis.
         """
         isRunning = self.redis.get(getPodRunningKey(pod.queueName))
         return bool(isRunning)  # 0 and None both bool() to False
@@ -551,8 +555,8 @@ class RedisHelper:
 
         Parameters
         ----------
-        queueName : `str`
-            The name of the queue the worker is processing.
+        pod : `PodDetails`
+            The pod that is announcing it is busy.
         """
         self.redis.setex(getPodBusyKey(pod.queueName), time=BUSY_EXPIRY, value=1)
 
@@ -563,8 +567,8 @@ class RedisHelper:
 
         Parameters
         ----------
-        queueName : `str`
-            The name of the queue the worker is processing.
+        pod : `PodDetails`
+            The pod that is announcing it is free.
         """
         self.announceExistence(pod)
         # delete the IS_BUSY key, regardless of its expiry, as we've finished
@@ -585,8 +589,8 @@ class RedisHelper:
 
         Parameters
         ----------
-        queueName : `str`
-            The name of the queue the worker is processing.
+        pod : `PodDetails`
+            The pod that is announcing its presence.
         remove : `bool`, optional
             Remove the worker from pool. Default is ``False``.
         """
@@ -810,8 +814,9 @@ class RedisHelper:
             The name of the step which finished processing.
         who : `str`
             Who are we running the pipeline for, e.g. "SFM" or "AOS".
-        failed : `bool`
-            True if the processing did not fail to complete
+        failed : `bool`, optional
+            ``True`` if the processing failed to complete. Both the
+            "finished" and "failed" counters are incremented in that case.
         """
         key = getVisitFinishedCounterKey(instrument, step, who)
         self.redis.incr(key, 1)  # creates the key if it doesn't exist
@@ -847,8 +852,10 @@ class RedisHelper:
         ----------
         instrument : `str`
             The name of the instrument.
-        failed : `bool`
-            True if the processing did not fail to complete
+        who : `str`
+            Who are we running the pipeline for, e.g. "SFM" or "AOS".
+        failed : `bool`, optional
+            ``True`` if the processing failed to complete.
         """
         key = getNightlyRollupFinishedKey(instrument, who)
         self.redis.incr(key, 1)
@@ -868,12 +875,14 @@ class RedisHelper:
 
         Parameters
         ----------
+        instrument : `str`
+            The instrument the watcher list belongs to.
         expRecord : `lsst.daf.butler.dimensions.ExposureRecord`
             The exposure record to check.
 
         Returns
         -------
-        bool
+        seenBefore : `bool`
             Whether the exposure record has already been processed.
         """
         expRecordJson = expRecord.to_simple().json()
@@ -894,7 +903,7 @@ class RedisHelper:
         """Send an exposure record for processing.
 
         This queue is consumed by the head node, which fans it out for
-        processing by the workers. Which detetors for the exposure will be
+        processing by the workers. Which detectors for the exposure will be
         processed is determined by state of the ``focalPlaneControl`` on the
         head node at the time the exposure record is fanned out.
 
@@ -931,7 +940,7 @@ class RedisHelper:
 
         # Set in hash if not already present
         self.redis.hsetnx(announcementKey, field, 1)
-        # Expire the entire announcementKey after 2 days if if nothing has
+        # Expire the entire announcementKey after 2 days if nothing has
         # landed in that time
         self.redis.expire(announcementKey, CONSDB_ANNOUNCE_EXPIRY_TIME)
 
@@ -985,7 +994,7 @@ class RedisHelper:
         Returns
         -------
         expRecord : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
-            The next exposure to process for the specified detector, or
+            The next exposure to process for the specified instrument, or
             ``None`` if the queue is empty.
         """
         self._checkIsHeadNode()
@@ -1002,8 +1011,8 @@ class RedisHelper:
         ----------
         payload : `lsst.rubintv.production.payloads.Payload`
             The payload to enqueue.
-        queueName : `str`
-            The name of the queue to enqueue the payload to.
+        destinationPod : `lsst.rubintv.production.podDefinition.PodDetails`
+            The pod whose queue the payload should be sent to.
         top : `bool`, optional
             Whether to add the payload to the top of the queue. Default is
             ``True``.
@@ -1020,14 +1029,14 @@ class RedisHelper:
 
         Parameters
         ----------
-        pod : `lsst.rubintv.production.podDetails.PodDetails`
+        pod : `lsst.rubintv.production.podDefinition.PodDetails`
             The pod to dequeue the payload from.
 
         Returns
         -------
-        expRecord : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
-            The next exposure to process for the specified detector, or
-            ``None`` if the queue is empty.
+        payload : `lsst.rubintv.production.payloads.Payload` or `None`
+            The next payload from the worker's queue, or ``None`` if the
+            queue is empty.
         """
         popped = self.redis.blpop(pod.queueName, timeout=DEQUE_TIMEOUT)
         if popped is None:
@@ -1413,7 +1422,7 @@ class RedisHelper:
         if instrument != "LSSTCam":
             raise ValueError(f"Unknown instrument {instrument=}")
         if camera is None:
-            raise ValueError("Camera must be provided LSSTCam")
+            raise ValueError("Camera must be provided for LSSTCam")
 
         valueBytes = self.redis.get(WITNESS_DETECTOR_KEY)
         if valueBytes is not None:
@@ -1554,9 +1563,9 @@ class RedisHelper:
 
         Returns
         -------
-        averagedStats : `dict[str, Any]` or `None`
-            The averaged summary statistics for the visit, or ``None`` if not
-            found.
+        averagedStats : `dict` [`str`, `float`]
+            The averaged summary statistics for the visit, keyed by stat name.
+            An empty dict is returned if no stats are available.
         """
         allStats = self.getAllVisitSummaryStats(instrument, visit)
         if not allStats:
@@ -1588,7 +1597,10 @@ class RedisHelper:
         ignorePods: bool = True,
         ignoreKeysStartingWith: list[str] | None = None,
     ) -> None:
-        """Get the next unit of work from a specific worker queue.
+        """Print a human-readable dump of the contents of Redis.
+
+        Useful for debugging — walks every key in the database, classifies the
+        value (payload, exposure record, queue, etc.) and prints a summary.
 
         Parameters
         ----------
@@ -1597,15 +1609,9 @@ class RedisHelper:
         ignorePods : `bool`, optional
             Whether to ignore pod-related keys (those ending with +EXISTS or
             +IS_BUSY). Default is ``True``.
-        ignoreKeysStartingWith : `list[str]`, optional
+        ignoreKeysStartingWith : `list` [`str`], optional
             List of string prefixes. Keys starting with any of these strings
             will be ignored. Default is ``None``.
-
-        Returns
-        -------
-        expRecord : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
-            The next exposure to process for the specified detector, or
-            ``None`` if the queue is empty.
         """
 
         def _isPayload(jsonData) -> bool:
@@ -1753,12 +1759,12 @@ class RedisHelper:
             print("Redis database cleared, but ButlerWatcher history retained.")
 
     def clearWorkerQueues(self, force: bool = False) -> None:
-        """Clear all keys in the Redis database.
+        """Clear all worker-queue keys (matching ``*WORKER*``) from Redis.
 
         Parameters
         ----------
         force : `bool`, optional
-            Whether to clear the Redis database without user confirmation.
+            Whether to clear the worker queues without user confirmation.
             Default is ``False``.
         """
         if not force:

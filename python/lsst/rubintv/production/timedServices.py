@@ -323,7 +323,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
             locationConfig=locationConfig,
             metadataDirectory=metadataDirectory,
             shardsDirectory=shardsDirectory,
-            channelName=self.metadataChannelName,  # this is the one for mergeSharsAndUpload
+            channelName=self.metadataChannelName,  # this is the one for mergeShardsAndUpload
             doRaise=self.doRaise,
         )
 
@@ -438,14 +438,14 @@ class TmaTelemetryChannel(TimedMetadataServer):
         m1m3ICSHPMaxForces = {}
         m1m3ICSHPMeanForces = {}
 
-        md = {}  # blank out the previous md as it has already been written
+        md = {}
         try:
             m1m3IcsResult = M1M3ICSAnalysis(
                 event,
                 self.client,
                 log=self.log,
             )
-        except ValueError:  # control flow error raise when the ICS is off
+        except ValueError:  # control flow error raised when the ICS is off
             return None
         # package all the items we want into dicts
         m1m3ICSHPMaxForces = {

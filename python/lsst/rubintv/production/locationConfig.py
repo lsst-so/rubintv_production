@@ -57,7 +57,7 @@ class LocationConfig:
     """A frozen dataclass for holding location-based configurations.
 
     Note that all items which are used as paths *must* be decorated with
-    @cached_property, otherwise they are will be method-type rather than
+    @cached_property, otherwise they will be method-type rather than
     str-type when they are accessed.
     """
 
@@ -84,8 +84,9 @@ class LocationConfig:
             If True, create the directory if it does not exist.
 
         Raises
-            RuntimeError: raised if the directory does not exist and could not
-            be created.
+        ------
+        RuntimeError
+            Raised if the directory does not exist and could not be created.
 
         TODO: Add a check for being world-writable here, and make the dir
         creation chmod to 777.
@@ -119,7 +120,9 @@ class LocationConfig:
             The file to check.
 
         Raises
-            RuntimeError: raised if the file does not exist.
+        ------
+        RuntimeError
+            Raised if the file does not exist.
         """
         expanded = os.path.expandvars(filename)
         if not os.path.isfile(expanded):
@@ -473,8 +476,8 @@ def _loadConfigFile(site: str) -> dict[str, str]:
 
     Parameters
     ----------
-    site : `str`, optional
-        The site. If not provided, the default is 'summit'.
+    site : `str`
+        The site whose ``config_<site>.yaml`` file should be loaded.
 
     Returns
     -------

@@ -196,7 +196,7 @@ class AosWorkerSet(WorkerSet):
 
 @dataclass
 class BacklogWorkerSet(WorkerSet):
-    """A set of Step1b worker pods."""
+    """A set of backlog worker pods."""
 
     @classmethod
     def create(cls, instrument: str, count: int) -> BacklogWorkerSet:

@@ -83,8 +83,9 @@ def getDetectorId(payload: Payload) -> int | None:
 
     Returns
     -------
-    detectorId : `int`
-        The detector ID, or None if there is no detector ID in the payload.
+    detectorId : `int` or `None`
+        The detector ID, or ``None`` if there is no detector ID in the
+        payload's dataId.
     """
     if "detector" in payload.dataId:
         return int(payload.dataId["detector"])

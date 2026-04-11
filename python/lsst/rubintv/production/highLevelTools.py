@@ -1005,7 +1005,7 @@ def backfillVisit1QuicklookForDayAos(
             rowSums.append(np.sqrt(np.sum(zkFwhm**2)))
 
         average_result = np.nanmean(rowSums)
-        residual = 1.06 * np.log(1 + average_result)  # adjustement per John Franklin's paper
+        residual = 1.06 * np.log(1 + average_result)  # adjustment per John Franklin's paper
         donutBlurFwhm = float("nan")  # needs to be defined for lower block but nans are removed on send
         if "estimatorInfo" in zernikes.meta and zernikes.meta["estimatorInfo"] is not None:
             # If danish is run then fwhm is in the metadata, if TIE then
@@ -1024,7 +1024,7 @@ def backfillVisit1QuicklookForDayAos(
             consDbValues,
             record.day_obs,
             record.seq_num,
-            True,  # insert into existing an row requires allowUpdate
+            True,  # inserting into an existing row requires allowUpdate
         )
         rowsInserted.append(record)
 
@@ -1034,7 +1034,7 @@ def backfillVisit1QuicklookForDayAos(
 def backfillCcdVisit1QuicklookForDay(
     butler: Butler, populator: ConsDBPopulator, dayObs: int
 ) -> tuple[dict[DimensionRecord, list[int]], list[DimensionRecord]]:
-    """Backfill the visit1_quicklook table for a given dayObs.
+    """Backfill the ccdvisit1_quicklook table for a given dayObs.
 
     Parameters
     ----------
@@ -1113,7 +1113,7 @@ def backfillCcdVisit1QuicklookForDay(
 def backfillCcdVisit1QuicklookForDayAos(
     butler: Butler, populator: ConsDBPopulator, dayObs: int, efdClient: EfdClient
 ) -> tuple[dict[DimensionRecord, list[int]], dict[DimensionRecord, list[int]]]:
-    """Backfill the visit1_quicklook table for a given dayObs.
+    """Backfill the ccdvisit1_quicklook table with AOS values for a dayObs.
 
     Parameters
     ----------
@@ -1123,6 +1123,8 @@ def backfillCcdVisit1QuicklookForDayAos(
         The ConsDBPopulator to use to populate the table.
     dayObs : `int`
         The dayObs to backfill.
+    efdClient : `lsst_efd_client.EfdClient`
+        The EFD client used to fetch the rotator angle for each visit.
 
     Returns
     -------

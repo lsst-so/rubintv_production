@@ -365,7 +365,7 @@ class PsfAzElPlotter:
             visitIdBytes = self.redisHelper.redis.lpop(self.queueName)
             if visitIdBytes is not None:
                 visitId = int(visitIdBytes.decode("utf-8"))
-                self.log.info(f"Making for PsfAzEl plot for visitId {visitId}")
+                self.log.info(f"Making PsfAzEl plot for visitId {visitId}")
                 self.makePlot(visitId)
             else:
                 sleep(0.5)
@@ -548,7 +548,7 @@ class ZernikePredictedFWHMPlotter:
             visitIdBytes = self.redisHelper.redis.lpop(self.queueName)
             if visitIdBytes is not None:
                 visitId = int(visitIdBytes.decode("utf-8"))
-                self.log.info(f"Making for ZernikePredictedFWHM plots for visitId {visitId}")
+                self.log.info(f"Making ZernikePredictedFWHM plots for visitId {visitId}")
                 with logDuration(self.log, f"Total time for making zernike prediction plots for {visitId=}"):
                     self.makePlots(visitId)
             else:
@@ -591,15 +591,15 @@ class FocalPlaneFWHMPlotter:
         self.efdClient = makeEfdClient()
 
     def plotAndUpload(self, visitRecord: DimensionRecord) -> None:
-        """Make the FWHM Focal Plane plot for the given visit ID.
+        """Make the FWHM Focal Plane plot for the given visit.
 
         Makes the plot by getting the available data from the butler, saves it
         to a temporary file, and uploads it to RubinTV.
 
         Parameters
         ----------
-        visitId : `int`
-            The visit ID for which to make the plot.
+        visitRecord : `lsst.daf.butler.DimensionRecord`
+            The visit record for which to make the plot.
         """
         visitSummary = None
         try:
@@ -631,7 +631,7 @@ class FocalPlaneFWHMPlotter:
         )
 
     def makeTitle(self, visitRecord: DimensionRecord) -> str:
-        """Create the title for the FWHM Focal Plane plot inc mining the EFD.
+        """Create the title for the FWHM Focal Plane plot, including EFD data.
 
         Parameters
         ----------
@@ -660,7 +660,7 @@ class FocalPlaneFWHMPlotter:
             expRecord = self.redisHelper.getExpRecordFromQueue(self.queueName)
             if expRecord is not None:
                 t0 = time()
-                self.log.info(f"Making for FWHMFocalPlane plot for visitId {expRecord.id}")
+                self.log.info(f"Making FWHMFocalPlane plot for visitId {expRecord.id}")
                 self.plotAndUpload(expRecord)
                 t1 = time()
                 self.log.info(f"Finished making FWHMFocalPlane plot in {(t1 - t0):.2f}s for {expRecord.id}")
@@ -710,22 +710,13 @@ class FocusSweepAnalysis:
         self.fig, self.axes = makeFigureAndAxes()
 
     def makePlot(self, visitIds) -> None:
-        """Extract the exposure IDs from the byte string.
+        """Make and upload a focus-sweep parabola plot for a set of visits.
 
         Parameters
         ----------
-        visitId : `int`
-            The byte string containing the exposure IDs.
-
-        Returns
-        -------
-        expIds : `list` of `int`
-            A list of two exposure IDs extracted from the byte string.
-
-        Raises
-        ------
-        ValueError
-            If the number of exposure IDs extracted is not equal to 2.
+        visitIds : `list` [`int`]
+            The visit IDs that make up the focus sweep. The plot is keyed off
+            the most recent visit in the list.
         """
         visitIds = sorted(visitIds)
         lastVisit = visitIds[-1]
@@ -771,7 +762,7 @@ class FocusSweepAnalysis:
             visitIdsBytes = self.redisHelper.redis.lpop(self.queueName)
             if visitIdsBytes is not None:
                 visitIds = _extractExposureIds(visitIdsBytes, self.instrument)
-                self.log.info(f"Making for focus sweep plots for visitIds: {visitIds}")
+                self.log.info(f"Making focus sweep plots for visitIds: {visitIds}")
                 self.makePlot(visitIds)
             else:
                 sleep(0.5)
@@ -840,7 +831,7 @@ class RadialPlotter:
             expRecord = self.redisHelper.getExpRecordFromQueue(self.queueName)
             if expRecord is not None:
                 t0 = time()
-                self.log.info(f"Making for radial plot for {expRecord.id}")
+                self.log.info(f"Making radial plot for {expRecord.id}")
                 self.plotAndUpload(expRecord)
                 t1 = time()
                 self.log.info(f"Finished making radial plot in {(t1 - t0):.2f}s for {expRecord.id}")
