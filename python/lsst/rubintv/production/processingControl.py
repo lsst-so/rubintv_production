@@ -45,7 +45,7 @@ from lsst.daf.butler import (
     MissingCollectionError,
     Registry,
 )
-from lsst.daf.butler.registry.interfaces import DatabaseConflictError  # TODO: DM-XXXXX fix this import
+from lsst.daf.butler.registry import ConflictingDefinitionError
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.obs.lsst import LsstCam
 from lsst.pex.config.configurableField import ConfigurableInstance
@@ -218,7 +218,7 @@ def defineVisit(butler: Butler, expRecord: DimensionRecord) -> None:
         task = DefineVisitsTask(config=config, butler=butler)
         try:
             task.run([{"exposure": expRecord.id}], collections=butler.collections)
-        except DatabaseConflictError:
+        except ConflictingDefinitionError:
             log = logging.getLogger("lsst.rubintv.production.processControl.defineVisit")
             log.warning(
                 f"Failed to define visit for {expRecord.id} due to a conflict error. This is likely"
