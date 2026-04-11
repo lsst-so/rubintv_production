@@ -131,22 +131,13 @@ class OneOffProcessor(BaseButlerChannel):
         super().__init__(
             locationConfig=locationConfig,
             butler=butler,
-            # TODO: DM-43764 this shouldn't be necessary on the
-            # base class after this ticket, I think.
-            detectors=None,
-            dataProduct=processingStage,
-            # TODO: DM-43764 should also be able to fix needing
-            # channelName when tidying up the base class. Needed
-            # in some contexts but not all. Maybe default it to
-            # ''?
-            channelName="",
             podDetails=podDetails,
             doRaise=doRaise,
             addUploader=True,
         )
+        self.dataProduct = processingStage
         self.instrument = instrument
         self.butler = butler
-        self.podDetails = podDetails
         self.detector = detectorNumber
         self.shardsDirectory = shardsDirectory
         self.processingStage = processingStage

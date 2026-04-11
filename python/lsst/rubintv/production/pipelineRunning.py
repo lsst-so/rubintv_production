@@ -166,19 +166,11 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         super().__init__(
             locationConfig=locationConfig,
             butler=butler,
-            # TODO: DM-43764 this shouldn't be necessary on the
-            # base class after this ticket, I think.
-            detectors=None,
-            dataProduct=awaitsDataProduct,
-            # TODO: DM-43764 should also be able to fix needing
-            # channelName when tidying up the base class. Needed
-            # in some contexts but not all. Maybe default it to
-            # ''?
-            channelName="",
             podDetails=podDetails,
             doRaise=doRaise,
             addUploader=False,  # pipeline running pods don't upload directly
         )
+        self.dataProduct = awaitsDataProduct
         self.instrument = instrument
         self.butler = butler
         self.step = step
