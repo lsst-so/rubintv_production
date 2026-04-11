@@ -360,7 +360,7 @@ class ConsDBPopulator:
         if createRows:
             self._createExposureRow(expRecord, allowUpdate=allowUpdate)
             self._createCcdExposureRows(expRecord, allowUpdate=allowUpdate)
-            print(f"Populated tables for exposure and ccdexposure for {expRecord.instrument}+{expRecord.id})")
+            print(f"Populated tables for exposure and ccdexposure for {expRecord.instrument}+{expRecord.id}")
 
         detectorNums = getDetectorIds(expRecord.instrument)
         nFillled = 0
@@ -393,7 +393,7 @@ class ConsDBPopulator:
         visits = visitSummary["visit"]
         visit = visits[0]
         assert all(v == visit for v in visits)  # this has to be true, but let's be careful
-        visit = int(visit)  # must be python into not np.int64
+        visit = int(visit)  # must be python int not np.int64
 
         values: dict[str, int | float] = {}
         for summaryKey, consDbKeyNoSuffix in itertools.chain(
@@ -455,12 +455,14 @@ class ConsDBPopulator:
         table : `str`
             The table name within the instrument schema (e.g.,
             "visit1_quicklook").
-        values : `dict[str, int | float | str]`
+        values : `dict` [`str`, `int` or `float`]
             Mapping of consDB column names to values to write. Values are
             coerced to the database column types using the table schema; NaN
             values are dropped.
-        visitOrExposureId : `int`
-            The visit or exposure identifier, i.e. the row in the table.
+        dayObs : `int`
+            The dayObs of the row to populate.
+        seqNum : `int`
+            The seqNum of the row to populate.
         allowUpdate : `bool`, optional
             If True, allow updating existing rows in the table. An error is
             raised if False and a value exists.
@@ -473,7 +475,7 @@ class ConsDBPopulator:
 
         if not self._shouldInsert():  # ugly but need to check this before accessing the schema
             location = self.locationConfig.location
-            logger.info(f"Skipping consDB insert at {location} for {instrument}.visit1_quicklook")
+            logger.info(f"Skipping consDB insert at {location} for {instrument}.{table}")
             return
 
         schema = self.client.schema(instrument.lower(), table)

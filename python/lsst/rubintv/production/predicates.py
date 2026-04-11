@@ -108,7 +108,7 @@ def getDoRaise() -> bool:
 
 
 def isDayObsContiguous(dayObs: int, otherDayObs: int) -> bool:
-    """Check if two dayObs integers are coniguous or not.
+    """Check if two dayObs integers are contiguous or not.
 
     DayObs take forms like 20220727 and therefore don't trivially compare.
 
@@ -198,8 +198,9 @@ def isWepImage(expRecord: DimensionRecord) -> bool:
 
     Returns
     -------
-    isCalibration : `bool`
-        ``True`` if the exposure is a calibration exposure, else ``False``.
+    isWepImage : `bool`
+        ``True`` if the exposure is destined for the WEP pipeline, else
+        ``False``.
     """
     return expRecord.observation_type.lower() == "cwfs"
 
@@ -254,7 +255,7 @@ def isFamPipeline(pipelineGraph: PipelineGraph) -> bool:
 
     Parameters
     ----------
-    pipelineGraph : `lsst.daf.butler.PipelineGraph`
+    pipelineGraph : `lsst.pipe.base.PipelineGraph`
         The pipeline graph to check.
 
     Returns

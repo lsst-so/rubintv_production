@@ -247,19 +247,19 @@ def getExpRecordFromVisitRecord(visitRecord: DimensionRecord, butler: Butler) ->
 
 
 def getVisitRecordFromExpRecord(expRecord: DimensionRecord, butler: Butler) -> DimensionRecord:
-    """Get the exposure record corresponding to a visit record.
+    """Get the visit record corresponding to an exposure record.
 
     Parameters
     ----------
-    visitRecord : `lsst.daf.butler.DimensionRecord`
-        The visit record to get the exposure record for.
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record to get the visit record for.
     butler : `lsst.daf.butler.Butler`
-        The butler to use to retrieve the exposure record.
+        The butler to use to retrieve the visit record.
 
     Returns
     -------
-    expRecord : `lsst.daf.butler.DimensionRecord`
-        The exposure record corresponding to the visit record.
+    visitRecord : `lsst.daf.butler.DimensionRecord`
+        The visit record corresponding to the exposure record.
     """
     if expRecord.can_see_sky is not True:
         raise ValueError("Cannot get visit record from non-sky exposure record")
@@ -271,11 +271,11 @@ def getVisitRecordFromExpRecord(expRecord: DimensionRecord, butler: Butler) -> D
 
 
 def getExpRecordFromId(expOrVisitId: int, instrument: str, butler: Butler) -> DimensionRecord:
-    """Get the exposure record corresponding to a visit record.
+    """Get the exposure record for an exposure ID (or matching visit ID).
 
     Parameters
     ----------
-    expOrVisitId : `int``
+    expOrVisitId : `int`
         The exposure ID or visit ID to get the exposure record for.
     instrument : `str`
         The instrument name.
@@ -285,7 +285,7 @@ def getExpRecordFromId(expOrVisitId: int, instrument: str, butler: Butler) -> Di
     Returns
     -------
     expRecord : `lsst.daf.butler.DimensionRecord`
-        The exposure record corresponding to the visit record.
+        The exposure record matching the given identifier.
     """
     (expR,) = butler.registry.queryDimensionRecords("exposure", exposure=expOrVisitId, instrument=instrument)
     return expR
@@ -303,14 +303,12 @@ def getCurrentOutputRun(butler: Butler, locationConfig: LocationConfig, instrume
         The location configuration.
     instrument : `str`
         The instrument name.
-    ignoreCiFlag : `bool`, optional
-        If ``True``, ignore the CI environment flag when determining the output
-        collection.
 
     Returns
     -------
-    outputCollection : `str`
-        The current output collection for the given instrument.
+    outputCollection : `str` or `None`
+        The current output collection for the given instrument, or ``None``
+        when running under scons (where there is no real chain to query).
     """
     if runningScons():
         return None

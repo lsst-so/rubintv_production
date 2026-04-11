@@ -980,7 +980,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             rowSums.append(np.sqrt(np.sum(zkFwhm**2)))
 
         average_result = np.nanmean(rowSums)
-        residual = 1.06 * np.log(1 + average_result)  # adjustement per John Franklin's paper
+        residual = 1.06 * np.log(1 + average_result)  # adjustment per John Franklin's paper
 
         outputDict = {"Residual AOS FWHM": f"{residual:.2f}"}
 
@@ -1015,7 +1015,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 consDbValues,
                 expRecord.day_obs,
                 expRecord.seq_num,
-                True,  # insert into existing an row requires allowUpdate
+                True,  # inserting into an existing row requires allowUpdate
             )
         except Exception as e:
             self.log.error(

@@ -63,13 +63,15 @@ def getBasePath(locationConfig: LocationConfig, suffix: str = "") -> ResourcePat
 
     Parameters
     ----------
-    suffix : `str`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
+        The location config, used to pick the per-site scratch path.
+    suffix : `str`, optional
         A suffix to append to the base path. This should be a relative path
         that will be appended to the base path.
 
     Returns
     -------
-    ResourcePath
+    basePath : `lsst.resources.ResourcePath`
         The resource path for the rubintv_production package.
     """
     site = getSite()
@@ -92,13 +94,16 @@ def listDir(resourcePath: ResourcePath, includeSubDirs: bool = False) -> list[Re
 
     Parameters
     ----------
-    resourcePath : `ResourcePath`
+    resourcePath : `lsst.resources.ResourcePath`
         The resource path to list.
+    includeSubDirs : `bool`, optional
+        If ``True``, recurse into sub-directories. If ``False``, only list the
+        files in the top-level directory.
 
     Returns
     -------
-    list[str]
-        A list of the contents of the directory.
+    paths : `list` [`lsst.resources.ResourcePath`]
+        A list of the file paths in the directory.
     """
     if not resourcePath.isdir():
         raise ValueError(f"{resourcePath} is not (necessarily) a directory: got {resourcePath.isdir()=}")
@@ -118,13 +123,13 @@ def getSubDirs(resourcePath: ResourcePath) -> list[str]:
 
     Parameters
     ----------
-    resourcePath : `ResourcePath`
+    resourcePath : `lsst.resources.ResourcePath`
         The resource path to list.
 
     Returns
     -------
-    list[ResourcePath]
-        A list of the subdirectories in the directory.
+    subDirs : `list` [`str`]
+        The names of the immediate subdirectories of the directory.
     """
     if not resourcePath.isdir():
         raise ValueError(f"{resourcePath} is not (necessarily) a directory: got {resourcePath.isdir()=}")
@@ -139,8 +144,11 @@ def rmtree(resourcePath: ResourcePath, raiseOnError: bool = False) -> None:
 
     Parameters
     ----------
-    resourcePath : `ResourcePath`
+    resourcePath : `lsst.resources.ResourcePath`
         The resource path to remove.
+    raiseOnError : `bool`, optional
+        If ``True``, raise on the first failure. If ``False``, log a warning
+        for each failed delete and continue.
     """
     log = logging.getLogger(__name__)
     resources = listDir(resourcePath, includeSubDirs=True)

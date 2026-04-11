@@ -94,7 +94,7 @@ def getGlobPatternForShardedData(
     Parameters
     ----------
     path : `str`
-        The path find the sharded data.
+        The path to find the sharded data.
     dataSetName : `str`
         The dataSetName to find the dataIds for, e.g. binnedImage.
     instrument : `str`
@@ -103,6 +103,11 @@ def getGlobPatternForShardedData(
         The dayObs to find the sharded data for.
     seqNum : `int`
         The seqNum to find the sharded data for.
+
+    Returns
+    -------
+    pattern : `str`
+        The glob pattern matching all shards for the given dataId.
     """
     seqNumFormatted = f"{seqNum:0{SEQNUM_PADDING}}" if seqNum != "*" else "*"
     return SHARDED_DATA_TEMPLATE.format(
@@ -158,7 +163,7 @@ def writeMetadataShard(path: str, dayObs: int, mdDict: dict[int, dict[str, Any]]
 
 
 def writeExpRecordMetadataShard(expRecord: DimensionRecord, metadataShardPath: str) -> None:
-    """Write the exposure record metedata to a shard.
+    """Write the exposure record metadata to a shard.
 
     Parameters
     ----------
@@ -346,8 +351,9 @@ def getShardedData(
 
     Raises
     ------
-    TypeError
-        Raised if dataDict is not a dictionary.
+    RuntimeError
+        Raised if more than ``nExpected`` shard files are found, since the set
+        of files to combine is then ambiguous.
     """
     pattern = getGlobPatternForShardedData(
         path=path, instrument=instrument, dataSetName=dataSetName, dayObs=dayObs, seqNum=seqNum

@@ -297,10 +297,10 @@ class RubinTvBackgroundService:
             self.dayObs = getCurrentDayObsInt()
 
     def runEndOfDayManual(self, dayObs: int) -> None:
-        """Manually run the end of day routine for a specific dayObs by hand.
+        """Manually run the end of day routine for a specific dayObs.
 
-        Useful for if the final catchup and end of day animation/clearup have
-        failed to run and this needs to be redone by manually.
+        Useful when the final catchup and end-of-day animation/cleanup have
+        failed to run and need to be redone by hand.
 
         Parameters
         ----------

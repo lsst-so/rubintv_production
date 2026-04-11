@@ -65,7 +65,7 @@ def setupSentry() -> None:
 
 
 def checkRubinTvExternalPackages(exitIfNotFound: bool = True, logger: Logger | None = None) -> None:
-    """Check whether the prerequsite installs for RubinTV are present.
+    """Check whether the prerequisite installs for RubinTV are present.
 
     Some packages which aren't distributed with any metapackage are required
     to run RubinTV. This function is used to check if they're present so
