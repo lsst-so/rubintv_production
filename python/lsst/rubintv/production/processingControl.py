@@ -55,7 +55,7 @@ from .butlerQueries import getExpIdOrVisitId
 from .locationConfig import LocationConfig
 from .payloads import Payload, pipelineGraphToBytes
 from .podDefinition import PodDetails, PodFlavor
-from .predicates import isCalibration, isWepImage, raiseIf, runningCI
+from .predicates import isCalibration, isWepImage, runningCI
 from .redisUtils import ExposureProcessingInfo, RedisHelper
 from .shardIo import getShardPath, writeExpRecordMetadataShard, writeMetadataShard
 from .timing import BoxCarTimer
@@ -851,30 +851,6 @@ class HeadProcessController:
                     self.instrument, self.focalPlaneControl.getDisabledDetIds(excludeCwfs=True)
                 )
 
-    def getSingleWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails | None:
-        freeWorkers = self.redisHelper.getFreeWorkers(instrument=instrument, podFlavor=podFlavor)
-        freeWorkers = sorted(freeWorkers)  # the lowest number in the stack will be at the top alphabetically
-        if freeWorkers:
-            return freeWorkers[0]
-
-        # We have no free workers of this type, so send to a busy worker and
-        # warn
-
-        # TODO: until we have a real backlog queue just put it on the last
-        # worker in the stack.
-        busyWorkers = self.redisHelper.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
-        try:
-            if len(busyWorkers) == 0:
-                self.log.error(f"No free or busy workers available for {podFlavor=}, cannot dispatch work.")
-                return None
-
-            busyWorker = busyWorkers[-1]
-            self.log.warning(f"No free workers available for {podFlavor=}, sending work to {busyWorker=}")
-            return busyWorker
-        except IndexError as e:
-            raiseIf(self.doRaise, e, self.log, msg=f"No workers AT ALL for {podFlavor=}")
-            return None
-
     def getPipelineConfig(self, expRecord: DimensionRecord) -> tuple[bytes, PipelineGraph, str]:
         """Get the pipeline config for the given expRecord.
 
@@ -1184,7 +1160,7 @@ class HeadProcessController:
 
         self.log.info(f"Sending signal to one-off processor for {idStr}")
 
-        worker = self.getSingleWorker(expRecord.instrument, podFlavor=podFlavor)
+        worker = self.redisHelper.getSingleWorker(expRecord.instrument, podFlavor=podFlavor)
         if worker is None:
             self.log.error(f"No worker available for {podFlavor} for {idStr}")
             return
@@ -1241,7 +1217,7 @@ class HeadProcessController:
 
         # TODO: this abuse of Payload really needs improving
         payload = Payload(dataCoord, b"", dataProduct, who="SFM")
-        worker = self.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
+        worker = self.redisHelper.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
         if worker is None:
             self.log.warning(f"No workers AT ALL for {dataProduct} mosaic - should be impossible, check k8s")
             return
@@ -1256,7 +1232,7 @@ class HeadProcessController:
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record to dispatch the radial plot for.
         """
-        worker = self.getSingleWorker(self.instrument, PodFlavor.RADIAL_PLOTTER)
+        worker = self.redisHelper.getSingleWorker(self.instrument, PodFlavor.RADIAL_PLOTTER)
         if worker is None:
             self.log.error(f"No workers available for {PodFlavor.RADIAL_PLOTTER}, dropping radial plot")
             return
@@ -1350,7 +1326,7 @@ class HeadProcessController:
                         run=self.outputRun,
                         who=who,
                     )
-                    worker = self.getSingleWorker(self.instrument, podFlavour)
+                    worker = self.redisHelper.getSingleWorker(self.instrument, podFlavour)
                     if not worker:
                         self.log.warning(f"No worker available for {who} step1b")
                         continue
@@ -1426,7 +1402,7 @@ class HeadProcessController:
             payload = Payload(
                 [dataCoord], self.pipelines["SFM"].graphBytes["nightlyRollup"], run=self.outputRun, who="SFM"
             )
-            worker = self.getSingleWorker(self.instrument, PodFlavor.NIGHTLYROLLUP_WORKER)
+            worker = self.redisHelper.getSingleWorker(self.instrument, PodFlavor.NIGHTLYROLLUP_WORKER)
             if worker is None:
                 self.log.error("No free workers available for nightly rollup")
                 return False
@@ -1473,7 +1449,7 @@ class HeadProcessController:
         for dataId in completeIds:  # intExpId because mypy doesn't like reusing loop variables?!
             # TODO: this abuse of Payload really needs improving
             payload = Payload(dataId, b"", dataProduct, who="SFM")
-            worker = self.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
+            worker = self.redisHelper.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
             if worker is None:
                 self.log.error(f"No free workers available for {dataProduct} mosaic")
                 continue
