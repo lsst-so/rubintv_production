@@ -30,7 +30,6 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from astropy.time import Time
-from galsim.zernike import zernikeRotMatrix
 
 from lsst.daf.butler import (
     Butler,
@@ -54,6 +53,7 @@ from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.utils import getCameraFromInstrumentName
 from lsst.ts.ofc import OFCData
 
+from .aosRecipes import computeAosResidualFwhm, computeRotatedZernikesForConsDB
 from .baseChannels import BaseButlerChannel
 from .butlerQueries import (
     getCurrentOutputRun,
@@ -891,11 +891,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
     def postProcessCalcZernikes(self, quantum: Quantum) -> None:
         """Post-process the Zernike table to send results to ConsDB."""
-        # protect import to stop the whole package depending on ts_wep. If this
-        # becomes a problem we could copy the functions or just accept that RA
-        # needs T&S software.
-        from lsst.ts.wep.utils.zernikeUtils import makeDense
-
         try:
             dRef = quantum.outputs["zernikes"][0]
             zkTable = self.cachingButler.get(dRef)
@@ -905,12 +900,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 " but still merits a warning due to the failing quantum."
             )
             return
-
-        # *ideally* this would be pulled from maxconfig.nollIndices() but
-        # that's not possible here, but a) they never run above 28, and b)
-        # ConsDB only goes out that far, so we'd truncate there anyway, so we
-        # just hardcode it here.
-        MAX_NOLL_INDEX = 28
 
         # Get the physical rotation from the EFD. Ideally this would be pulled
         # from the ConsDB, but that's calculated elsewhere in RA, and although
@@ -922,11 +911,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             zkTable.meta = {}
         zkTable.meta["shutter_to_zernike_time"] = float((Time.now() - visitRecord.timespan.end).sec)
 
-        # NOTE: this recipe is copied and pasted to
-        # highLevelTools.backfillCcdVisit1QuicklookForDayAos - if
-        # that recipe is updated, this needs to be updated too
-        # TODO: refactor this for proper reuse and remove this note
-
         data = getEfdData(self.efdClient, "lsst.sal.MTRotator.rotation", expRecord=visitRecord)
         physicalRotation = np.nanmean(data["actualPosition"])
 
@@ -934,32 +918,12 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         assert detector is not None, "detector is None, this shouldn't be possible"
         detectorId: int = detector.id  # hence .id rather than .getId()
 
-        zkTable = zkTable[zkTable["label"] == "average"]
-        zkColsHere = zkTable.meta["opd_columns"]
-        nollIndicesHere = np.asarray(zkTable.meta["noll_indices"])
-        # Grab Zernike values, convert to dense array, save
-        zkSparse = zkTable[zkColsHere].to_pandas().values[0]
-        zkDense = makeDense(zkSparse, nollIndicesHere, MAX_NOLL_INDEX)
-        rotationMatrix = zernikeRotMatrix(MAX_NOLL_INDEX, -np.deg2rad(physicalRotation))
-        # we only track z4 upwards and ConsDB only has slots for z4 to z28
-        zernikeValues: np.ndarray = zkDense / 1e3 @ rotationMatrix[4:, 4:]
-
-        consDbValues: dict[str, float] = {}
-        for i in range(len(zernikeValues)):  # these start at z4 and are dense so contain zeros
-            value = float(zernikeValues[i])  # make a real float for ConsDB
-            if value == 0:  # skip the ones which were zero due to sparseness so they're null in the DB
-                continue
-            consDbValues[f"z{i + 4}"] = float(zernikeValues[i])
+        consDbValues = computeRotatedZernikesForConsDB(zkTable, physicalRotation)
 
         # consDB validates the location and only inserts if it's summit-like
         self.consDBPopulator.populateCcdVisitRowZernikes(visitRecord, detectorId, consDbValues)
 
     def postProcessAggregateZernikeTables(self, quantum: Quantum) -> None:
-        # protect import to stop the whole package depending on ts_wep. If this
-        # becomes a problem we could copy the functions or just accept that RA
-        # needs T&S software.
-        from lsst.ts.wep.utils import convertZernikesToPsfWidth, makeDense
-
         try:
             dRef = quantum.outputs["aggregateZernikesAvg"][0]
             zernikes = self.cachingButler.get(dRef)
@@ -975,36 +939,11 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             zernikes.meta = {}
         zernikes.meta["shutter_to_zernike_time"] = float((Time.now() - expRecord.timespan.end).sec)
 
-        rowSums = []
-
-        # NOTE: this recipe is copied and pasted to
-        # highLevelTools.backfillVisit1QuicklookForDayAos - if
-        # that recipe is updated, this needs to be updated too
-        # TODO: refactor this for proper reuse and remove this note
-
-        nollIndices = zernikes.meta["nollIndices"]
-        maxNollIndex = np.max(zernikes.meta["nollIndices"])
-        for row in zernikes:
-            zkOcs = row["zk_deviation_OCS"]
-            detector = row["detector"]
-            zkDense = makeDense(zkOcs, nollIndices, maxNollIndex)
-            zkDense -= self.ofcData.y2_correction[detector][: len(zkDense)]
-            zkFwhm = convertZernikesToPsfWidth(zkDense)
-            rowSums.append(np.sqrt(np.sum(zkFwhm**2)))
-
-        average_result = np.nanmean(rowSums)
-        residual = 1.06 * np.log(1 + average_result)  # adjustment per John Franklin's paper
+        residual, donutBlurFwhm = computeAosResidualFwhm(zernikes, self.ofcData)
 
         outputDict = {"Residual AOS FWHM": f"{residual:.2f}"}
-
-        donutBlurFwhm = float("nan")  # needs to be defined for lower block but nans are removed on send
-        if "estimatorInfo" in zernikes.meta and zernikes.meta["estimatorInfo"] is not None:
-            # if danish is run then fwhm is in the metadata, if TIE then it's
-            # not. danish models the width of the Kolmogorov profile needed to
-            # convolve with the geometric donut model (the optics) to match the
-            # donut. If AI_DONUT then "estimatorInfo" might not be present.
-            if donutBlurFwhm := zernikes.meta["estimatorInfo"].get("fwhm"):
-                outputDict["Donut Blur FWHM"] = f"{donutBlurFwhm:.2f}"
+        if not np.isnan(donutBlurFwhm):
+            outputDict["Donut Blur FWHM"] = f"{donutBlurFwhm:.2f}"
 
         labels = {"_" + k: "measured" for k in outputDict.keys()}
         outputDict.update(labels)
@@ -1020,7 +959,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             self.log.info(f"Sending donut blur {donutBlurFwhm:.2f} for {expRecord.id} to consDB")
             # visit_id is required for updates
             consDbValues = {"aos_fwhm": residual, "visit_id": expRecord.id}
-            if donutBlurFwhm:
+            if not np.isnan(donutBlurFwhm):
                 consDbValues["donut_blur_fwhm"] = donutBlurFwhm
             self.consDBPopulator.populateArbitrary(
                 expRecord.instrument,
