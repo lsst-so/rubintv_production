@@ -22,6 +22,7 @@
 from lsst.daf.butler import Butler
 from lsst.rubintv.production.aos import DonutLauncher
 from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
+from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
@@ -48,14 +49,18 @@ print(f"Running donut launcher at {locationConfig.location}")
 
 inputCollection = f"{instrument}/defaults"
 outputCollection = "u/saluser/ra_wep_testing3"
-queueName = f"{instrument}-FROM-OCS_DONUTPAIR"
-donutLauncher = DonutLauncher(  # XXX still needs type annotations and to move to using podDetails
+podDetails = PodDetails(
+    instrument=instrument,
+    podFlavor=PodFlavor.DONUT_LAUNCHER,
+    detectorNumber=None,
+    depth=None,
+)
+donutLauncher = DonutLauncher(
     butler=butler,
     locationConfig=locationConfig,
     inputCollection=inputCollection,
     outputCollection=outputCollection,
-    instrument=instrument,
-    queueName=queueName,
+    podDetails=podDetails,
     metadataShardPath=locationConfig.comCamSimAosMetadataShardPath,
 )
 donutLauncher.run()

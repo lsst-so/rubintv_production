@@ -89,51 +89,82 @@ if TYPE_CHECKING:
 class DonutLauncher:
     """The DonutLauncher, for automatically launching donut processing.
 
+    NOTE: this class has been effectively dead since ComCam was
+    decommissioned. The ``LSSTComCam`` and ``LSSTComCamSim`` launcher
+    scripts in ``scripts/`` still construct it, but the
+    ``locationConfig.getAosPipelineFile`` call below references a
+    method that no longer exists on ``LocationConfig`` — anyone who
+    actually invoked the launcher would hit an ``AttributeError`` at
+    construction. Resurrecting it for any future shellable WEP
+    processing will require deciding what pipeline file to point at
+    for the new instrument and either restoring ``getAosPipelineFile``
+    or switching to one of the per-mode AOS pipeline-file properties
+    that are still on ``LocationConfig``.
+
+    Consumes exposure-ID pairs from an OCS-pushed Redis list (the wire
+    contract is ``f"{instrument}-FROM-OCS_DONUTPAIR"``) and shells out
+    a ``pipetask run`` for each pair. The ``podDetails`` argument is
+    used for identity, logging and operational monitoring; the OCS
+    queue name is computed from ``podDetails.instrument`` so the wire
+    contract lives here rather than in every launcher script.
+
     Parameters
     ----------
     butler : `lsst.daf.butler.Butler`
         The Butler object used for data access.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
     inputCollection : `str`
         The name of the input collection.
     outputCollection : `str`
         The name of the output collection.
-    instrument : `str`
-        The instrument.
-    queueName : `str`
-        The name of the redis queue to consume from.
+    podDetails : `lsst.rubintv.production.podDefinition.PodDetails`
+        The pod identity. Must have ``podFlavor=PodFlavor.DONUT_LAUNCHER``.
+        Carries the instrument name used to derive the OCS queue.
+    metadataShardPath : `str`
+        The path to write metadata shards to.
     allowMissingDependencies : `bool`, optional
         Can the class be instantiated when there are missing dependencies?
     """
 
+    runningProcesses: dict[int, subprocess.Popen[bytes]]
+
     def __init__(
         self,
         *,
-        butler,
-        locationConfig,
-        inputCollection,
-        outputCollection,
-        instrument,
-        queueName,
-        metadataShardPath,
-        allowMissingDependencies=False,
-    ):
+        butler: Butler,
+        locationConfig: LocationConfig,
+        inputCollection: str,
+        outputCollection: str,
+        podDetails: PodDetails,
+        metadataShardPath: str,
+        allowMissingDependencies: bool = False,
+    ) -> None:
         self.butler = butler
         self.locationConfig = locationConfig
         self.inputCollection = inputCollection
         self.outputCollection = outputCollection
-        self.queueName = queueName
+        self.podDetails = podDetails
+        self.instrument: str = podDetails.instrument
+        # OCS-pushed queue: this is the wire contract with the OCS team.
+        # Centralised here rather than in each launcher script so a
+        # rename happens in one place.
+        self.queueName: str = f"{self.instrument}-FROM-OCS_DONUTPAIR"
         self.metadataShardPath = metadataShardPath
         self.allowMissingDependencies = allowMissingDependencies
 
-        self.instrument = instrument
-        self.pipelineFile = locationConfig.getAosPipelineFile(instrument)
-        self.repo = locationConfig.comCamButlerPath.replace("/butler.yaml", "")
-        self.log = logging.getLogger("lsst.rubintv.production.DonutLauncher")
+        # See the class docstring NOTE: ``getAosPipelineFile`` no
+        # longer exists on LocationConfig and this would AttributeError
+        # if anyone tried to instantiate the launcher. Left in place
+        # so the dead code remains visibly dead.
+        self.pipelineFile: str = locationConfig.getAosPipelineFile(  # type: ignore[attr-defined]
+            self.instrument
+        )
+        self.repo: str = locationConfig.comCamButlerPath.replace("/butler.yaml", "")
+        self.log = logging.getLogger(f"lsst.rubintv.production.aos.DonutLauncher.{self.instrument}")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
         self.checkSetup()
-        self.numCoresToUse = 9
+        self.numCoresToUse: int = 9
 
         self.runningProcesses = {}  # dict of running processes keyed by PID
         self.lock = threading.Lock()
@@ -692,16 +723,23 @@ class FocalPlaneFWHMPlotter:
 class FocusSweepAnalysis:
     """The FocusSweepAnalysis, for automatically plotting focus sweep data.
 
+    Consumes a list of visit IDs from an OCS-pushed Redis list (the
+    wire contract is ``f"{instrument}-FROM-OCS_FOCUSSWEEP"``) and makes
+    a focus-sweep parabola plot for each. The ``podDetails`` argument
+    is used for identity, logging and operational monitoring; the OCS
+    queue name is computed from ``podDetails.instrument`` so the wire
+    contract lives here rather than in every launcher script.
+
     Parameters
     ----------
     butler : `lsst.daf.butler.Butler`
         The Butler object used for data access.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
-    queueName : `str`
-        The name of the redis queue to consume from.
-    instrument : `str`
-        The instrument.
+    podDetails : `lsst.rubintv.production.podDefinition.PodDetails`
+        The pod identity. Must have
+        ``podFlavor=PodFlavor.FOCUS_SWEEP_ANALYZER``. Carries the
+        instrument name used to derive the OCS queue.
     metadataShardPath : `str`
         The path to write metadata shards to.
     """
@@ -711,20 +749,22 @@ class FocusSweepAnalysis:
         *,
         butler: Butler,
         locationConfig: LocationConfig,
-        queueName: str,
-        instrument: str,
+        podDetails: PodDetails,
         metadataShardPath: str,
-    ):
+    ) -> None:
         self.butler = butler
         self.locationConfig = locationConfig
-        self.queueName = queueName
+        self.podDetails = podDetails
+        self.instrument: str = podDetails.instrument
+        # OCS-pushed queue: see DonutLauncher for the rationale for
+        # putting the wire contract here.
+        self.queueName: str = f"{self.instrument}-FROM-OCS_FOCUSSWEEP"
         self.metadataShardPath = metadataShardPath
 
-        self.instrument = instrument
         self.camera = getCameraFromInstrumentName(self.instrument)
-        self.log = logging.getLogger("lsst.rubintv.production.aos.FocusSweepAnalysis")
+        self.log = logging.getLogger(f"lsst.rubintv.production.aos.FocusSweepAnalysis.{self.instrument}")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
-        self.s3Uploader = MultiUploader()
+        self.s3Uploader: MultiUploader = MultiUploader()
         self.consDbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
         self.efdClient = makeEfdClient()
         self.fig = Figure(figsize=(12, 9))
