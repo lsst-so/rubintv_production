@@ -25,10 +25,10 @@ import os
 import tempfile
 from typing import TYPE_CHECKING, Any, cast
 
+import matplotlib as mpl
 import matplotlib.colors as colors
 import numpy as np
 from astropy.io import fits
-from matplotlib import cm
 from matplotlib.figure import Figure
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
@@ -573,8 +573,7 @@ def renderMosaicImage(
         data = im.array
         ax = figureOrDisplay.gca()
         ax.clear()
-        # XXX why is this type ignore necessary? Can I fix this?
-        cmap = cm.gray  # type: ignore
+        cmap = mpl.colormaps["gray"]
         norm: Normalize
         match scalingOption:
             case "asinh":
