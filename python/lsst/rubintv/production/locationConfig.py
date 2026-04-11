@@ -73,7 +73,7 @@ class LocationConfig:
         self._config
         self.plotPath
 
-    def _checkDir(self, dirName: str, createIfMissing=True) -> None:
+    def _checkDir(self, dirName: str, createIfMissing: bool = True) -> None:
         """Check that a directory exists, optionally creating if it does not.
 
         Parameters
@@ -111,7 +111,7 @@ class LocationConfig:
                 msg += " and could not be created."
             raise RuntimeError(msg)
 
-    def _checkFile(self, filename):
+    def _checkFile(self, filename: str) -> None:
         """Check that a file exists.
 
         Parameters
@@ -140,8 +140,7 @@ class LocationConfig:
     @cached_property
     def scratchPath(self) -> str:
         """The scratch path for the location."""
-        getShardPath = self._config["scratchPath"]
-        return getShardPath
+        return self._config["scratchPath"]
 
     @cached_property
     def auxtelButlerPath(self):

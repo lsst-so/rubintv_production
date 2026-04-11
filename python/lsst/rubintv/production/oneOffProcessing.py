@@ -249,7 +249,6 @@ class OneOffProcessor(BaseButlerChannel):
             shape = result.psfEquatorialShape
             fwhm = np.nan
             if shape is not None:
-                SIGMA2FWHM = np.sqrt(8 * np.log(2))
                 ellipse = ellipses.SeparableDistortionDeterminantRadius(shape)
                 fwhm = SIGMA2FWHM * ellipse.getDeterminantRadius()
 
@@ -838,6 +837,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
     def runImexam(self, exp: Exposure, expRecord: DimensionRecord) -> None:
         if expRecord.observation_type in ["bias", "dark", "flat"]:
             self.log.info(f"Skipping running imExam on calib image: {expRecord.observation_type}")
+            return
         self.log.info(f"Running imexam on {expRecord.dataId}")
 
         try:

@@ -701,7 +701,7 @@ class FocusSweepAnalysis:
 
         self.instrument = instrument
         self.camera = getCameraFromInstrumentName(self.instrument)
-        self.log = logging.getLogger("lsst.rubintv.production.aos.PsfAzElPlotter")
+        self.log = logging.getLogger("lsst.rubintv.production.aos.FocusSweepAnalysis")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
         self.s3Uploader = MultiUploader()
         self.consDbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
@@ -724,7 +724,7 @@ class FocusSweepAnalysis:
         # blocking call which waits for RA to announce that visit level info
         # is in consDB.
         self.log.info(f"Waiting for PSF measurements for last image {lastVisit}")
-        self.redisHelper.waitForResultInConsdDb(
+        self.redisHelper.waitForResultInConsDb(
             self.instrument, f"cdb_{self.instrument.lower()}.visit1_quicklook", lastVisit, timeout=90
         )
         self.log.info(f"Finished waiting for PSF measurements for last image {lastVisit}")

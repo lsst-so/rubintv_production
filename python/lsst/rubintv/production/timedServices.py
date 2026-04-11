@@ -477,8 +477,8 @@ class TmaTelemetryChannel(TimedMetadataServer):
         md["M1M3 ICS Hardpoint Mean Forces"] = m1m3ICSHPMeanForces  # dict
 
         # must set string value in dict only after doing the max of the values
-        m1m3ICSHPMaxForces["DISPLAY_VALUE"] = "📖" if m1m3ICSHPMaxForces else ""
-        m1m3ICSHPMeanForces["DISPLAY_VALUE"] = "📖" if m1m3ICSHPMeanForces else ""
+        m1m3ICSHPMaxForces["DISPLAY_VALUE"] = "📖"
+        m1m3ICSHPMeanForces["DISPLAY_VALUE"] = "📖"
 
         rowData = {event.seqNum: md}
         writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
@@ -690,6 +690,7 @@ class AllNightAnimator:
                 if nFiles > lastAnimatedCount:
                     self.log.info(f"Creating new movie with {nFiles} frames")
                     self.animateDir(pngPath)
+                    lastAnimatedCount = nFiles
 
                 sleep(self.cadenceSeconds)
 

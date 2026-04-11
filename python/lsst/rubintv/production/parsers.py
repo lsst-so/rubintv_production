@@ -107,7 +107,7 @@ def sanitizeNans(obj: Any) -> Any:
         return obj
 
 
-def safeJsonOpen(filename: str, timeout=0.3) -> str:
+def safeJsonOpen(filename: str, timeout: float = 0.3) -> Any:
     """Open a JSON file, waiting for it to be populated if necessary.
 
     JSON doesn't like opening zero-byte files, so try to open it, and if it's

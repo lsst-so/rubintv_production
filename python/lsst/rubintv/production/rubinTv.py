@@ -625,7 +625,7 @@ class NightReportChannel(BaseButlerChannel):
                     dayObs=self.dayObs,
                     filename=altAzCoveragePlotFile,
                     plotGroup="Coverage",
-                    uploadsAs="alt-az.png",
+                    uploadAs="alt-az.png",
                 )
 
                 # Add text items here

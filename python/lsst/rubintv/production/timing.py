@@ -134,7 +134,7 @@ class BoxCarTimer:
         is started.
     """
 
-    def __init__(self, length: int):
+    def __init__(self, length: int | None):
         self._buffer: Deque[float] = deque(maxlen=length)
         self.lastTime: float | None = None
         self.paused = False
@@ -161,8 +161,8 @@ class BoxCarTimer:
             raise RuntimeError("Timer is paused. Cannot record lap.")
         currentTime = time.time()
         if self.lastTime is not None:
-            elapsed_time = currentTime - self.lastTime
-            self._buffer.append(elapsed_time)
+            elapsedTime = currentTime - self.lastTime
+            self._buffer.append(elapsedTime)
         self.lastTime = currentTime
         self.totalLaps += 1
 

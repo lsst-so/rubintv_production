@@ -21,7 +21,7 @@
 
 from __future__ import annotations
 
-__all__ = "ClusterManager"
+__all__ = ["ClusterManager"]
 
 
 import json
@@ -638,7 +638,7 @@ class ClusterManager:
 
         return backlogWorker, False
 
-    def getRecuitableWorkers(self, status: ClusterStatus, onlyFreeWorkers: bool = True) -> set[PodDetails]:
+    def getRecruitableWorkers(self, status: ClusterStatus, onlyFreeWorkers: bool = True) -> set[PodDetails]:
         """Get pods that are currently recruitable for work.
         Recruitable pods are those that have been deselected from processing
         work, and are therefore temporarily available for other work.
@@ -698,7 +698,7 @@ class ClusterManager:
         """
         freeBacklogWorkers = set(status.flavorStatuses[PodFlavor.BACKLOG_WORKER].freeWorkers)
         inaccessibleWorkers = self.getInaccessiblePods(status)
-        recruitableWorkers = self.getRecuitableWorkers(status)
+        recruitableWorkers = self.getRecruitableWorkers(status)
 
         freeBacklogWorkers = freeBacklogWorkers | inaccessibleWorkers | recruitableWorkers
 

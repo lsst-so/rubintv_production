@@ -944,7 +944,7 @@ class RedisHelper:
         # landed in that time
         self.redis.expire(announcementKey, CONSDB_ANNOUNCE_EXPIRY_TIME)
 
-    def waitForResultInConsdDb(self, instrument: str, table: str, obsId: int, timeout=None) -> bool:
+    def waitForResultInConsDb(self, instrument: str, table: str, obsId: int, timeout=None) -> bool:
         """Wait for an item to be available in consDB.
 
         NB: this function is only appropriate for items less than 2 days old,
@@ -973,12 +973,12 @@ class RedisHelper:
 
         field = getConsDbAnnouncementField(instrument, table, obsId)
 
-        start_time = time.time()
+        startTime = time.time()
         while True:
             if self.redis.hexists(announcementKey, field):
                 return True
 
-            if timeout is not None and (time.time() - start_time) > timeout:
+            if timeout is not None and (time.time() - startTime) > timeout:
                 return False
 
             time.sleep(0.1)  # Small sleep to prevent tight loop
@@ -1004,7 +1004,7 @@ class RedisHelper:
             return None
         return expRecordFromJson(expRecordJson, self.locationConfig)
 
-    def enqueuePayload(self, payload: Payload, destinationPod: PodDetails, top=True) -> None:
+    def enqueuePayload(self, payload: Payload, destinationPod: PodDetails, top: bool = True) -> None:
         """Send a unit of work to a specific worker-queue.
 
         Parameters
