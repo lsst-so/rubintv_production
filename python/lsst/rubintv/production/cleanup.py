@@ -71,10 +71,6 @@ DATASETS_TO_CLEAN = (
     "verifyDarkIsr_metadata",
     "postISRCCD",
 )
-# TODO: switch to get collection chain from
-# self.locationConfig.getOutputChain("LSSTCam") once unit test merge is done.
-# Note the trailing slash - not sure how important it is, but check
-COLLECTION_CHAIN = "LSSTCam/runs/quickLook/"
 BATCHSIZE = 5000
 SPEED_FACTOR = 0.5  # 0.5 = half-speed, 0.33 = one-third etc
 SMALL_FILE_KEEP_DAYS = 14
@@ -248,7 +244,11 @@ class TempFileCleaner:
             return 0
 
         totalDeletions = 0
-        collections = self.butler.registry.queryCollections(f"*{COLLECTION_CHAIN}*")
+        # Trailing slash on the chain pattern is intentional: it filters
+        # to children of the chain (e.g. per-day runs) rather than the
+        # bare chain root itself.
+        outputChain = self.locationConfig.getOutputChain("LSSTCam")
+        collections = self.butler.registry.queryCollections(f"*{outputChain}/*")
         for dataset in datasetsToClean:
             for collection in collections:
                 where = f"exposure.day_obs<={deleteBefore} AND instrument='LSSTCam'"
