@@ -387,33 +387,6 @@ def writeAosConfigShards(
         )
 
 
-def getNightlyRollupTriggerTask(pipelineFile: str) -> str:
-    """Get the last task that runs in step1b, to know when to trigger rollup.
-
-    This is the task which is run when a decetor-exposure is complete, and
-    which therefore means it's time to trigger the step1b processing if all
-    quanta are complete.
-
-    Parameters
-    ----------
-    pipelineFile : `str`
-        The pipelineFile defining the pipeline. Hopefully we can use the real
-        pipeline in the future and thus avoid the hard-coding of strings below.
-
-    Returns
-    -------
-    taskName : `str`
-        The task which triggers step1b processing.
-    """
-    # TODO: See if this can be removed entirely now we have finished counters
-    if "nightly-validation" in pipelineFile:
-        return "lsst.analysis.tools.tasks.refCatSourceAnalysis.RefCatSourceAnalysisTask"
-    elif "quickLook" in pipelineFile:
-        return "lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask"
-    else:
-        raise ValueError(f"Unsure how to trigger nightly rollup when {pipelineFile=}")
-
-
 def buildPipelines(
     instrument: str,
     locationConfig: LocationConfig,
@@ -468,22 +441,14 @@ def buildPipelines(
         butler.registry, sfmPipelineFile, ["isr"], ["step1a"], isCalibrationPipeline=True
     )
 
-    if instrument == "LATISS":
-        # TODO: unify SFM for LATISS and LSSTCam once LATISS has step1b working
-        pipelines["SFM"] = PipelineComponents(
-            butler.registry,
-            sfmPipelineFile,
-            ["step1a-single-visit-detectors", "step1b-single-visit-visits"],
-            ["step1a", "step1b"],
-        )
-    else:
-        # TODO: remove nightlyrollup
-        pipelines["SFM"] = PipelineComponents(
-            butler.registry,
-            sfmPipelineFile,
-            ["step1a-single-visit-detectors", "step1b-single-visit-visits", "step1d-single-visit-global"],
-            ["step1a", "step1b", "nightlyRollup"],
-        )
+    pipelines["SFM"] = PipelineComponents(
+        butler.registry,
+        sfmPipelineFile,
+        ["step1a-single-visit-detectors", "step1b-single-visit-visits"],
+        ["step1a", "step1b"],
+    )
+
+    if instrument != "LATISS":
         # NOTE: there is no dict entry for LATISS for AOS as AOS runs
         # differently there. It might change in the future, but not soon.
         pipelines["AOS_DANISH"] = PipelineComponents(
@@ -663,7 +628,6 @@ class HeadProcessController:
         )
         self.doRaise = doRaise
         self.nDispatched: int = 0
-        self.nNightlyRollups: int = 0
         self.currentAosPipeline = "AOS_DANISH"  # uses the name of the self.pipelines key
         self.currentAosFamPipeline = "AOS_FAM_DANISH"  # ignored for ComCam
         self._lastProcessedExp: DimensionRecord | None = None
@@ -1375,41 +1339,6 @@ class HeadProcessController:
 
         return True  # we sent something out
 
-    def dispatchRollupIfNecessary(self) -> bool:
-        """Check if we should do another rollup, and if so, dispatch it.
-
-        Returns
-        -------
-        doRollup : `bool`
-            Did we do another rollup?
-        """
-        return False  # stop running rollups until we have some plots attached etc
-        if self.instrument == "LATISS":
-            # self.log.info("Consider making a one-off processor for
-            # the night plots and dispatching it here")
-            return False
-
-        numComplete = self.redisHelper.getNumVisitLevelFinished(self.instrument, "step1b", who="SFM")
-        if numComplete > self.nNightlyRollups:
-            self.log.info(
-                f"Found {numComplete - self.nNightlyRollups} more completed step1b's - "
-                " dispatching them for nightly rollup"
-            )
-            self.nNightlyRollups = numComplete
-            # TODO: DM-49947 try adding the current day_obs to this dataId
-            dataId = {"instrument": self.instrument, "skymap": "lsst_cells_v1"}
-            dataCoord = DataCoordinate.standardize(dataId, universe=self.butler.dimensions)
-            payload = Payload(
-                [dataCoord], self.pipelines["SFM"].graphBytes["nightlyRollup"], run=self.outputRun, who="SFM"
-            )
-            worker = self.redisHelper.getSingleWorker(self.instrument, PodFlavor.NIGHTLYROLLUP_WORKER)
-            if worker is None:
-                self.log.error("No free workers available for nightly rollup")
-                return False
-            self.redisHelper.enqueuePayload(payload, worker)
-            return True
-        return False
-
     def dispatchPostIsrMosaic(self) -> None:
         """Dispatch the focal plane mosaic task.
 
@@ -1553,11 +1482,6 @@ class HeadProcessController:
                 self.dispatchPostIsrMosaic()
             except Exception as e:
                 self.log.exception(f"Failed during dispatch of focal plane mosaics: {e}")
-
-            try:
-                self.dispatchRollupIfNecessary()
-            except Exception as e:
-                self.log.exception(f"Failed during dispatch nightly rollup: {e}")
 
             # note the repattern comes after the fanout so that any commands
             # executed are present for the next image to follow and only then
