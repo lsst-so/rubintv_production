@@ -267,9 +267,8 @@ class StarTrackerChannel(BaseChannel):
         self.rootDataPath = locationConfig.starTrackerDataPath
         watcher = StarTrackerWatcher(rootDataPath=self.rootDataPath, camera=self.camera)
 
-        super().__init__(
-            locationConfig=locationConfig, log=log, watcher=watcher, addUploader=True, doRaise=doRaise
-        )
+        super().__init__(locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise)
+        self.s3Uploader: MultiUploader = MultiUploader()
 
         self.channelRaw = f"startracker{self.camera.suffix}_raw"  # TODO: DM-43413 remove?
         self.channelAnalysis = f"startracker{self.camera.suffix}_analysis"  # TODO: DM-43413 remove?
@@ -387,7 +386,6 @@ class StarTrackerChannel(BaseChannel):
         )
 
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
-        assert self.s3Uploader is not None, "s3Uploader should not be None"
         assert dayObs is not None, "dayObs should not be None when parsing filename"
         assert seqNum is not None, "seqNum should not be None when parsing filename"
 
@@ -490,7 +488,6 @@ class StarTrackerChannel(BaseChannel):
         plot(exp, saveAs=rawPngFilename, doSmooth=self.camera.doSmoothPlot, fig=self.fig)
 
         dayObs, seqNum = dayObsSeqNumFromFilename(filename)
-        assert self.s3Uploader is not None, "s3Uploader should not be None"
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument="startracker" + self.camera.suffix,
             plotName="raw",
@@ -559,6 +556,7 @@ class StarTrackerNightReportChannel(BaseChannel):
         watcher = StarTrackerWatcher(rootDataPath=self.rootDataPath, camera=narrowCam)
 
         super().__init__(locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise)
+        self.s3Uploader: MultiUploader = MultiUploader()
 
         self.dayObs = dayObs if dayObs else getCurrentDayObsInt()
 

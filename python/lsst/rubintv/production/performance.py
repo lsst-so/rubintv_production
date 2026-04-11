@@ -58,6 +58,7 @@ from .locationConfig import LocationConfig
 from .predicates import runningCI
 from .processingControl import CameraControlConfig, PipelineComponents, buildPipelines
 from .shardIo import writeMetadataShard
+from .uploaders import MultiUploader
 
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
@@ -1051,10 +1052,8 @@ class PerformanceMonitor(BaseButlerChannel):
             butler=butler,
             podDetails=podDetails,
             doRaise=doRaise,
-            addUploader=True,
         )
-        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-        assert self.podDetails is not None  # XXX why is this necessary? Fix mypy better!
+        self.s3Uploader: MultiUploader = MultiUploader()
         self.log.info(f"Performance monitor running, consuming from {self.podDetails.queueName}")
         self.perf = PerformanceBrowser(butler, instrument, locationConfig)
         self.shardsDirectory = locationConfig.raPerformanceShardsDirectory
@@ -1129,7 +1128,6 @@ class PerformanceMonitor(BaseButlerChannel):
         )
         fig.tight_layout()
         fig.savefig(plotFile)
-        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument="ra_performance",
             plotName=plotName,
@@ -1207,7 +1205,6 @@ class PerformanceMonitor(BaseButlerChannel):
             self.locationConfig, self.instrument, record.day_obs, record.seq_num, plotName, "jpg"
         )
         fig.savefig(plotFile)
-        assert self.s3Uploader is not None
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument="ra_performance",
             plotName=plotName,

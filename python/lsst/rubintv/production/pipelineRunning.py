@@ -163,12 +163,13 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         *,
         doRaise=False,
     ):
+        # pipeline running pods don't upload directly, so deliberately do
+        # not create an s3Uploader on this class.
         super().__init__(
             locationConfig=locationConfig,
             butler=butler,
             podDetails=podDetails,
             doRaise=doRaise,
-            addUploader=False,  # pipeline running pods don't upload directly
         )
         self.dataProduct = awaitsDataProduct
         self.instrument = instrument

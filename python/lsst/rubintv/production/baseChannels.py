@@ -27,7 +27,6 @@ from abc import ABC, abstractmethod
 from time import sleep
 from typing import TYPE_CHECKING, Any
 
-from .uploaders import MultiUploader
 from .watchers import RedisWatcher
 
 if TYPE_CHECKING:
@@ -49,9 +48,16 @@ __all__ = [
 class BaseChannel(ABC):
     """Base class for all channels.
 
+    Subclasses that need an S3 uploader create their own
+    ``self.s3Uploader = MultiUploader()`` in their ``__init__``. The base
+    class deliberately does not own one — that way mypy sees the
+    attribute as a non-optional ``MultiUploader`` on the subclasses
+    that have it, and the subclasses that don't never need to deal
+    with it at all.
+
     Parameters
     ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location configuration to use.
     log : `logging.Logger`
         The logger to use.
@@ -59,8 +65,6 @@ class BaseChannel(ABC):
         The watcher to use.
     doRaise : `bool`
         If ``True``, raise exceptions. If ``False``, log them.
-    addUploader : `bool`, optional
-        If ``True``, add an S3 uploader to the channel.
     """
 
     def __init__(
@@ -70,14 +74,10 @@ class BaseChannel(ABC):
         log: Logger,
         watcher: RedisWatcher | StarTrackerWatcher,
         doRaise: bool,
-        addUploader: bool = False,
     ) -> None:
         self.locationConfig = locationConfig
         self.log = log
         self.watcher = watcher
-        self.s3Uploader: MultiUploader | None = None
-        if addUploader:
-            self.s3Uploader = MultiUploader()
         self.doRaise: bool = doRaise
 
     @abstractmethod
@@ -122,8 +122,6 @@ class BaseButlerChannel(BaseChannel):
         derive the per-instance log name.
     doRaise : `bool`
         If ``True``, raise exceptions. If ``False``, log them.
-    addUploader : `bool`, optional
-        If ``True``, attach an S3 uploader to the channel.
     """
 
     def __init__(
@@ -133,7 +131,6 @@ class BaseButlerChannel(BaseChannel):
         butler: Butler,
         podDetails: PodDetails,
         doRaise: bool,
-        addUploader: bool = True,
     ) -> None:
         watcher = RedisWatcher(
             butler=butler,
@@ -141,9 +138,7 @@ class BaseButlerChannel(BaseChannel):
             podDetails=podDetails,
         )
         log = logging.getLogger(f"lsst.rubintv.production.{type(self).__name__}")
-        super().__init__(
-            locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise, addUploader=addUploader
-        )
+        super().__init__(locationConfig=locationConfig, log=log, watcher=watcher, doRaise=doRaise)
         self.butler = butler
         self.podDetails = podDetails
         # Subclasses that pre-wait on a dataProduct override this. The
