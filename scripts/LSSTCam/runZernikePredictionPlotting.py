@@ -22,6 +22,7 @@
 from lsst.daf.butler import Butler
 from lsst.rubintv.production.aos import ZernikePredictedFWHMPlotter
 from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
+from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
 from lsst.rubintv.production.startupChecks import setupSentry
 from lsst.summit.utils.utils import setupLogging
 
@@ -39,13 +40,21 @@ butler = Butler.from_config(
         locationConfig.getOutputChain(instrument),
     ],
 )
-print(f"Running FWHM plotter launcher at {locationConfig.location}")
+podDetails = PodDetails(
+    instrument=instrument,
+    podFlavor=PodFlavor.ZERNIKE_PREDICTED_FWHM_PLOTTER,
+    detectorNumber=None,
+    depth=0,
+)
+print(
+    f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
+    f" consuming from {podDetails.queueName}..."
+)
 
-queueName = f"{instrument}-ZERNIKE_PREDICTION_PLOTTER"
-zernikePlotter = ZernikePredictedFWHMPlotter(  # XXX needs type annotations adding and moving to podDetails
+zernikePlotter = ZernikePredictedFWHMPlotter(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    queueName=queueName,
+    podDetails=podDetails,
 )
 zernikePlotter.run()

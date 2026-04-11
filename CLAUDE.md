@@ -168,16 +168,32 @@ def myFunction(param1: int, param2: str | None = None) -> bool:
 
 ### Environment Setup
 
-To access the full DM Stack (everything in the ``lsst.*`` namespace),
-source the following in order:
+**ALWAYS run code from this package, run its tests, or import any of its
+modules through the DM Stack environment.** The package lives in the
+``lsst.*`` namespace and imports many sibling packages from the LSST stack
+(``lsst.daf.butler``, ``lsst.pipe.base``, ``lsst.summit.utils``, etc.).
+Running ``python``, ``pytest`` or ``python -c "import lsst.rubintv..."``
+without the stack sourced will fail with ``ModuleNotFoundError`` every
+time. Do not waste a turn discovering this — source the stack first.
+
+**Every time** you need to run, test, or import package code, prefix the
+command so that both lines below are sourced first, in this order:
 
 ```bash
-source ~/stack.sh
-. ~/setup_packages.sh
+source ~/stack.sh && . ~/setup_packages.sh && <your command>
 ```
 
-This is needed when importing code from other ``lsst.*`` packages or
-locating dependencies outside this repo.
+For example:
+
+```bash
+source ~/stack.sh && . ~/setup_packages.sh && pytest tests/test_podDefinition.py
+source ~/stack.sh && . ~/setup_packages.sh && python -c "from lsst.rubintv.production.podDefinition import PodFlavor; print(list(PodFlavor))"
+```
+
+Do **not** try ``PYTHONPATH=python python ...`` or any other workaround —
+sourcing the stack is the only supported way and is required for every
+single invocation, because the shell state from previous Bash tool calls
+does not persist.
 
 ### Linting & Tooling
 

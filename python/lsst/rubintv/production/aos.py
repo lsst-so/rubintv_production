@@ -76,11 +76,14 @@ from .redisUtils import RedisHelper, _extractExposureIds
 from .shardIo import writeExpRecordMetadataShard, writeMetadataShard
 from .timing import logDuration
 from .uploaders import MultiUploader
+from .watchers import RedisWatcher
 
 if TYPE_CHECKING:
     from lsst.daf.butler import Butler, DimensionRecord
 
     from .locationConfig import LocationConfig
+    from .payloads import Payload
+    from .podDefinition import PodDetails
 
 
 class DonutLauncher:
@@ -284,8 +287,8 @@ class PsfAzElPlotter:
         The locationConfig containing the path configs.
     instrument : `str`
         The instrument.
-    queueName : `str`
-        The name of the redis queue to consume from.
+    podDetails : `lsst.rubintv.production.podDefinition.PodDetails`
+        The pod identity that selects which Redis queue to consume from.
     """
 
     def __init__(
@@ -294,17 +297,16 @@ class PsfAzElPlotter:
         butler: Butler,
         locationConfig: LocationConfig,
         instrument: str,
-        queueName: str,
+        podDetails: PodDetails,
     ) -> None:
         self.butler = butler
         self.locationConfig = locationConfig
         self.instrument = instrument
-        self.queueName = queueName
-
-        self.instrument = instrument
+        self.podDetails = podDetails
         self.camera = getCameraFromInstrumentName(self.instrument)
         self.log = logging.getLogger("lsst.rubintv.production.aos.PsfAzElPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
+        self.watcher = RedisWatcher(butler=butler, locationConfig=locationConfig, podDetails=podDetails)
         self.s3Uploader = MultiUploader()
 
     def makePlot(self, visitId: int) -> None:
@@ -359,16 +361,22 @@ class PsfAzElPlotter:
             filename=plotFile,
         )
 
+    def callback(self, payload: Payload) -> None:
+        """Run the plot for an incoming payload.
+
+        Parameters
+        ----------
+        payload : `lsst.rubintv.production.payloads.Payload`
+            The payload to process. The payload's ``dataId`` is expected to
+            contain a ``visit`` key.
+        """
+        visitId = int(payload.dataId["visit"])
+        self.log.info(f"Making PsfAzEl plot for visitId {visitId}")
+        self.makePlot(visitId)
+
     def run(self) -> None:
         """Start the event loop, listening for data and launching plotting."""
-        while True:
-            visitIdBytes = self.redisHelper.redis.lpop(self.queueName)
-            if visitIdBytes is not None:
-                visitId = int(visitIdBytes.decode("utf-8"))
-                self.log.info(f"Making PsfAzEl plot for visitId {visitId}")
-                self.makePlot(visitId)
-            else:
-                sleep(0.5)
+        self.watcher.run(self.callback)
 
 
 class ZernikePredictedFWHMPlotter:
@@ -383,8 +391,8 @@ class ZernikePredictedFWHMPlotter:
         The locationConfig containing the path configs.
     instrument : `str`
         The instrument.
-    queueName : `str`
-        The name of the redis queue to consume from.
+    podDetails : `lsst.rubintv.production.podDefinition.PodDetails`
+        The pod identity that selects which Redis queue to consume from.
     """
 
     def __init__(
@@ -393,17 +401,16 @@ class ZernikePredictedFWHMPlotter:
         butler: Butler,
         locationConfig: LocationConfig,
         instrument: str,
-        queueName: str,
+        podDetails: PodDetails,
     ) -> None:
         self.butler = butler
         self.locationConfig = locationConfig
         self.instrument = instrument
-        self.queueName = queueName
-
-        self.instrument = instrument
+        self.podDetails = podDetails
         self.camera = getCameraFromInstrumentName(self.instrument)
         self.log = logging.getLogger("lsst.rubintv.production.aos.ZernikePredictedFWHMPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
+        self.watcher = RedisWatcher(butler=butler, locationConfig=locationConfig, podDetails=podDetails)
         self.s3Uploader = MultiUploader()
         configMttcsDir = getPackageDir("ts_config_mttcs")
         ofcDir = os.path.join(configMttcsDir, "MTAOS", "ofc")
@@ -542,17 +549,23 @@ class ZernikePredictedFWHMPlotter:
             filename=plotFile,
         )
 
+    def callback(self, payload: Payload) -> None:
+        """Run the plot for an incoming payload.
+
+        Parameters
+        ----------
+        payload : `lsst.rubintv.production.payloads.Payload`
+            The payload to process. The payload's ``dataId`` is expected to
+            contain a ``visit`` key.
+        """
+        visitId = int(payload.dataId["visit"])
+        self.log.info(f"Making ZernikePredictedFWHM plots for visitId {visitId}")
+        with logDuration(self.log, f"Total time for making zernike prediction plots for {visitId=}"):
+            self.makePlots(visitId)
+
     def run(self) -> None:
         """Start the event loop, listening for data and launching plotting."""
-        while True:
-            visitIdBytes = self.redisHelper.redis.lpop(self.queueName)
-            if visitIdBytes is not None:
-                visitId = int(visitIdBytes.decode("utf-8"))
-                self.log.info(f"Making ZernikePredictedFWHM plots for visitId {visitId}")
-                with logDuration(self.log, f"Total time for making zernike prediction plots for {visitId=}"):
-                    self.makePlots(visitId)
-            else:
-                sleep(0.5)
+        self.watcher.run(self.callback)
 
 
 class FocalPlaneFWHMPlotter:
@@ -567,8 +580,8 @@ class FocalPlaneFWHMPlotter:
         The locationConfig containing the path configs.
     instrument : `str`
         The instrument.
-    queueName : `str`
-        The name of the redis queue to consume from.
+    podDetails : `lsst.rubintv.production.podDefinition.PodDetails`
+        The pod identity that selects which Redis queue to consume from.
     """
 
     def __init__(
@@ -577,16 +590,16 @@ class FocalPlaneFWHMPlotter:
         butler: Butler,
         locationConfig: LocationConfig,
         instrument: str,
-        queueName: str,
+        podDetails: PodDetails,
     ) -> None:
         self.butler = butler
         self.locationConfig = locationConfig
         self.instrument = instrument
-        self.queueName = queueName
-        self.instrument = instrument
+        self.podDetails = podDetails
         self.camera = getCameraFromInstrumentName(self.instrument)
         self.log = logging.getLogger("lsst.rubintv.production.aos.FocalPlaneFWHMPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
+        self.watcher = RedisWatcher(butler=butler, locationConfig=locationConfig, podDetails=podDetails)
         self.s3Uploader = MultiUploader()
         self.efdClient = makeEfdClient()
 
@@ -654,18 +667,26 @@ class FocalPlaneFWHMPlotter:
 
         return title
 
+    def callback(self, payload: Payload) -> None:
+        """Run the plot for an incoming payload.
+
+        Parameters
+        ----------
+        payload : `lsst.rubintv.production.payloads.Payload`
+            The payload to process. The payload's ``dataId`` is expected to
+            contain a ``visit`` key.
+        """
+        visitId = int(payload.dataId["visit"])
+        (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", visit=visitId)
+        t0 = time()
+        self.log.info(f"Making FWHMFocalPlane plot for visitId {visitRecord.id}")
+        self.plotAndUpload(visitRecord)
+        t1 = time()
+        self.log.info(f"Finished making FWHMFocalPlane plot in {(t1 - t0):.2f}s for {visitRecord.id}")
+
     def run(self) -> None:
         """Start the event loop, listening for data and launching plotting."""
-        while True:
-            expRecord = self.redisHelper.getExpRecordFromQueue(self.queueName)
-            if expRecord is not None:
-                t0 = time()
-                self.log.info(f"Making FWHMFocalPlane plot for visitId {expRecord.id}")
-                self.plotAndUpload(expRecord)
-                t1 = time()
-                self.log.info(f"Finished making FWHMFocalPlane plot in {(t1 - t0):.2f}s for {expRecord.id}")
-            else:
-                sleep(0.5)
+        self.watcher.run(self.callback)
 
 
 class FocusSweepAnalysis:
@@ -779,8 +800,8 @@ class RadialPlotter:
         The locationConfig containing the path configs.
     instrument : `str`
         The instrument.
-    queueName : `str`
-        The name of the redis queue to consume from.
+    podDetails : `lsst.rubintv.production.podDefinition.PodDetails`
+        The pod identity that selects which Redis queue to consume from.
     """
 
     def __init__(
@@ -789,17 +810,16 @@ class RadialPlotter:
         butler: Butler,
         locationConfig: LocationConfig,
         instrument: str,
-        queueName: str,
+        podDetails: PodDetails,
     ) -> None:
         self.butler = butler
         self.locationConfig = locationConfig
         self.instrument = instrument
-        self.queueName = queueName
-
-        self.instrument = instrument
+        self.podDetails = podDetails
         self.camera = getCameraFromInstrumentName(self.instrument)
         self.log = logging.getLogger("lsst.rubintv.production.aos.RadialPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
+        self.watcher = RedisWatcher(butler=butler, locationConfig=locationConfig, podDetails=podDetails)
         self.s3Uploader = MultiUploader()
 
     def plotAndUpload(self, expRecord: DimensionRecord) -> None:
@@ -825,15 +845,23 @@ class RadialPlotter:
             filename=plotFile,
         )
 
+    def callback(self, payload: Payload) -> None:
+        """Run the plot for an incoming payload.
+
+        Parameters
+        ----------
+        payload : `lsst.rubintv.production.payloads.Payload`
+            The payload to process. The payload's ``dataId`` is expected to
+            contain an ``exposure`` key.
+        """
+        exposureId = int(payload.dataId["exposure"])
+        (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", exposure=exposureId)
+        t0 = time()
+        self.log.info(f"Making radial plot for {expRecord.id}")
+        self.plotAndUpload(expRecord)
+        t1 = time()
+        self.log.info(f"Finished making radial plot in {(t1 - t0):.2f}s for {expRecord.id}")
+
     def run(self) -> None:
         """Start the event loop, listening for data and launching plotting."""
-        while True:
-            expRecord = self.redisHelper.getExpRecordFromQueue(self.queueName)
-            if expRecord is not None:
-                t0 = time()
-                self.log.info(f"Making radial plot for {expRecord.id}")
-                self.plotAndUpload(expRecord)
-                t1 = time()
-                self.log.info(f"Finished making radial plot in {(t1 - t0):.2f}s for {expRecord.id}")
-            else:
-                sleep(0.5)
+        self.watcher.run(self.callback)

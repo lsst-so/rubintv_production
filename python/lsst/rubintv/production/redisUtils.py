@@ -704,6 +704,40 @@ class RedisHelper:
                 workers.append(worker)
         return sorted(workers)
 
+    def getSingleWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails | None:
+        """Pick one worker of the given flavor for the given instrument.
+
+        Prefers a free worker. Falls back to the last busy worker in the stack
+        if none are free, and returns ``None`` if no workers exist at all.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name.
+        podFlavor : `PodFlavor`
+            The flavor of pod to pick a worker from.
+
+        Returns
+        -------
+        worker : `PodDetails` or `None`
+            The selected worker, or ``None`` if no workers (free or busy)
+            exist for the given flavor.
+        """
+        freeWorkers = sorted(self.getFreeWorkers(instrument=instrument, podFlavor=podFlavor))
+        if freeWorkers:
+            return freeWorkers[0]
+
+        # No free workers - fall back to the last worker in the stack so the
+        # work still lands somewhere. TODO: replace this with a real backlog
+        # queue when one exists.
+        busyWorkers = sorted(self.getAllWorkers(instrument=instrument, podFlavor=podFlavor))
+        if not busyWorkers:
+            self.log.error(f"No free or busy workers available for {podFlavor=}, cannot dispatch work.")
+            return None
+        busyWorker = busyWorkers[-1]
+        self.log.warning(f"No free workers available for {podFlavor=}, sending work to {busyWorker=}")
+        return busyWorker
+
     def pushToButlerWatcherList(self, instrument, expRecord: DimensionRecord) -> None:
         """Keep a record of what's been found by the butler watcher for all
         time.
@@ -1362,38 +1396,6 @@ class RedisHelper:
     # ------------------------------------------------------------------ #
     # End of unified exposure tracking
     # ------------------------------------------------------------------ #
-
-    def sendExpRecordToQueue(self, record: DimensionRecord, queueName: str) -> None:
-        """Send an exposure record to a specific queue.
-
-        Parameters
-        ----------
-        record : `lsst.daf.butler.dimensions.ExposureRecord`
-            The exposure record to send.
-        queueName : `str`
-            The name of the queue to send the record to.
-        """
-        recordJson = record.to_simple().json()
-        self.redis.lpush(queueName, recordJson)
-
-    def getExpRecordFromQueue(self, queueName: str) -> DimensionRecord | None:
-        """Get the next exposure record from a specific queue.
-
-        Parameters
-        ----------
-        queueName : `str`
-            The name of the queue to get the record from.
-
-        Returns
-        -------
-        record : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
-            The next exposure record from the specified queue, or ``None`` if
-            the queue is empty.
-        """
-        recordJson = self.redis.lpop(queueName)
-        if recordJson is None:
-            return None
-        return expRecordFromJson(recordJson, self.locationConfig)
 
     def getWitnessDetectorNumber(self, instrument: str, camera: Camera | None = None) -> int:
         """Get the witness detector number for a given instrument.

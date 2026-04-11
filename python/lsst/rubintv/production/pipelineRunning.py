@@ -62,8 +62,9 @@ from .butlerQueries import (
     getExpRecordFromId,
 )
 from .consdbUtils import ConsDBPopulator
-from .payloads import pipelineGraphFromBytes
+from .payloads import Payload, pipelineGraphFromBytes
 from .plotting.mosaicing import writeBinnedImage
+from .podDefinition import PodFlavor
 from .predicates import raiseIf
 from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
@@ -78,7 +79,6 @@ if TYPE_CHECKING:
     from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilder
 
     from .locationConfig import LocationConfig
-    from .payloads import Payload
     from .podDefinition import PodDetails
 
 
@@ -460,6 +460,28 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 )
                 return builder, "", {}, self.cachingButler
 
+    def _dispatchToPlotter(self, dataCoord: DataCoordinate, podFlavor: PodFlavor) -> None:
+        """Send a dataCoord to a single worker of the given plotter flavor.
+
+        Wraps the dataCoord in a minimal `Payload` and enqueues it on the
+        chosen pod's queue. If no plotter pods of this flavor exist (free or
+        busy), the dispatch is dropped with an error log so that the rest of
+        post-processing continues.
+
+        Parameters
+        ----------
+        dataCoord : `lsst.daf.butler.DataCoordinate`
+            The dataCoord to send to the plotter (typically a visit-level id).
+        podFlavor : `lsst.rubintv.production.podDefinition.PodFlavor`
+            The plotter flavor to dispatch to.
+        """
+        worker = self.redisHelper.getSingleWorker(self.instrument, podFlavor)
+        if worker is None:
+            self.log.error(f"No workers available for {podFlavor=}, dropping plotter dispatch")
+            return
+        payload = Payload(dataId=dataCoord, pipelineGraphBytes=b"", run="", who="SFM")
+        self.redisHelper.enqueuePayload(payload, worker)
+
     def callback(self, payload: Payload) -> None:
         """Method called on each payload from the queue.
 
@@ -600,18 +622,16 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 self.log.debug(f"Announcing completion of step1b for {expId} for {who}")
                 self.redisHelper.reportVisitLevelFinished(self.instrument, "step1b", who=who)
                 self.redisHelper.markStep1bFinished(self.instrument, expId, who=who)
-                # TODO: probably add a utility function on the helper for this
-                # and one for getting the most recent visit from the queue
-                # which does the decoding too to provide a unified interface.
                 if who == "SFM":
-                    # in SFM this is never compound
-                    self.redisHelper.redis.lpush(f"{self.instrument}-PSFPLOTTER", str(expId))
-
                     # required the visitSummary so needs to be post-step1b
                     (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", visit=expId)
+                    visitDataCoord = DataCoordinate.standardize(
+                        instrument=self.instrument, visit=visitRecord.id, universe=self.butler.dimensions
+                    )
+                    self._dispatchToPlotter(visitDataCoord, PodFlavor.PSF_PLOTTER)
                     self.log.info(f"Sending {visitRecord.id} for fwhm plotting")
-                    self.redisHelper.sendExpRecordToQueue(visitRecord, f"{self.instrument}-FWHMPLOTTER")
-                    self.redisHelper.redis.lpush(f"{self.instrument}-ZERNIKE_PREDICTION_PLOTTER", str(expId))
+                    self._dispatchToPlotter(visitDataCoord, PodFlavor.FWHM_PLOTTER)
+                    self._dispatchToPlotter(visitDataCoord, PodFlavor.ZERNIKE_PREDICTED_FWHM_PLOTTER)
             if self.step == "nightlyRollup":
                 self.redisHelper.reportNightLevelFinished(self.instrument, who=who)
 
