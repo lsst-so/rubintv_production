@@ -249,9 +249,7 @@ def makeWhere(task: TaskNode, record: DimensionRecord) -> str:
     where : `str`
         The where clause.
     """
-    isVisit = isExposureType(task)
-
-    if isVisit == "isr":
+    if isVisitType(task):
         return f"visit={record.id}"
     else:
         return f"exposure={record.id}"
@@ -544,7 +542,6 @@ class TaskResult:
         self.logs: dict[int | None, ButlerLogRecords] = {}
         self.detectorTimings: dict[int | None, float] = {}
         self.failures: dict[int | None, str] = {}
-        self.logs: dict[int | None, ButlerLogRecords] = {}
 
         where = makeWhere(task, record)
         dRefs: list[DatasetRef] = []
@@ -614,7 +611,7 @@ class TaskResult:
         return isFocalPlaneLevel(self.task)
 
     @property
-    def dayObs(self) -> bool:
+    def dayObs(self) -> int:
         return self.record.day_obs
 
     @property
@@ -627,7 +624,7 @@ class TaskResult:
             raise RuntimeError(f"Unknown record type for {self.taskName=}")
 
     @property
-    def seqNum(self) -> bool:
+    def seqNum(self) -> int:
         if self.isExposureType:
             return self.record.seq_num
         else:
@@ -794,15 +791,14 @@ class PerformanceBrowser:
         self.debug = debug
         self.camera = getCameraFromInstrumentName(instrument)
         self.detNums = [d.getId() for d in self.camera]
-        self.pipelines: dict[str, PipelineComponents] = {}
-        self.whos = list(self.pipelines.keys())
 
         _, pipelines = buildPipelines(
             instrument=instrument,
             locationConfig=locationConfig,
             butler=butler,
         )
-        self.pipelines = pipelines
+        self.pipelines: dict[str, PipelineComponents] = pipelines
+        self.whos = list(self.pipelines.keys())
         self.data: dict[DimensionRecord, dict[str, TaskResult]] = {}
 
         self.taskDict: dict[str, TaskNode] = {}
@@ -878,7 +874,7 @@ class PerformanceBrowser:
 
     def plot(
         self, expRecord: DimensionRecord, reload: bool = False, ignoreTasks: list[str] | None = None
-    ) -> None:
+    ) -> Figure:
         """
         Plot the results for all tasks.
 
@@ -890,6 +886,11 @@ class PerformanceBrowser:
             Whether to force reload data. Default is False.
         ignoreTasks : `list` of `str`, optional
             List of task names to ignore.
+
+        Returns
+        -------
+        fig : `matplotlib.figure.Figure`
+            The Gantt chart figure for the exposure.
         """
         self.loadData(expRecord, reload=reload)
         data = self.data[expRecord]

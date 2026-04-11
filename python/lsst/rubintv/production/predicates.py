@@ -224,8 +224,6 @@ def hasRaDec(record: DimensionRecord) -> bool:
     except (AttributeError, TypeError):  # AttributeError for missing, TypeError for None
         return False
 
-    if ra is None or dec is None:
-        return False
     if not np.isfinite(ra) or not np.isfinite(dec):
         return False
     return True

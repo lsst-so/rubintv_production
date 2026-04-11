@@ -109,7 +109,7 @@ def getGlobPatternForShardedData(
     pattern : `str`
         The glob pattern matching all shards for the given dataId.
     """
-    seqNumFormatted = f"{seqNum:0{SEQNUM_PADDING}}" if seqNum != "*" else "*"
+    seqNumFormatted = f"{seqNum:0{SEQNUM_PADDING}}"
     return SHARDED_DATA_TEMPLATE.format(
         path=path,
         dataSetName=dataSetName,
@@ -155,8 +155,8 @@ def writeMetadataShard(path: str, dayObs: int, mdDict: dict[int, dict[str, Any]]
         json.dump(mdDict, f, cls=NumpyEncoder)
     os.rename(tmpFilename, filename)
     try:
-        if not isFileWorldWritable(tmpFilename):
-            os.chmod(tmpFilename, 0o777)  # file may be deleted by another process, so make it world writable
+        if not isFileWorldWritable(filename):
+            os.chmod(filename, 0o777)  # file may be deleted by another process, so make it world writable
     except FileNotFoundError:
         pass  # it was indeed deleted elsewhere, so just ignore
     return

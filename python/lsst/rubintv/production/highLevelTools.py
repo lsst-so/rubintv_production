@@ -1137,7 +1137,7 @@ def backfillCcdVisit1QuicklookForDayAos(
     """
     from lsst.ts.wep.utils.zernikeUtils import makeDense
 
-    where = f"exposure.day_obs={dayObs} AND instrument='LSSTCam'"
+    where = f"visit.day_obs={dayObs} AND instrument='LSSTCam'"
     records = butler.query_dimension_records("visit", where=where, order_by="-visit.id")
 
     detectors = (191, 192, 195, 196, 199, 200, 203, 204)
@@ -1146,7 +1146,9 @@ def backfillCcdVisit1QuicklookForDayAos(
     noData: dict[DimensionRecord, list[int]] = {}
 
     slowInserts = 0
-    for record in tqdm(reversed(records), total=len(records), mininterval=30.0, ncols=120):
+    for nInsert, record in enumerate(
+        tqdm(reversed(records), total=len(records), mininterval=30.0, ncols=120)
+    ):
         for detector in detectors:
             t0 = time.time()
 
@@ -1208,7 +1210,7 @@ def backfillCcdVisit1QuicklookForDayAos(
                 slowInserts += 1
                 time.sleep(30)  # give the DB some rest
                 if slowInserts >= 3:
-                    print(f"Aborted after {i} inserts due to poor ConsDB performance")
+                    print(f"Aborted after {nInsert} inserts due to poor ConsDB performance")
                     return rowsInserted, noData
 
             else:

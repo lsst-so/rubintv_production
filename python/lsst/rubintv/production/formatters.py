@@ -160,7 +160,7 @@ def getPodWorkerNumber() -> int:
         if workerNumFromEnv is not None:
             workerNum = int(workerNumFromEnv)
         else:
-            if len(sys.argv) < 2:
+            if len(sys.argv) < 3:
                 raise RuntimeError(
                     "Must supply worker number either as WORKER_NUMBER env var or as a command line argument"
                 )

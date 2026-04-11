@@ -1338,7 +1338,7 @@ class HeadProcessController:
                     worker = self.getSingleWorker(self.instrument, podFlavour)
                     if not worker:
                         self.log.warning(f"No worker available for {who} step1b")
-                        return False
+                        continue
                     self.log.info(
                         f"Dispatching step1b for {whoToUse} with complete inputs: {dataCoord} to {worker}"
                     )

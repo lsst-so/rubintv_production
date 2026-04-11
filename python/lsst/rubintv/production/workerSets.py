@@ -21,7 +21,7 @@
 
 from __future__ import annotations
 
-__all__ = ["SfmWorkerSet", "Step1bWorkerSet", "AosWorkerSet"]
+__all__ = ["SfmWorkerSet", "Step1bWorkerSet", "AosWorkerSet", "BacklogWorkerSet"]
 
 import logging
 from dataclasses import dataclass, field

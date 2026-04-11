@@ -363,12 +363,12 @@ class ConsDBPopulator:
             print(f"Populated tables for exposure and ccdexposure for {expRecord.instrument}+{expRecord.id}")
 
         detectorNums = getDetectorIds(expRecord.instrument)
-        nFillled = 0
+        nFilled = 0
         for detectorNum in detectorNums:
-            nFillled += self.populateCcdVisitRowWithButler(
+            nFilled += self.populateCcdVisitRowWithButler(
                 butler, expRecord, detectorNum, allowUpdate=allowUpdate
             )
-        return nFillled
+        return nFilled
 
     def populateVisitRowWithButler(
         self, butler: Butler, expRecord: DimensionRecord, allowUpdate: bool = False

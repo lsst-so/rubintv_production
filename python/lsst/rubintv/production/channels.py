@@ -32,7 +32,6 @@ CHANNELS = [
     "comcam_sim_calexp_mosaic",
     "comcam_sim_metadata",
     "comcam_sim_aos_metadata",
-    "comcam_sim_metadata",
     "slac_lsstcam_noise_map",
     "slac_lsstcam_focal_plane_mosaic",
     "slac_lsstcam_metadata",
