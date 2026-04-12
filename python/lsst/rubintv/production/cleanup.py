@@ -128,7 +128,7 @@ class TempFileCleaner:
 
     Parameters
     ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location configuration for the site this cleaner is running at.
     doRaise : `bool`, optional
         If ``True``, re-raise exceptions encountered during cleanup rather

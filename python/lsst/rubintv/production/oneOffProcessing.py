@@ -58,7 +58,6 @@ from lsst.summit.utils.utils import (
 from lsst.utils.plotting.figures import make_figure
 
 from .baseChannels import BaseButlerChannel
-from .butlerQueries import getAirmass
 from .consdbUtils import ConsDBPopulator
 from .exposureLogUtils import LOG_ITEM_MAPPINGS, getLogsForDayObs
 from .formatters import (
@@ -74,6 +73,7 @@ from .predicates import hasRaDec, isCalibration, raiseIf, runningCI
 from .redisUtils import RedisHelper
 from .shardIo import getShardPath, writeMetadataShard
 from .uploaders import MultiUploader
+from .utils import getAirmass
 
 if TYPE_CHECKING:
     from lsst.afw.image import Exposure
@@ -96,7 +96,7 @@ class OneOffProcessor(BaseButlerChannel):
 
     Parameters
     ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
     butler : `lsst.daf.butler.Butler`
         The butler to use.

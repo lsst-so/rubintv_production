@@ -69,7 +69,7 @@ class RubinTvBackgroundService:
 
     Parameters
     ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The LocationConfig containing all the necessary paths.
     doRaise : `bool`
         Raise on error?

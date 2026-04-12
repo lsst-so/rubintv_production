@@ -152,7 +152,7 @@ def writeBinnedImage(
         The binning factor.
     dataProduct : `str`
         The data product type, e.g. 'post_isr_image'.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location configuration, used to get the base path.
 
     Notes
@@ -200,7 +200,7 @@ def readBinnedImage(
         The binning factor.
     dataProduct : `str`
         The data product type, e.g. 'post_isr_image'.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location configuration, used to get the base path.
     logger : `logging.Logger`, optional
         The logger to use.
@@ -313,7 +313,7 @@ def makeMosaic(
         The data product type, e.g. 'post_isr_image'.
     nExpected : `int`
         The number of CCDs expected in the mosaic.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location configuration, used to get the base path for the binned
         images.
     deleteFiles : `bool`
@@ -416,7 +416,7 @@ def getDetectorNamesWithDataAndPrefetch(
         The binning factor.
     dataProduct : `str`
         The data product type, e.g. 'post_isr_image'.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location configuration, used to get the base path for the binned
         images.
     tempDir : `str`
@@ -494,7 +494,7 @@ def plotFocalPlaneMosaic(
         The number of CCDs expected in the mosaic.
     stretch : `str`
         The scaling option for the plot.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location configuration, used to get the base path for the binned
         images.
     timeout : `float`

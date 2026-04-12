@@ -21,115 +21,33 @@
 
 """Small Butler-touching helpers used throughout the package.
 
-These helpers used to live in `utils.py`. They are grouped here because
-they all need a Butler (or an `Exposure` / `ExposureSummaryStats` /
-`DimensionRecord` produced by one) to do their job, so they cannot be
-exercised in a unit test without either a real Butler or a substantial
-mock. The integration suite under `tests/ci/` covers them end-to-end.
+Every function here takes a ``Butler`` and uses its registry, collections
+or dimensions to answer a question. Helpers that only operate on objects
+produced by a Butler (``DimensionRecord``, ``DataCoordinate``, ``Exposure``,
+``ExposureSummaryStats``) and don't need a ``Butler`` themselves live in
+``utils.py`` instead.
 """
 
 from __future__ import annotations
 
-import json
-import logging
-from typing import TYPE_CHECKING, Any
-
-import numpy as np
+from typing import TYPE_CHECKING
 
 from lsst.daf.butler import Butler, DataCoordinate, DimensionGroup, DimensionRecord
-from lsst.resources import ResourcePath
 
 from .predicates import runningScons
 
 if TYPE_CHECKING:
-    from logging import Logger
-
-    from lsst.afw.image import Exposure, ExposureSummaryStats
-
     from .locationConfig import LocationConfig
 
 
 __all__ = [
-    "getNumExpectedItems",
     "removeDetector",
-    "summaryStatsToDict",
-    "getAirmass",
-    "getExpIdOrVisitId",
     "getExpRecordFromVisitRecord",
     "getVisitRecordFromExpRecord",
     "getExpRecordFromId",
     "getCurrentOutputRun",
     "getEquivalentDataId",
 ]
-
-
-def getNumExpectedItems(expRecord: DimensionRecord, logger: Logger | None = None) -> int:
-    """A placeholder function for getting the number of expected items.
-
-    For a given instrument, get the number of detectors which were read out or
-    for which we otherwise expect to have data for.
-
-    This method will be updated once we have a way of knowing, from the camera,
-    how many detectors were actually read out (the plan is the CCS writes a
-    JSON file with this info).
-
-    Parameters
-    ----------
-    expRecord : `lsst.daf.butler.DimensionRecord`
-        The exposure record. This is currently unused, but will be used once
-        we are doing this properly.
-    logger : `logging.Logger`
-        The logger, created if not supplied.
-    """
-    if logger is None:
-        logger = logging.getLogger(__name__)
-
-    instrument = expRecord.instrument
-
-    fallbackValue = None
-    if instrument == "LATISS":
-        fallbackValue = 1
-    elif instrument == "LSSTCam":
-        fallbackValue = 201
-    elif instrument in ["LSST-TS8", "LSSTComCam", "LSSTComCamSim"]:
-        fallbackValue = 9
-    else:
-        raise ValueError(f"Unknown instrument {instrument}")
-
-    if instrument == "LSSTComCamSim":
-        return fallbackValue  # it's always nine (it's simulated), and this will all be redone soon anyway
-
-    resourcePath = (
-        f"s3://rubin-sts/{expRecord.instrument}/{expRecord.day_obs}/{expRecord.obs_id}/"
-        f"{expRecord.obs_id}_expectedSensors.json"
-    )
-    try:
-        url = ResourcePath(resourcePath)
-        jsonData = url.read()
-        data = json.loads(jsonData)
-        nExpected = len(data["expectedSensors"])
-        if nExpected != fallbackValue:
-            # not a warning because this is it working as expected, but it's
-            # nice to see when we have a partial readout
-            logger.debug(
-                f"Partial focal plane readout detected: expected number of items ({nExpected}) "
-                f" is different from the nominal value of {fallbackValue} for {instrument}"
-            )
-        return nExpected
-    except FileNotFoundError:
-        if instrument in ["LSSTCam", "LSST-TS8"]:
-            # these instruments are expected to have this info, the other are
-            # not yet, so only warn when the file is expected and not found.
-            logger.warning(
-                f"Unable to get number of expected items from {resourcePath}, "
-                f"using fallback value of {fallbackValue}"
-            )
-        return fallbackValue
-    except Exception:
-        logger.exception(
-            "Error calculating expected number of items, using fallback value " f"of {fallbackValue}"
-        )
-        return fallbackValue
 
 
 def removeDetector(dataCoord: DataCoordinate, butler: Butler) -> DataCoordinate:
@@ -149,82 +67,6 @@ def removeDetector(dataCoord: DataCoordinate, butler: Butler) -> DataCoordinate:
     """
     noDetector = {k: v for k, v in dataCoord.required.items() if k != "detector"}
     return DataCoordinate.standardize(noDetector, universe=butler.dimensions)
-
-
-def summaryStatsToDict(stats: ExposureSummaryStats) -> dict[str, Any]:
-    """Return a dictionary of summary statistics.
-
-    Parameters
-    ----------
-    stats : `ExposureSummaryStats`
-        The summary statistics object to convert to a dictionary.
-
-    Returns
-    -------
-    statsDict : `dict`
-        A dictionary containing the summary statistics, with keys as attribute
-        names and values as the corresponding attribute values.
-    """
-    return {
-        attr: getattr(stats, attr)
-        for attr in dir(stats)
-        if not attr.startswith("_") and not callable(getattr(stats, attr))
-    }
-
-
-def getAirmass(exp: Exposure) -> float | None:
-    """Get the airmass of an exposure if available and finite, else None.
-
-    Parameters
-    ----------
-    exp : `lsst.afw.image.Exposure`
-        The exposure to get the airmass for.
-
-    Returns
-    -------
-    airmass : `float` or `None`
-        The airmass of the exposure if available and finite, else None.
-    """
-
-    vi = exp.info.getVisitInfo()
-    airmass = vi.boresightAirmass
-    if airmass is not None and np.isfinite(airmass):
-        return float(airmass)
-    return None
-
-
-def getExpIdOrVisitId(obj: DimensionRecord | DataCoordinate) -> int:
-    """Get the exposure ID or visit ID from an exposure record.
-
-    Parameters
-    ----------
-    expRecord : `lsst.daf.butler.DimensionRecord` or
-                `lsst.daf.butler.DataCoordinate`
-        The exposure record to get the ID from.
-
-    Returns
-    -------
-    id : `int`
-        The exposure ID if available, else the visit ID.
-    """
-    if isinstance(obj, DimensionRecord):
-        return obj.id
-
-    if obj.hasRecords():
-        if "exposure" in obj.records:
-            record = obj.records["exposure"]
-            assert record is not None
-            return record.id
-        if "visit" in obj.records:
-            record = obj.records["visit"]
-            assert record is not None
-            return record.id
-    else:
-        if "visit" in obj:
-            return int(obj["visit"])
-        elif "exposure" in obj:
-            return int(obj["exposure"])
-    raise ValueError(f"{obj} does not contain an exposure or visit ID")
 
 
 def getExpRecordFromVisitRecord(visitRecord: DimensionRecord, butler: Butler) -> DimensionRecord:

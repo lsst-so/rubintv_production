@@ -41,7 +41,7 @@ class BasePlot(ABC):
         The group to put the plot in on the front end.
     channelName : `str`
         The channel to upload to, or ``None``, if being used for development.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`, optional
+    locationConfig : `LocationConfig`, optional
         The locationConfig containing the paths, or ``None`` if being used for
         development
     s3Uploader : `lsst.rubintv.production.MultiUploader`, optional
@@ -125,7 +125,7 @@ class LatissPlot(BasePlot):
         The name of the plot, used for upload.
     plotGroup : `str`
         The group to put the plot in on the front end.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`, optional
+    locationConfig : `LocationConfig`, optional
         The locationConfig containing the paths, or ``None`` if being used for
         development
     s3Uploader : `lsst.rubintv.production.MultiUploader`, optional
@@ -209,7 +209,7 @@ class StarTrackerPlot(BasePlot):
         The name of the plot, used for upload.
     plotGroup : `str`
         The group to put the plot in on the front end.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`, optional
+    locationConfig : `LocationConfig`, optional
         The locationConfig containing the paths, or ``None`` if being used for
         development
     s3Uploader : `lsst.rubintv.production.MultiUploader`, optional

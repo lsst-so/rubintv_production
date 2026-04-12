@@ -85,7 +85,7 @@ def timeFunction(logger: Logger) -> Callable:
     """Decorator to log the duration of a function call.
 
     Example usage:
-    @timeFunc(logger)
+    @timeFunction(logger)
     def my_function():
         doSomething()
 

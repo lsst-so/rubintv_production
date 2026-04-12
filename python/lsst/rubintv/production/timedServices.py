@@ -286,7 +286,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
 
     Parameters
     ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location configuration.
     metadataDirectory : `str`
         The name of the directory for which the metadata is being served. Note

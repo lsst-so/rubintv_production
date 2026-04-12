@@ -679,7 +679,7 @@ class AllSkyMovieChannel:
 
     Parameters
     ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The LocationConfig containing the relevant path items:
             ``allSkyRootDataPath`` : `str`
             Where to find the per-day data direcories.

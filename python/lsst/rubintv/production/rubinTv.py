@@ -87,7 +87,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
 
     Parameters
     ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
     embargo : `bool`, optional
         Use the embargo repo?
@@ -424,7 +424,7 @@ class NightReportChannel(BaseButlerChannel):
 
     Parameters
     ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
     dayObs : `int`, optional
         The dayObs. If not provided, will be calculated from the current time.

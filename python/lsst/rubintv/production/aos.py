@@ -314,7 +314,7 @@ class PsfAzElPlotter:
     ----------
     butler : `lsst.daf.butler.Butler`
         The Butler object used for data access.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
     instrument : `str`
         The instrument.
@@ -418,7 +418,7 @@ class ZernikePredictedFWHMPlotter:
     ----------
     butler : `lsst.daf.butler.Butler`
         The Butler object used for data access.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
     instrument : `str`
         The instrument.
@@ -607,7 +607,7 @@ class FocalPlaneFWHMPlotter:
     ----------
     butler : `lsst.daf.butler.Butler`
         The Butler object used for data access.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
     instrument : `str`
         The instrument.
@@ -836,7 +836,7 @@ class RadialPlotter:
     ----------
     butler : `lsst.daf.butler.Butler`
         The Butler object used for data access.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
     instrument : `str`
         The instrument.
