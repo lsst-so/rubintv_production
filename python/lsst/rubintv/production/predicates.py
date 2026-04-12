@@ -79,8 +79,9 @@ def raiseIf(doRaise: bool, error: Exception, logger: Logger, msg: str = "") -> N
 
     Raises
     ------
-    AnyException
-        Raised if ``self.doRaise`` is True, otherwise swallows and warns.
+    Exception
+        Re-raises ``error`` if ``doRaise`` is True, otherwise swallows and
+        warns.
     """
     sentry_sdk.capture_exception(error)
     if not msg:
@@ -100,7 +101,7 @@ def getDoRaise() -> bool:
 
     Returns
     -------
-    do_raise : `bool`
+    doRaise : `bool`
         Whether to raise exceptions or not.
     """
     doRaiseString = os.getenv("RAPID_ANALYSIS_DO_RAISE", "False").strip().lower()
@@ -265,15 +266,33 @@ def isFamPipeline(pipelineGraph: PipelineGraph) -> bool:
 
 
 def runningCI() -> bool:
-    """Check if the code is running in a CI environment."""
+    """Check if the code is running in a CI environment.
+
+    Returns
+    -------
+    runningCI : `bool`
+        ``True`` if ``RAPID_ANALYSIS_CI`` is set to a truthy value.
+    """
     return os.environ.get("RAPID_ANALYSIS_CI", "false").lower() == "true"
 
 
 def runningScons() -> bool:
-    """Check if the code is running under scons."""
+    """Check if the code is running under scons.
+
+    Returns
+    -------
+    runningScons : `bool`
+        ``True`` if ``SCONS_BUILDING`` is set to a truthy value.
+    """
     return os.environ.get("SCONS_BUILDING", "false").lower() == "true"
 
 
 def runningPyTest() -> bool:
-    """Check if the code is running inside pytest."""
+    """Check if the code is running inside pytest.
+
+    Returns
+    -------
+    runningPyTest : `bool`
+        ``True`` if pytest has set ``PYTEST_CURRENT_TEST`` in the environment.
+    """
     return "PYTEST_CURRENT_TEST" in os.environ

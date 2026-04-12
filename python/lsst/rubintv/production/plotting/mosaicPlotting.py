@@ -61,7 +61,7 @@ class Plotter:
     ----------
     butler : `lsst.daf.butler.Butler`
         The butler.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location configuration.
     instrument : `str`
         The instrument.

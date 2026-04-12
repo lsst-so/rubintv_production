@@ -240,7 +240,7 @@ class StarTrackerChannel(BaseChannel):
 
     Parameters
     ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The LocationConfig containing the relevant paths.
     cameraType : `str`
         Which camera to run the channel for. Allowed values are 'regular',
@@ -527,7 +527,7 @@ class StarTrackerNightReportChannel(BaseChannel):
 
     Parameters
     ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
     dayObs : `int`, optional
         The dayObs. If not provided, will be calculated from the current time.
@@ -672,7 +672,7 @@ class StarTrackerCatchup:
 
     Parameters
     ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The LocationConfig containing the relevant paths.
     dayObs : `int`, optional
         The dayObs to catchup. If not provided, will be calculated from the

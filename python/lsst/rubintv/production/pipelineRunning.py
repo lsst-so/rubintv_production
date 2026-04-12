@@ -58,7 +58,6 @@ from .baseChannels import BaseButlerChannel
 from .butlerQueries import (
     getCurrentOutputRun,
     getEquivalentDataId,
-    getExpIdOrVisitId,
     getExpRecordFromId,
 )
 from .consdbUtils import ConsDBPopulator
@@ -70,6 +69,7 @@ from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
 from .shardIo import getShardPath, writeMetadataShard
 from .timing import logDuration
+from .utils import getExpIdOrVisitId
 
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
@@ -133,7 +133,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
     Parameters
     ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
     butler : `lsst.daf.butler.Butler`
         The butler to use.
