@@ -367,8 +367,6 @@ class ConsDBPopulator:
         }
         table = f"cdb_{expRecord.instrument.lower()}.ccdvisit1_quicklook"
 
-        logger.info(f"\n\nDEBUG: higher moments for {expRecord.id=} {detectorNum=}: {values=}\n\n")
-
         inserted = self._insertIfAllowed(
             instrument=expRecord.instrument,
             table=table,
