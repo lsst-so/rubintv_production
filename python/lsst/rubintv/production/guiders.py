@@ -339,7 +339,10 @@ class GuiderWorker(BaseButlerChannel):
 
         assert record is not None, f"Failed to find exposure or visit record in {dataId=}"
 
-        if record.definition.name == "exposure" and not record.can_see_sky:
+        # process all on-sky images and daytime checkout darks == BLOCK-T594
+        if (record.definition.name == "exposure" and not record.can_see_sky) and (
+            not record.science_program == "BLOCK-T594"
+        ):
             # can_see_sky only on exposure records, all visits should be on-sky
             self.log.info(f"Skipping {dataId=} as it's not on sky")
             return
