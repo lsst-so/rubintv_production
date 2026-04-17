@@ -34,10 +34,11 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Callable, cast
 
 import numpy as np
+from astropy.table import Table
 from requests import HTTPError
 
 from lsst.afw.image import ExposureSummaryStats  # type: ignore
-from lsst.afw.table import ExposureCatalog  # type: ignore
+from lsst.afw.table import ExposureCatalog, SourceCatalog  # type: ignore
 from lsst.daf.butler import Butler, DatasetNotFoundError, DimensionRecord
 from lsst.summit.utils import ConsDbClient
 from lsst.summit.utils.simonyi.mountAnalysis import MountErrors
@@ -311,6 +312,62 @@ class ConsDBPopulator:
         obsId = computeCcdExposureId(expRecord.instrument, expRecord.id, detectorNum)
         values = {value: getattr(summaryStats, key) for key, value in CCD_VISIT_MAPPING.items()}
         table = f"cdb_{expRecord.instrument.lower()}.ccdvisit1_quicklook"
+
+        inserted = self._insertIfAllowed(
+            instrument=expRecord.instrument,
+            table=table,
+            obsId=obsId,  # integer form required for ccd-type tables
+            values=values,
+            allowUpdate=allowUpdate,
+        )
+        if inserted:
+            self.redisHelper.announceResultInConsDb(expRecord.instrument, table, obsId)
+
+    def populateHigherOrderMoments(
+        self,
+        expRecord: DimensionRecord,
+        detectorNum: int,
+        singleVisitStarFootprints: SourceCatalog | Table,
+        allowUpdate: bool = False,
+    ) -> None:
+        # TODO: DM-XXXXX remove this whole function once we have these in
+        # ExposureSummaryStats
+        if isinstance(singleVisitStarFootprints, SourceCatalog):
+            table = singleVisitStarFootprints.asAstropy()
+        else:
+            table = singleVisitStarFootprints
+
+        m03 = table["ext_shapeHSM_HigherOrderMomentsSource_03"]
+        m12 = table["ext_shapeHSM_HigherOrderMomentsSource_12"]
+        m21 = table["ext_shapeHSM_HigherOrderMomentsSource_21"]
+        m30 = table["ext_shapeHSM_HigherOrderMomentsSource_30"]
+        m04 = table["ext_shapeHSM_HigherOrderMomentsSource_04"]
+        m13 = table["ext_shapeHSM_HigherOrderMomentsSource_13"]
+        m22 = table["ext_shapeHSM_HigherOrderMomentsSource_22"]
+        m31 = table["ext_shapeHSM_HigherOrderMomentsSource_31"]
+        m40 = table["ext_shapeHSM_HigherOrderMomentsSource_40"]
+
+        coma_1 = float(np.nanmedian(m30 + m12))
+        coma_2 = float(np.nanmedian(m21 + m03))
+        trefoil_1 = float(np.nanmedian(m30 - 3 * m12))
+        trefoil_2 = float(np.nanmedian(3 * m21 - m03))
+        kurtosis = float(np.nanmedian(m40 + 2 * m22 + m04))
+        e4_1 = float(np.nanmedian(m40 - m04))
+        e4_2 = float(np.nanmedian(2 * (m31 + m13)))
+
+        obsId = computeCcdExposureId(expRecord.instrument, expRecord.id, detectorNum)
+        values = {
+            "coma_1": coma_1,
+            "coma_2": coma_2,
+            "trefoil_1": trefoil_1,
+            "trefoil_2": trefoil_2,
+            "kurtosis": kurtosis,
+            "e4_1": e4_1,
+            "e4_2": e4_2,
+        }
+        table = f"cdb_{expRecord.instrument.lower()}.ccdvisit1_quicklook"
+
+        logger.info(f"\n\nDEBUG: higher moments for {expRecord.id=} {detectorNum=}: {values=}\n\n")
 
         inserted = self._insertIfAllowed(
             instrument=expRecord.instrument,
