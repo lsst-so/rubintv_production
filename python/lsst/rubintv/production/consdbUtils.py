@@ -330,7 +330,7 @@ class ConsDBPopulator:
         singleVisitStarFootprints: SourceCatalog | Table,
         allowUpdate: bool = False,
     ) -> None:
-        # TODO: DM-XXXXX remove this whole function once we have these in
+        # TODO: DM-54675 remove this whole function once we have these in
         # ExposureSummaryStats
         if isinstance(singleVisitStarFootprints, SourceCatalog):
             table = singleVisitStarFootprints.asAstropy()
