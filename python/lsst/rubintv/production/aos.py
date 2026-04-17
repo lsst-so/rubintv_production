@@ -369,7 +369,10 @@ class PsfAzElPlotter:
                 # TODO: DM-XXXXX remove this from being done here
                 try:
                     self.consDBPopulator.populateHigherOrderMoments(
-                        expRecord, detectorId, srcDict[detectorId]
+                        expRecord,
+                        detectorId,
+                        srcDict[detectorId],
+                        allowUpdate=True,
                     )
                 except Exception:
                     self.log.info(
