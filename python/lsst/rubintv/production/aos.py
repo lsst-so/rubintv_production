@@ -343,7 +343,7 @@ class PsfAzElPlotter:
         self.watcher = RedisWatcher(butler=butler, locationConfig=locationConfig, podDetails=podDetails)
         #
         self.consDbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
-        # TODO: DM-XXXXX remove this from being done here
+        # TODO: DM-54675 remove this from being done here
         self.consDBPopulator = ConsDBPopulator(self.consDbClient, self.redisHelper, self.locationConfig)
         self.s3Uploader = MultiUploader()
 
@@ -366,7 +366,7 @@ class PsfAzElPlotter:
                 srcDict[detectorId] = self.butler.get(
                     "single_visit_star_footprints", visit=visitId, detector=detectorId
                 )
-                # TODO: DM-XXXXX remove this from being done here
+                # TODO: DM-54675 remove this from being done here
                 try:
                     self.consDBPopulator.populateHigherOrderMoments(
                         expRecord,
