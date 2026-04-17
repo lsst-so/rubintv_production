@@ -71,7 +71,9 @@ from .aosUtils import (
     extractWavefrontData,
     makeDataframeFromZernikes,
 )
+
 from .formatters import getRubinTvInstrumentName, makePlotFile
+from .consdbUtils import ConsDBPopulator
 from .redisUtils import RedisHelper, _extractExposureIds
 from .shardIo import writeExpRecordMetadataShard, writeMetadataShard
 from .timing import logDuration
@@ -337,7 +339,12 @@ class PsfAzElPlotter:
         self.camera = getCameraFromInstrumentName(self.instrument)
         self.log = logging.getLogger("lsst.rubintv.production.aos.PsfAzElPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
+
         self.watcher = RedisWatcher(butler=butler, locationConfig=locationConfig, podDetails=podDetails)
+        #
+        self.consDbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
+        # TODO: DM-XXXXX remove this from being done here
+        self.consDBPopulator = ConsDBPopulator(self.consDbClient, self.redisHelper, self.locationConfig)
         self.s3Uploader = MultiUploader()
 
     def makePlot(self, visitId: int) -> None:
@@ -359,6 +366,8 @@ class PsfAzElPlotter:
                 srcDict[detectorId] = self.butler.get(
                     "single_visit_star_footprints", visit=visitId, detector=detectorId
                 )
+                # TODO: DM-XXXXX remove this from being done here
+                self.consDBPopulator.populateHigherOrderMoments(expRecord, detectorId, srcDict[detectorId])
             except DatasetNotFoundError:
                 pass
 
