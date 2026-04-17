@@ -367,7 +367,14 @@ class PsfAzElPlotter:
                     "single_visit_star_footprints", visit=visitId, detector=detectorId
                 )
                 # TODO: DM-XXXXX remove this from being done here
-                self.consDBPopulator.populateHigherOrderMoments(expRecord, detectorId, srcDict[detectorId])
+                try:
+                    self.consDBPopulator.populateHigherOrderMoments(
+                        expRecord, detectorId, srcDict[detectorId]
+                    )
+                except Exception:
+                    self.log.info(
+                        f"ConsDB population for {visitId}, {detectorId} failed, skipping", exc_info=True
+                    )
             except DatasetNotFoundError:
                 pass
 
