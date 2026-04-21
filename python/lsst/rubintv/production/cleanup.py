@@ -373,20 +373,29 @@ class TempFileCleaner:
         # class in case of connection problems
         mu = MultiUploader()
 
-        self.log.info("Deleting stale local all sky stills")
-        deleteAllSkyStills(mu.localUploader._s3Bucket)
+        remoteOk = mu.remoteUploader.checkAccess()
+        if not remoteOk:
+            self.log.warning("Cannot access remote bucket; skipping remote buck cleanup and sync")
 
-        self.log.info("Deleting stale remote all sky stills")
-        deleteAllSkyStills(mu.remoteUploader._s3Bucket)
+        localBucket = mu.localUploader._s3Bucket
+        remoteBucket = mu.remoteUploader._s3Bucket
+
+        self.log.info("Deleting stale local all sky stills")
+        deleteAllSkyStills(localBucket)
 
         self.log.info("Deleting local non-final movies")
-        deleteNonFinalAllSkyMovies(mu.localUploader._s3Bucket)
+        deleteNonFinalAllSkyMovies(localBucket)
 
-        self.log.info("Deleting remote non-final movies")
-        deleteNonFinalAllSkyMovies(mu.remoteUploader._s3Bucket)
+        if remoteOk:
+            self.log.info("Deleting stale remote all sky stills")
+            deleteAllSkyStills(remoteBucket)
 
-        self.log.info("Syncing remote bucket to local bucket's contents")
-        syncBuckets(mu, self.locationConfig)  # always do the deletion before running the sync
+            self.log.info("Deleting remote non-final movies")
+            deleteNonFinalAllSkyMovies(remoteBucket)
+
+            self.log.info("Syncing remote bucket to local bucket's contents")
+            syncBuckets(mu, self.locationConfig)  # always do the deletion before running the sync
+
         self.log.info("Finished bucket cleanup")
 
     def runEndOfNightCleanupAndSync(self) -> None:
@@ -398,7 +407,13 @@ class TempFileCleaner:
         self.deletePixelProducts()
         self.deleteDirectories()
         self.deleteS3Directories()
-        self.cleanupAndSyncBuckets()
+        try:
+            # this can raise when there's USDF connection issues so don't
+            # restart on this, the re-sync will happen the following day anyway
+            self.cleanupAndSyncBuckets()
+        except Exception as e:
+            msg = f"Error during bucket cleanup and sync: {e}"
+            raiseIf(self.doRaise, e, self.log, msg)
         self.log.info("Finished daily cleanup")
 
     def run(self) -> None:
