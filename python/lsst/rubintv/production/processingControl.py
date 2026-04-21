@@ -1521,7 +1521,7 @@ class HeadProcessController:
                 self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.ONE_OFF_EXPRECORD_WORKER)
                 writeExpRecordMetadataShard(expRecord, getShardPath(self.locationConfig, expRecord))
                 self.doDetectorFanout(expRecord)
-                if expRecord.can_see_sky and self.instrument == "LSSTCam":
+                if self.instrument == "LSSTCam":
                     self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.GUIDER_WORKER)
 
             # for now, only dispatch to step1b once things are complete because
