@@ -1304,8 +1304,8 @@ class HeadProcessController:
                         )
 
             # Mark this who's gather as dispatched and check if all are done
-            self.redisHelper.markStep1aDispatched(self.instrument, expId, who)
-            info.markStep1aDispatched(who)
+            self.redisHelper.markStep1aDispatched(self.instrument, expId, who)  # update the real version
+            info.markStep1aDispatched(who)  # update the local version for the check below
             if info.allGathersDispatched():
                 self.redisHelper.completeExposure(self.instrument, expId)
 
