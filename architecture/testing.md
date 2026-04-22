@@ -1,5 +1,28 @@
 # Testing Guide
 
+## Type Checking (mypy)
+
+`mypy` is the type checker for this repo. Neither pre-commit nor CI runs it
+automatically, so it must be run by hand on any Python change before a task
+is considered done.
+
+```bash
+source ~/stack.sh && . ~/setup_packages.sh && mypy
+```
+
+Run from the repo root with no arguments — the `mypy.ini` config sets
+`files = scripts/, tests/` and `mypy_path = python`, which together cover the
+whole package plus scripts and tests. Passing a specific path (e.g.
+`mypy python/...`) will miss errors in the paths you didn't name.
+
+The stack must be sourced (see the `rapid-analysis-lsst-stack` skill) —
+without it, mypy cannot resolve sibling `lsst.*` imports and reports a flood
+of spurious missing-import errors.
+
+If a new third-party package lands in `lsst.*` that mypy can't find stubs
+for, add an `[mypy-<package>]` block with `ignore_missing_imports = True` to
+`mypy.ini` rather than suppressing errors at call sites.
+
 ## Unit Tests (`tests/`)
 
 Run with pytest. Some tests require a live Butler connection (only available on
