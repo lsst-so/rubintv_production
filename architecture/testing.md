@@ -32,14 +32,19 @@ Run with pytest. Some tests require a live Butler connection (only available on
 
 | File | What it tests | Butler needed? |
 |------|---------------|----------------|
-| `test_utils.py` | `isDayObsContiguous`, `sanitizeNans`, `getSite` | No |
-| `test_timing.py` | `BoxCarTimer` (lap timing, statistics, pause/resume) | No |
-| `test_processingControl.py` | `CameraControlConfig` (focal plane detector patterns) | No |
+| `test_utils.py` | Environment/instrument/filter/AOS helpers across `predicates`, `parsers`, `formatters`, and middleware `utils` | No |
+| `test_timing.py` | `BoxCarTimer` (lap timing, statistics, pause/resume) — uses a fake clock for determinism | No |
+| `test_processingControl.py` | `CameraControlConfig` (focal plane detector patterns) and surrounding head-node helpers | No |
 | `test_podDefinition.py` | `PodDetails` construction, queue name round-trips | No |
 | `test_payloads.py` | `Payload` construction, equality, JSON round-trip | Partially |
 | `test_metadataService.py` | `TimedMetadataServer` shard merging, NaN sanitization | No |
 | `test_s3_uploader.py` | `S3Uploader` using moto (mock AWS) | No |
 | `test_exposureLogUtils.py` | `getLogsForDayObs` with mocked HTTP responses | No |
+| `test_redisKeys.py` | Pure Redis key-construction helpers in `redisKeys.py` | No |
+| `test_aosUtils.py` | `parseDofStr` and other AOS helper functions | No |
+| `test_consdbUtils.py` | `consdbUtils` mappings and helper functions | No |
+| `test_clusterManagement.py` | Dataclasses in `clusterManagement.py` | No |
+| `test_workerSets.py` | `WorkerSet` registry helpers | No |
 | `test_pipelines.py` | Full pipeline graph generation and validation | Yes |
 
 ### Test Data
