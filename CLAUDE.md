@@ -129,5 +129,7 @@ when their triggering context matches:
   testing, or importing package code.
 - **rapid-analysis-code-style** — naming, formatting, type annotation, and
   docstring conventions when writing or editing Python here.
+- **rapid-analysis-testing** — the manual validation loop (mypy + pytest)
+  to run after editing Python, since neither pre-commit nor CI runs them.
 - **rapid-analysis-architecture-sync** — keeping `architecture/*.md` in
   step with code changes that touch the system's shape.

@@ -89,12 +89,14 @@ def myFunction(param1: int, param2: str | None = None) -> bool:
 Note the backticks around types, the `, optional` suffix for `| None`
 parameters, and the named return value (`result`).
 
-## Tooling (for context — don't need to run these by hand)
+## Tooling
 
-- Linting: **flake8**
-- Type checking: **mypy** (Python 3.13 target)
-- Pre-commit hooks: trailing whitespace, YAML, isort, black, flake8
-- Build: LSST SCons + pyproject.toml
+- **flake8** — linter; runs automatically via pre-commit.
+- **black** and **isort** — formatters; run automatically via pre-commit.
+- **mypy** — type checker; **not** run by pre-commit or CI, so you must run
+  it by hand on any Python change before declaring a task done. See the
+  `rapid-analysis-testing` skill for the command and the validation loop.
+- Build: LSST SCons + pyproject.toml.
 
 Pre-commit catches most style slips on commit, but apply these conventions
 while writing rather than relying on the hook to flag them — the hook will
