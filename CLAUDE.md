@@ -1,11 +1,36 @@
-# RubinTV Production - Agent Guide
+# Rapid Analysis - Agent Guide
 
-This is the backend processing system for **RubinTV**, the Vera Rubin
-Observatory's real-time observation visualization platform. It runs as a
-distributed set of Kubernetes pods at the summit (and at USDF/SLAC) that
-ingest raw telescope exposures, run LSST Science Pipeline tasks on them,
-and publish results (images, plots, metadata) to S3 buckets consumed by the
-RubinTV web frontend.
+This is the backend processing system commonly referred to across the project
+as **rapid analysis** — the Vera Rubin Observatory's real-time observation
+processing pipeline. It runs as a distributed set of Kubernetes pods at the
+summit (and at USDF/SLAC) that ingest raw telescope exposures, run LSST
+Science Pipeline tasks on them, and publish results (images, plots, metadata)
+to S3 buckets consumed by the (separate) RubinTV web frontend.
+
+## ⚠️ A note on names — read this first
+
+The python package on disk is called `rubintv_production`, and the git repo
+is `rubintv_production`, but **this is a misleading historical name** and
+nobody actually calls the system that. Across the project, in docs, in
+Slack, in tickets, and in conversation, this codebase is called **rapid
+analysis**. A future rename of the package to `rapid_analysis` is on the
+backlog ([claudePlans/backlog.md](claudePlans/backlog.md)).
+
+There is also a **completely separate** repository called `rubintv` — that
+one is the web frontend that displays some of the plots this backend
+produces. Do not confuse the two. In particular:
+
+- Don't call this codebase "RubinTV" or "RubinTV Production" in docstrings,
+  comments, commit messages, PR descriptions, new module names, new skill
+  names, or new doc titles. Call it **rapid analysis** (or "the rapid
+  analysis backend" when disambiguation is needed).
+- The existing `rubintv_production` / `lsst.rubintv.production` names on
+  disk have to stay until the rename ticket lands — don't go on a search-
+  and-replace spree to "fix" them. But do not *introduce* new uses of
+  "rubintv" to describe this system.
+- When you see "RubinTV" referenced externally (e.g. `consumed by RubinTV`,
+  `the RubinTV frontend`), that really does mean the separate frontend
+  repo, not this one.
 
 ## This is an application, not a library
 
@@ -32,8 +57,7 @@ What this means in practice for refactors:
 
 ## Architecture Documentation
 
-Detailed architecture docs live in `architecture/` and MUST be kept up to date
-whenever architectural changes are made:
+Detailed architecture docs live in `architecture/`:
 
 - [Architecture & Data Flow](architecture/architecture.md) - overall system
   design, pod types, pipeline stages, focal plane layout, detector fanout,
@@ -43,15 +67,8 @@ whenever architectural changes are made:
 - [Testing Guide](architecture/testing.md) - unit tests, CI integration suite,
   and how to run them
 
-**When modifying code that changes any of the following, update the
-corresponding architecture doc(s) in the same change:**
-- Redis key names, formats, or TTLs (`redis-coordination.md`)
-- Pod flavors, types, or queue naming (`architecture.md`, `redis-coordination.md`)
-- Pipeline stages, task chaining, or the gather mechanism (`architecture.md`)
-- Head node or worker event loop logic (`architecture.md`)
-- The focal plane control or detector fanout logic (`architecture.md`)
-- Payload serialization format (`architecture.md`)
-- Test infrastructure or CI phases (`testing.md`)
+These docs must stay in sync with the code; the `rubintv-architecture-sync`
+skill describes when and how to update them alongside a code change.
 
 ## Quick Orientation
 
@@ -103,102 +120,14 @@ tests/ci/                          # CI integration suite
 - **Shard**: A small JSON file written by workers, periodically merged by
   TimedMetadataServer and uploaded to S3 for the frontend
 
-## Development
+## Skills
 
-### Naming
+Project-scoped skills live under `.claude/skills/` and load automatically
+when their triggering context matches:
 
-- camelCase for all variables, functions, methods, and attributes.
-- PascalCase for classes.
-- No snake_case except when required by external APIs.
-- All function/method names must contain a verb (including private ones),
-  e.g. ``getTrackingKey`` not ``trackingKey``. Exception: ``fromX``
-  class methods for constructors do not need a verb.
-- Prefer longer, descriptive variable names over short, abbreviated ones. For
-  example, ``step1aDispatched = isStep1aDispatched()`` rather than ``s1aD =
-  self.isStep1aDispatched()``. This is not a hard rule though, and as long as
-  it's clearly human-readable its fine to abbreviate a bit, so saying ``dets``
-  for ``detectors`` is fine. It is also important to stick to established
-  abbreviations already in use, as some of these are "terms of art" e.g.
-  ``expId`` vs ``exposureIdentifier``.
-
-### Formatting
-
-- black (line-length 110), isort (black profile)
-
-### Type Annotations
-
-- Use built-in types (``int``, ``str``, ``float``, ``dict``, ``list``,
-  ``tuple``, etc.).
-- Never import ``Dict``, ``List``, ``Tuple``, ``Optional``, or ``Union``
-  from ``typing``.
-- Use ``| None`` instead of ``Optional[...]``.
-
-### Docstrings
-
-- Use numpydoc format.
-- Include types for every parameter and for the return value (if not
-  ``None``).
-- Always name the return value unless the return type is ``None`` (omit
-  the Returns section in that case).
-- If a parameter is ``| None``, describe its type as ``<type>, optional``.
-- Argument order in docstrings must match the function signature, and
-  types must be correct.
-- No docstrings for class ``__init__``; document the class instead.
-
-Example:
-
-```python
-def myFunction(param1: int, param2: str | None = None) -> bool:
-    """This function does something.
-
-    Parameters
-    ----------
-    param1 : `int`
-        The first parameter.
-    param2 : `str`, optional
-        The second parameter.
-
-    Returns
-    -------
-    result : `bool`
-        The result of the function.
-    """
-    return param1 > 0 and param2 != "hello"
-```
-
-### Environment Setup
-
-**ALWAYS run code from this package, run its tests, or import any of its
-modules through the DM Stack environment.** The package lives in the
-``lsst.*`` namespace and imports many sibling packages from the LSST stack
-(``lsst.daf.butler``, ``lsst.pipe.base``, ``lsst.summit.utils``, etc.).
-Running ``python``, ``pytest`` or ``python -c "import lsst.rubintv..."``
-without the stack sourced will fail with ``ModuleNotFoundError`` every
-time. Do not waste a turn discovering this — source the stack first.
-
-**Every time** you need to run, test, or import package code, prefix the
-command so that both lines below are sourced first, in this order:
-
-```bash
-source ~/stack.sh && . ~/setup_packages.sh && <your command>
-```
-
-For example:
-
-```bash
-source ~/stack.sh && . ~/setup_packages.sh && pytest tests/test_podDefinition.py
-source ~/stack.sh && . ~/setup_packages.sh && python -c "from lsst.rubintv.production.podDefinition import PodFlavor; print(list(PodFlavor))"
-```
-
-Do **not** try ``PYTHONPATH=python python ...`` or any other workaround —
-sourcing the stack is the only supported way and is required for every
-single invocation, because the shell state from previous Bash tool calls
-does not persist.
-
-### Linting & Tooling
-
-- **Linting**: flake8
-- **Type checking**: mypy (Python 3.13 target)
-- **Pre-commit hooks**: trailing whitespace, YAML, isort, black, flake8
-- **Build system**: LSST SCons + pyproject.toml
-- **License**: GPLv3
+- **rapid-analysis-lsst-stack** — sourcing the DM stack before running,
+  testing, or importing package code.
+- **rapid-analysis-code-style** — naming, formatting, type annotation, and
+  docstring conventions when writing or editing Python here.
+- **rapid-analysis-architecture-sync** — keeping `architecture/*.md` in
+  step with code changes that touch the system's shape.
