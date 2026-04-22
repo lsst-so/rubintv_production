@@ -77,6 +77,7 @@ DATASETS_TO_CLEAN = (
 COLLECTION_CHAIN = "LSSTCam/runs/quickLook/"
 BATCHSIZE = 5000
 SPEED_FACTOR = 0.5  # 0.5 = half-speed, 0.33 = one-third etc
+SMALL_FILE_KEEP_DAYS = 14
 
 
 def interruptibleSleep(duration: float, deadline: Time) -> bool:
@@ -447,7 +448,7 @@ class TempFileCleaner:
                 continue
 
             currentDayObs = getCurrentDayObsInt()
-            deleteBefore = offsetDayObs(currentDayObs, -31)
+            deleteBefore = offsetDayObs(currentDayObs, -SMALL_FILE_KEEP_DAYS)
 
             secondsUntilSunset = (sunset - Time.now()).sec
             untilSunset = humanize.precisedelta(timedelta(seconds=secondsUntilSunset))
