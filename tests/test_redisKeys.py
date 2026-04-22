@@ -283,6 +283,17 @@ class TrackingHashFieldsTestCase(lsst.utils.tests.TestCase):
         #     ^([A-Z_]+):(\w+?)(?::(\d+))?$
         # All field-name helpers must produce strings that match this
         # regex so the parser keeps working.
+        #
+        # The pattern is intentionally *hard-coded here* rather than
+        # imported from redisUtils. Importing the live symbol would make
+        # this test tautological: a future change that loosens the parser
+        # regex and drifts a helper in a matching way would pass silently,
+        # because both sides of the assertion moved together. Pinning the
+        # pattern text turns this into a real contract — edits to the
+        # parser regex fail this test and force a conscious decision about
+        # whether the helpers (and all persisted Redis fields consumers
+        # have already written) are still compatible. If the parser regex
+        # genuinely needs to change, update the copy below to match.
         import re
 
         pattern = re.compile(r"^([A-Z_]+):(\w+?)(?::(\d+))?$")
