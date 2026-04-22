@@ -1,8 +1,8 @@
 # Redis Coordination
 
 Redis is the central nervous system for distributed work coordination in
-RubinTV Production. All inter-pod communication flows through Redis - there
-is no direct pod-to-pod communication.
+the rapid analysis backend. All inter-pod communication flows through Redis
+- there is no direct pod-to-pod communication.
 
 ## Connection
 

@@ -77,25 +77,38 @@ python/lsst/rubintv/production/   # Main Python package
   processingControl.py             # HeadProcessController - the orchestrator
   pipelineRunning.py               # SingleCorePipelineRunner - the worker
   redisUtils.py                    # RedisHelper - all Redis operations
+  redisKeys.py                     # Pure helpers for Redis key construction
   podDefinition.py                 # PodDetails, PodFlavor - pod identity/queues
   payloads.py                      # Payload - serializable work unit
   watchers.py                      # ButlerWatcher, RedisWatcher - event sources
   baseChannels.py                  # BaseChannel, BaseButlerChannel - worker bases
-  utils.py                         # LocationConfig - central path/config manager
+  locationConfig.py                # LocationConfig - central path/config manager
+  startupChecks.py                 # Pre-flight checks run by pod scripts at boot
+  butlerQueries.py                 # Helpers that touch a Butler (kept isolated)
+  utils.py                         # Small middleware helpers (no Butler needed)
+  predicates.py                    # Boolean helpers: isCalibration, isWepImage, ...
+  parsers.py                       # JSON parsers, NumpyEncoder, sanitizeNans
+  formatters.py                    # Filename, title and lookup formatters
+  shardIo.py                       # Read/write/merge metadata JSON "shards"
+  timing.py                        # logDuration, timeFunction, BoxCarTimer
   uploaders.py                     # S3Uploader, MultiUploader - cloud uploads
   aos.py                           # AOS donut/zernike processing & plotting
+  aosUtils.py                      # AOS helper functions (DOF parsing, etc.)
+  aosRecipes.py                    # Zernike post-processing recipes
   timedServices.py                 # TimedMetadataServer, TMA telemetry
   consdbUtils.py                   # ConsDBPopulator - consolidated DB writes
   channels.py                      # Channel definitions for RubinTV frontend
   performance.py                   # PerformanceMonitor - pipeline timing metrics
   cleanup.py                       # TempFileCleaner - daily housekeeping
+  clusterManagement.py             # Worker-set and cluster-layout dataclasses
+  workerSets.py                    # WorkerSet registry helpers
   plotting/                        # Night reports, mosaics, focal plane plots
 
 scripts/                           # Entry points per instrument
   LSSTCam/                         # ~26 scripts (head node, workers, plotters)
   LATISS/                          # AuxTel scripts
   LSSTComCam/, LSSTComCamSim/      # ComCam scripts
-  summit/, slac/, tts/             # Site-specific scripts
+  summit/                          # Summit-only entry points (e.g. auxTel/, misc/)
 
 config/                            # Per-environment YAML configs
   config_summit.yaml               # Production (summit)
