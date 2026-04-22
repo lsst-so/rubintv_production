@@ -379,7 +379,7 @@ class AosWorkerSetCreateTestCase(lsst.utils.tests.TestCase):
         # All 8 should be at depth 0, covering all the AOS CCDs.
         for pod in aosSet.pods:
             self.assertEqual(pod.depth, 0)
-        ccds = sorted(p.detectorNumber for p in aosSet.pods)
+        ccds = sorted(p.detectorNumber for p in aosSet.pods if p.detectorNumber is not None)
         self.assertEqual(ccds, list(AOS_CCDS))
 
     def test_createSecondSet(self) -> None:

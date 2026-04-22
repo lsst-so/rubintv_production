@@ -799,6 +799,9 @@ class FocusSweepAnalysis:
 
         data = collectSweepData(records, self.consDbClient, self.efdClient)
         varName = inferSweepVariable(data)
+        if varName is None:
+            self.log.warning(f"Could not infer the swept variable for visits {visitIds}; skipping plot")
+            return
         fit = fitSweepParabola(data, varName)
 
         self.fig.clf()

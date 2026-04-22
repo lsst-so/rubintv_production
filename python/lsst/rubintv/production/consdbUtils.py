@@ -119,8 +119,10 @@ VISIT_MIN_MED_MAX_TOTAL_MAPPING = {
 }
 
 
-def _removeNans(values: Mapping[str, float | int | str]) -> dict[str, float | int | str]:
-    out: dict[str, float | int | str] = {}
+def _removeNans(
+    values: Mapping[str, float | int | str | np.floating],
+) -> dict[str, float | int | str | np.floating]:
+    out: dict[str, float | int | str | np.floating] = {}
     for k, v in values.items():
         if isinstance(v, (float, np.floating)) and np.isnan(v):
             continue
