@@ -29,5 +29,7 @@ pytest_session.txt
 # temporary log files from running CI
 ci_logs/*
 
-# Claude Code local state
-.claude/
+# Claude Code local state — keep everything local except the skills/ directory,
+# which is checked-in, team-shared tooling.
+.claude/*
+!.claude/skills/
