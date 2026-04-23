@@ -133,6 +133,40 @@ tests/ci/                          # CI integration suite
 - **Shard**: A small JSON file written by workers, periodically merged by
   TimedMetadataServer and uploaded to S3 for the frontend
 
+## Writing unit tests alongside code changes
+
+Add unit tests in the same commit as the code change **whenever it is
+feasible to do so**. Feasible here means the change touches a unit that
+can be exercised in isolation without standing up a Butler, Redis, S3,
+or the wider distributed machinery — in other words, the kind of change
+that `tests/test_*.py` already covers (pure dataclasses, serialisers,
+parsers, predicates, small helpers, key construction, etc.).
+
+Examples of changes that should always ship with tests:
+
+- Adding or removing a field on a serialisable dataclass (e.g. `Payload`,
+  `PodDetails`). Test the default value, equality, and JSON round-trip.
+  If the wire format needs to stay backward-compatible with older
+  messages in flight, test that explicitly by decoding a legacy-shape
+  JSON blob.
+- Adding or changing a pure helper in `utils.py`, `predicates.py`,
+  `parsers.py`, `formatters.py`, `redisKeys.py`, `timing.py`, etc.
+- Fixing a bug in any of the above — add a regression test that fails
+  without the fix.
+
+When tests are genuinely hard (the change is deep inside an event loop,
+requires a live Butler/Redis, or is a plumbing change whose only
+observable effect is end-to-end in the CI integration suite), it is
+fine to skip them — but state in the commit message *why* the change
+isn't unit-tested, so a reviewer doesn't have to guess whether it was
+an oversight or a deliberate call.
+
+The reminder: nothing in pre-commit or CI forces this — the
+`rapid-analysis-testing` skill is the checklist for validating what
+you *did* write, but it won't tell you that you *should* have written
+a test in the first place. That judgement is on you at the moment of
+editing the code, and must be made explicit in the commit message.
+
 ## Skills
 
 Project-scoped skills live under `.claude/skills/` and load automatically
