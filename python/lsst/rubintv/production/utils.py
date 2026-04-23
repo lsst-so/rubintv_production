@@ -621,10 +621,6 @@ class LocationConfig:
         return self._config["aosDataDir"]
 
     @cached_property
-    def aosLSSTCamRefitWcsPipelineFile(self) -> str:
-        return self._config["aosLSSTCamRefitWcsPipelineFile"]
-
-    @cached_property
     def aosLSSTCamAiDonutPipelineFile(self) -> str:
         return self._config["aosLSSTCamAiDonutPipelineFile"]
 
@@ -637,8 +633,12 @@ class LocationConfig:
         return self._config["aosLSSTCamUnpairedDanishPipelineFile"]
 
     @cached_property
-    def aosLSSTCamWcsDanishPipelineFile(self) -> str:
-        return self._config["aosLSSTCamWcsDanishPipelineFile"]
+    def aosLSSTCamWcsDanishBin1PipelineFile(self) -> str:
+        return self._config["aosLSSTCamWcsDanishBin1PipelineFile"]
+
+    @cached_property
+    def aosLSSTCamWcsDanishBin2PipelineFile(self) -> str:
+        return self._config["aosLSSTCamWcsDanishBin2PipelineFile"]
 
 
 def getAutomaticLocationConfig() -> LocationConfig:

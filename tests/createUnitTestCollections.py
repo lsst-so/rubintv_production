@@ -56,13 +56,13 @@ PER_PIPELINE_EXTRAS: dict[str, list[str]] = {
     "AOS_DANISH": [
         "reassignCwfsCutoutsPairTask:customQG=False",
     ],
-    "AOS_WCS_DANISH": [
+    "AOS_WCS_DANISH_BIN_2": [
+        "reassignCwfsCutoutsPairTask:customQG=False",
+    ],
+    "AOS_WCS_DANISH_BIN_1": [
         "reassignCwfsCutoutsPairTask:customQG=False",
     ],
     "AOS_TIE": [
-        "reassignCwfsCutoutsPairTask:customQG=False",
-    ],
-    "AOS_REFIT_WCS": [
         "reassignCwfsCutoutsPairTask:customQG=False",
     ],
     "AOS_AI_DONUT": [

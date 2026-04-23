@@ -73,6 +73,10 @@ if TYPE_CHECKING:
     from lsst.pipe.base import PipelineTaskConfig
     from lsst.pipe.base.pipeline_graph import TaskNode
 
+# NB: these must all be initializable or the head node will not come up.
+# Similarly, the head node will not initialize any pipelines that are not in
+# this list, so if you want to add a new pipeline, add it here and make sure it
+# is created in buildPipelines below. (This doesn't apply to LATISS though)
 PIPELINE_NAMES: tuple[str, ...] = (
     # Science pipeline processing
     "SFM",
@@ -83,10 +87,10 @@ PIPELINE_NAMES: tuple[str, ...] = (
     # Just running isr, for off-sky images
     "ISR",
     # CWFS pipelines (corner chips only)
+    "AOS_WCS_DANISH_BIN_2",
+    "AOS_WCS_DANISH_BIN_1",
     "AOS_DANISH",
-    "AOS_WCS_DANISH",
     "AOS_TIE",
-    "AOS_REFIT_WCS",
     "AOS_AI_DONUT",
     "AOS_TARTS_UNPAIRED",
     "AOS_UNPAIRED_DANISH",
@@ -447,11 +451,11 @@ def buildPipelines(
     aosFileTIE = locationConfig.aosLSSTCamPipelineFileTie
     aosFileDanishFam = locationConfig.aosLSSTCamFullArrayModePipelineFileDanish
     aosFileTIEFam = locationConfig.aosLSSTCamFullArrayModePipelineFileTie
-    aosRefitWcsFile = locationConfig.aosLSSTCamRefitWcsPipelineFile
     aiDonutFile = locationConfig.aosLSSTCamAiDonutPipelineFile
     tartsFile = locationConfig.aosLSSTCamTartsPipelineFile
     unpairedDanishFile = locationConfig.aosLSSTCamUnpairedDanishPipelineFile
-    aosWcsDanishFile = locationConfig.aosLSSTCamWcsDanishPipelineFile
+    aosWcsBin1DanishFile = locationConfig.aosLSSTCamWcsDanishBin1PipelineFile
+    aosWcsBin2DanishFile = locationConfig.aosLSSTCamWcsDanishBin2PipelineFile
 
     drpPipeDir = getPackageDir("drp_pipe")
     biasFile = (Path(drpPipeDir) / "pipelines" / instrument / "quickLookBias.yaml").as_posix()
@@ -492,14 +496,14 @@ def buildPipelines(
         pipelines["AOS_DANISH"] = PipelineComponents(
             butler.registry, aosFileDanish, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
-        pipelines["AOS_WCS_DANISH"] = PipelineComponents(
-            butler.registry, aosWcsDanishFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
+        pipelines["AOS_WCS_DANISH_BIN_1"] = PipelineComponents(
+            butler.registry, aosWcsBin1DanishFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
+        )
+        pipelines["AOS_WCS_DANISH_BIN_2"] = PipelineComponents(
+            butler.registry, aosWcsBin2DanishFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
         pipelines["AOS_TIE"] = PipelineComponents(
             butler.registry, aosFileTIE, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
-        )
-        pipelines["AOS_REFIT_WCS"] = PipelineComponents(
-            butler.registry, aosRefitWcsFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
         pipelines["AOS_AI_DONUT"] = PipelineComponents(
             butler.registry, aiDonutFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
@@ -517,6 +521,10 @@ def buildPipelines(
         pipelines["AOS_UNPAIRED_DANISH"] = PipelineComponents(
             butler.registry, unpairedDanishFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
+        if set(pipelines.keys()) != set(PIPELINE_NAMES):
+            missing = set(PIPELINE_NAMES) - set(pipelines.keys())
+            extra = set(pipelines.keys()) - set(PIPELINE_NAMES)
+            raise ValueError(f"Pipeline names don't match expected. Missing: {missing}, extra: {extra}")
 
     allGraphs: list[PipelineGraph] = []
     for pipeline in pipelines.values():
@@ -820,6 +828,15 @@ class HeadProcessController:
         if self.redisHelper.redis.getdel("RUBINTV_CONTROL_RESET_HEAD_NODE"):
             self.log.warning("Received reset command from RubinTV, restarting the head node...")
             sys.exit(0)
+
+        # Current keys on the frontend, i.e. possible values:
+        # WCS_DANISH_BIN_2  # default
+        # WCS_DANISH_BIN_1
+        # DANISH
+        # TIE
+        # AI_DONUT
+        # UNPAIRED_DANISH
+        # TARTS_UNPAIRED
 
         updateFromKey("RUBINTV_CONTROL_AOS_PIPELINE", "currentAosPipeline")
 
