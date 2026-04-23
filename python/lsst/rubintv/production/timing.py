@@ -126,6 +126,10 @@ class BoxCarTimer:
         The number of lap times to store in the buffer. ``None`` can be passed
         for an infinite buffer, but this is not the default to discourage its
         usage as this is expected to be used for long-running processes.
+    clock : `Callable` [[], `float`], optional
+        Function returning the current time in seconds. Defaults to
+        `time.time`; tests can pass a deterministic substitute to avoid
+        depending on real-clock timing.
 
     Raises
     ------
@@ -134,8 +138,9 @@ class BoxCarTimer:
         is started.
     """
 
-    def __init__(self, length: int | None):
+    def __init__(self, length: int | None, *, clock: Callable[[], float] = time.time):
         self._buffer: Deque[float] = deque(maxlen=length)
+        self._clock = clock
         self.lastTime: float | None = None
         self.paused = False
         self.pauseStartTime: float | None = None
@@ -144,7 +149,7 @@ class BoxCarTimer:
 
     def start(self) -> None:
         """Start the timer."""
-        self.lastTime = time.time()
+        self.lastTime = self._clock()
         self.started = True
 
     def lap(self) -> None:
@@ -159,7 +164,7 @@ class BoxCarTimer:
             raise RuntimeError("Timer has not been started. Cannot record lap.")
         if self.paused:
             raise RuntimeError("Timer is paused. Cannot record lap.")
-        currentTime = time.time()
+        currentTime = self._clock()
         if self.lastTime is not None:
             elapsedTime = currentTime - self.lastTime
             self._buffer.append(elapsedTime)
@@ -171,7 +176,7 @@ class BoxCarTimer:
         if not self.started:
             raise RuntimeError("Timer has not been started. Cannot pause.")
         if not self.paused:
-            self.pauseStartTime = time.time()
+            self.pauseStartTime = self._clock()
             self.paused = True
 
     def resume(self) -> None:
@@ -180,7 +185,7 @@ class BoxCarTimer:
             raise RuntimeError("Timer has not been started. Cannot resume.")
         if self.paused:
             assert self.pauseStartTime is not None
-            pauseDuration = time.time() - self.pauseStartTime
+            pauseDuration = self._clock() - self.pauseStartTime
             assert self.lastTime is not None
             self.lastTime += pauseDuration
             self.paused = False
