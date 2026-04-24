@@ -29,6 +29,7 @@ from lsst.rubintv.production.clusterManagement import (
     FlavorStatus,
     QueueItem,
     WorkerStatus,
+    _describeActiveExposuresChange,
 )
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
 
@@ -221,6 +222,59 @@ class ClusterStatusTestCase(lsst.utils.tests.TestCase):
     def test_allWorkersEmptyClusterIsEmpty(self) -> None:
         cluster = ClusterStatus(instrument="LSSTCam", flavorStatuses={}, rawQueueLength=0)
         self.assertEqual(cluster.allWorkers, ())
+
+
+class DescribeActiveExposuresChangeTestCase(lsst.utils.tests.TestCase):
+    """Tests for `_describeActiveExposuresChange`."""
+
+    def test_unchangedReturnsNone(self) -> None:
+        self.assertIsNone(_describeActiveExposuresChange({1, 2}, {1, 2}, "LSSTCam"))
+
+    def test_unchangedEmptyReturnsNone(self) -> None:
+        self.assertIsNone(_describeActiveExposuresChange(set(), set(), "LSSTCam"))
+
+    def test_firstObservationIsAlwaysReported(self) -> None:
+        # Transition from "no prior state" to empty — should still log, so
+        # operators see the pod come up rather than silently staying quiet.
+        message = _describeActiveExposuresChange(None, set(), "LSSTCam")
+        self.assertIsNotNone(message)
+        assert message is not None  # for mypy narrowing
+        self.assertIn("LSSTCam", message)
+        self.assertIn("0 total", message)
+
+    def test_firstObservationWithExposures(self) -> None:
+        message = _describeActiveExposuresChange(None, {202604240001, 202604240002}, "LSSTCam")
+        assert message is not None
+        self.assertIn("202604240001", message)
+        self.assertIn("202604240002", message)
+        self.assertIn("2 total", message)
+
+    def test_addedOnly(self) -> None:
+        message = _describeActiveExposuresChange({1}, {1, 2, 3}, "LSSTCam")
+        assert message is not None
+        self.assertIn("added=[2, 3]", message)
+        self.assertNotIn("removed", message)
+        self.assertIn("3 total", message)
+
+    def test_removedOnly(self) -> None:
+        message = _describeActiveExposuresChange({1, 2, 3}, {2}, "LSSTCam")
+        assert message is not None
+        self.assertIn("removed=[1, 3]", message)
+        self.assertNotIn("added", message)
+        self.assertIn("1 total", message)
+
+    def test_addedAndRemoved(self) -> None:
+        message = _describeActiveExposuresChange({1, 2}, {2, 3}, "LSSTCam")
+        assert message is not None
+        self.assertIn("added=[3]", message)
+        self.assertIn("removed=[1]", message)
+
+    def test_sortedInOutput(self) -> None:
+        # Sets are unordered, but the log line must be deterministic so
+        # operators can eyeball changes across ticks.
+        message = _describeActiveExposuresChange(None, {3, 1, 2}, "LSSTCam")
+        assert message is not None
+        self.assertIn("[1, 2, 3]", message)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

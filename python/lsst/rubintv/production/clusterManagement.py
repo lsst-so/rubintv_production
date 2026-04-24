@@ -55,6 +55,47 @@ flatSetMap = {
 }
 
 
+def _describeActiveExposuresChange(
+    previous: set[int] | None, current: set[int], instrument: str
+) -> str | None:
+    """Describe a change in the active-exposures set for logging.
+
+    Parameters
+    ----------
+    previous : `set` [`int`] or `None`
+        Previously reported active exposure IDs, or ``None`` if no prior
+        observation has been recorded. ``None`` is treated as distinct
+        from the empty set so that the first observation is always
+        reported, even when the cluster starts up idle.
+    current : `set` [`int`]
+        The current active exposure IDs.
+    instrument : `str`
+        The instrument name, included in the message.
+
+    Returns
+    -------
+    message : `str` or `None`
+        A human-readable description of the change, or ``None`` if the
+        set is unchanged from ``previous``.
+    """
+    if current == previous:
+        return None
+    currentSorted = sorted(current)
+    if previous is None:
+        return f"Active exposures for {instrument}: {currentSorted} ({len(current)} total)"
+    added = sorted(current - previous)
+    removed = sorted(previous - current)
+    parts = []
+    if added:
+        parts.append(f"added={added}")
+    if removed:
+        parts.append(f"removed={removed}")
+    return (
+        f"Active exposures for {instrument} changed ({', '.join(parts)}); "
+        f"now {currentSorted} ({len(current)} total)"
+    )
+
+
 @dataclass
 class QueueItem:
     """Information about a single item in a queue."""
@@ -132,6 +173,7 @@ class ClusterManager:
         self.redis = self.rh.redis
         self.focalPlaneControl = CameraControlConfig()
         self._lastRubinTVStates: dict[str, dict[str, Any]] = {}
+        self._lastLoggedActiveExposures: set[int] | None = None
         self._backlogAffinity: dict[int, PodDetails] = {}
         self.log = logging.getLogger("lsst.rubintv.production.clusterManager")
 
@@ -801,6 +843,32 @@ class ClusterManager:
 
         return inaccessible
 
+    def reportActiveExposures(self, instrument: str) -> None:
+        """Log the set of currently active exposures when it changes.
+
+        Reads the shared active-exposures Redis set maintained by the
+        head node's fanout/tracking code (populated by
+        `RedisHelper.initExposureTracking` and cleared by
+        `RedisHelper.completeExposure`), diffs it against the previously
+        reported set, and emits a log line only when the set has
+        changed.
+
+        This mirrors the diff-and-publish pattern in
+        `sendStatusToRubinTV`; a Redis stream update for the RubinTV
+        frontend can later be added here alongside the log call, once
+        the logging has been observed to behave well in production.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument whose active exposures should be reported.
+        """
+        current = self.rh.getActiveExposures(instrument)
+        message = _describeActiveExposuresChange(self._lastLoggedActiveExposures, current, instrument)
+        if message is not None:
+            self.log.info(message)
+            self._lastLoggedActiveExposures = current
+
     def run(self):
         """Main loop to monitor and manage the cluster.
 
@@ -817,6 +885,7 @@ class ClusterManager:
                 self.rebalanceStep1aWorkers(status)
                 status = self.getClusterStatus()  # update now we've moved things around
                 self.sendStatusToRubinTV(status)
+                self.reportActiveExposures(status.instrument)
             except Exception as e:
                 self.log.exception(f"Error in cluster management: {e}")
             finally:
