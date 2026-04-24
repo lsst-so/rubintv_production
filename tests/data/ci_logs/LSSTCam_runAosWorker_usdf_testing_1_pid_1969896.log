@@ -1,0 +1,181 @@
+================================================================================
+Exit Code: timeout
+================================================================================
+
+STDOUT:
+--------------------------------------------------------------------------------
+Found WORKER_NUMBER=None in the env
+Running LSSTCam AOS_WORKER at usdf_testing,consuming from AOS_WORKER-LSSTCam-000-192...
+Termination signal received for /sdf/home/m/mfl/lsst/rubintv_production/scripts/LSSTCam/runAosWorker.py:usdf_testing:1, exiting...
+
+--------------------------------------------------------------------------------
+
+LOGS:
+--------------------------------------------------------------------------------
+WARNING - Sentry DSN not found or client inactive — events will not be reported
+INFO - Creating CachingLimitedButler with cachedOnPut={'aggregateAOSVisitTableRaw', 'aggregateAOSVisitTableAvg', 'donutStampsExtraVisit', 'aggregateZernikesAvg', 'donutStampsIntra', 'donutStampsExtra', 'aggregateZernikesRaw', 'donutTable', 'aggregateDonutTable', 'donutStampsIntraVisit', 'post_isr_image', 'donutStampsCwfs', 'donutStampsUnpairedVisit'}, cachedOnGet={'the_monster_20250219', 'donutQualityTable', 'donutStamps', 'raw', 'intrinsic_aberrations_temp', 'donutStampsIntra', 'donutTable', 'gain_correction', 'cti', 'ptc', 'flat', 'donutStampsExtra', 'dark', 'preliminary_visit_image', 'donutTableExtra', 'bias', 'defects', 'camera', 'zernikes', 'donutTableIntra', 'astrometry_camera', 'crosstalk', 'linearizer', 'post_isr_image', 'donutStampsCwfs'}, noCopyOnCache={'flat', 'astrometry_camera', 'dark', 'camera', 'defects', 'bias'}
+INFO - Pipeline running configured to consume from AOS_WORKER-LSSTCam-000-192
+INFO - Running pipeline for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}
+INFO - Waiting for raw for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}
+INFO - Spent 2.27 seconds waiting for the raw (should be ~1s per id)
+INFO - Making TrivialQG builder for step1a for expId 2025111500436 for ISR
+INFO - Processing pipeline subgraph 1 of 1 with 1 task(s).
+INFO - Added regular input isr.ccdExposure for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}
+INFO - Added output isr.outputExposure for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}
+INFO - Added output isr.outputStatistics for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}
+INFO - Added output isr._metadata for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}
+INFO - Added output isr._log for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}
+INFO - Generated 1 quantum for task isr.
+INFO - Fetching and attaching datastore records for all overall inputs.
+INFO - Transforming graph skeleton into PredictedQuantumGraph components.
+INFO - Graph build complete.
+INFO - Building quantum graph for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'} for ISR took 0.632s
+INFO - Using 4 CPUs for LSSTCam step1a ISR
+INFO - Starting to process isr
+INFO - Preparing execution of quantum for label=isr dataId={instrument: 'LSSTCam', detector: 192, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}.
+INFO - Constructing task and executing quantum for label=isr dataId={instrument: 'LSSTCam', detector: 192, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}.
+WARNING - Sequencer mismatch for PTC [SEQNAME]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for PTC [SEQFILE]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for PTC [SEQCKSUM]: exposure: 415083004 calib: 4009118710
+WARNING - Sequencer mismatch for linearizer [SEQNAME]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for linearizer [SEQFILE]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for linearizer [SEQCKSUM]: exposure: 415083004 calib: 4009118710
+WARNING - Sequencer mismatch for bias [SEQNAME]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for bias [SEQFILE]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for bias [SEQCKSUM]: exposure: 415083004 calib: 4009118710
+INFO - Calibration crosstalk missing keywords SEQNAME,SEQFILE,SEQCKSUM,AP0_RC, which were not checked.
+WARNING - Sequencer mismatch for CTI [SEQNAME]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for CTI [SEQFILE]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for CTI [SEQCKSUM]: exposure: 415083004 calib: 4009118710
+WARNING - Sequencer mismatch for defects [SEQNAME]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for defects [SEQFILE]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for defects [SEQCKSUM]: exposure: 415083004 calib: 4009118710
+WARNING - Sequencer mismatch for dark [SEQNAME]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for dark [SEQFILE]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for dark [SEQCKSUM]: exposure: 415083004 calib: 4009118710
+WARNING - Sequencer mismatch for flat [SEQNAME]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for flat [SEQFILE]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for flat [SEQCKSUM]: exposure: 415083004 calib: 4009118710
+INFO - Seeding dithering random number generator with 1384232128.
+INFO - Skipping gain correction because no GainCorrection available.
+INFO - Using gain values to convert from adu to electron units.
+INFO - Applying crosstalk corrections to full amplifier region.
+INFO - Applying crosstalk correction.
+INFO - Applying linearizer.
+INFO - Assembling CCD from amplifiers.
+WARNING - No WCS found in input exposure.
+INFO - Applying bias correction.
+INFO - Applying dark subtraction.
+INFO - Applying defect masking.
+INFO - Adding UNMASKEDNAN mask plane to image.
+INFO - Masking non-finite (NAN, inf) value pixels.
+INFO - Applying flat correction.
+INFO - Setting values in large contiguous bad regions.
+INFO - Set 92959 BAD pixels to 0.179828.
+INFO - Interpolating masked pixels.
+INFO - Execution of task 'isr' on quantum {instrument: 'LSSTCam', detector: 192, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'} took 12.211 seconds
+INFO - Found credentials in shared credentials file: /sdf/home/m/mfl/.lsst/aws-credentials.ini
+INFO - Found credentials in shared credentials file: /sdf/home/m/mfl/.lsst/aws-credentials.ini
+INFO - writeBinnedImage took 1.338s
+INFO - Wrote binned post_isr_image for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}
+INFO - Running pipeline for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Waiting for raw for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Spent 0.37 seconds waiting for the raw (should be ~1s per id)
+INFO - Making TrivialQG builder for step1a for expId 2025111500226 for AOS
+INFO - Processing pipeline subgraph 1 of 1 with 5 task(s).
+INFO - Added regular input isr.ccdExposure for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Added output isr.outputExposure for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Added output isr.outputStatistics for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Added output isr._metadata for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Added output isr._log for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Added regular input generateDonutDirectDetectTask.exposure for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Added output generateDonutDirectDetectTask.donutCatalog for {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Added output generateDonutDirectDetectTask._metadata for {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Added output generateDonutDirectDetectTask._log for {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Added regular input cutOutDonutsCwfsPairTask.exposure for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Added regular input cutOutDonutsCwfsPairTask.donutCatalog for {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Added output cutOutDonutsCwfsPairTask.donutStampsOut for {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Added ref for output cutOutDonutsCwfsPairTask.donutStampsOut for {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'} with mode=<DatasetIdGenEnum.DATAID_TYPE_RUN: 2>
+INFO - Added output cutOutDonutsCwfsPairTask._metadata for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Added output cutOutDonutsCwfsPairTask._log for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Added regular input reassignCwfsCutoutsPairTask.donutStampsIn for {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Added output reassignCwfsCutoutsPairTask.donutStampsIntraOut for {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Added output reassignCwfsCutoutsPairTask.donutStampsExtraOut for {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Added output reassignCwfsCutoutsPairTask._metadata for {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Added output reassignCwfsCutoutsPairTask._log for {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Added regular input calcZernikesTask.donutStampsIntra for {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Added regular input calcZernikesTask.donutStampsExtra for {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Added output calcZernikesTask.outputZernikesRaw for {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Added output calcZernikesTask.donutQualityTable for {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Added output calcZernikesTask.zernikes for {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Added output calcZernikesTask.outputZernikesAvg for {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Added output calcZernikesTask._metadata for {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Added output calcZernikesTask._log for {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Generated 1 quantum for task isr.
+INFO - Generated 1 quantum for task generateDonutDirectDetectTask.
+INFO - Generated 1 quantum for task cutOutDonutsCwfsPairTask.
+INFO - Dropping task reassignCwfsCutoutsPairTask because no quanta remain (1 removed by adjust_all_quanta).
+INFO - Dropping task calcZernikesTask because no quanta remain (1 had no work to do).
+WARNING - More than half of calcZernikesTask quanta had no work to do given available inputs.
+A query constraint on one of None may yield a much faster build.
+INFO - Fetching and attaching datastore records for all overall inputs.
+INFO - Transforming graph skeleton into PredictedQuantumGraph components.
+INFO - Graph build complete.
+INFO - Building quantum graph for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'} for AOS took 0.493s
+INFO - Using 4 CPUs for LSSTCam step1a AOS
+INFO - Starting to process isr
+INFO - Preparing execution of quantum for label=isr dataId={instrument: 'LSSTCam', detector: 192, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}.
+INFO - Constructing task and executing quantum for label=isr dataId={instrument: 'LSSTCam', detector: 192, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}.
+WARNING - Sequencer mismatch for PTC [SEQNAME]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for PTC [SEQFILE]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for PTC [SEQCKSUM]: exposure: 415083004 calib: 4009118710
+WARNING - Sequencer mismatch for linearizer [SEQNAME]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for linearizer [SEQFILE]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for linearizer [SEQCKSUM]: exposure: 415083004 calib: 4009118710
+INFO - Calibration crosstalk missing keywords SEQNAME,SEQFILE,SEQCKSUM,AP0_RC, which were not checked.
+WARNING - Sequencer mismatch for flat [SEQNAME]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for flat [SEQFILE]: exposure: FP_ITL_3s_cp_v1.seq calib: FP_ITL_3s_cp_v1_even2_10.seq
+WARNING - Sequencer mismatch for flat [SEQCKSUM]: exposure: 415083004 calib: 4009118710
+INFO - Seeding dithering random number generator with 1384178368.
+INFO - Skipping gain correction because no GainCorrection available.
+INFO - Using gain values to convert from adu to electron units.
+INFO - Applying crosstalk corrections to full amplifier region.
+INFO - Applying crosstalk correction.
+INFO - Applying linearizer.
+INFO - Assembling CCD from amplifiers.
+INFO - Adding UNMASKEDNAN mask plane to image.
+INFO - Masking non-finite (NAN, inf) value pixels.
+INFO - Applying flat correction.
+INFO - Execution of task 'isr' on quantum {instrument: 'LSSTCam', detector: 192, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'} took 3.444 seconds
+INFO - Found credentials in shared credentials file: /sdf/home/m/mfl/.lsst/aws-credentials.ini
+INFO - Found credentials in shared credentials file: /sdf/home/m/mfl/.lsst/aws-credentials.ini
+INFO - writeBinnedImage took 1.951s
+INFO - Wrote binned post_isr_image for {instrument: 'LSSTCam', detector: 192, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Starting to process generateDonutDirectDetectTask
+INFO - Preparing execution of quantum for label=generateDonutDirectDetectTask dataId={instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Constructing task and executing quantum for label=generateDonutDirectDetectTask dataId={instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Loading instrument LSSTCam for detector R00_SW1
+INFO - Creating donut template
+INFO - Running background subtraction
+INFO - Trimming exposure edges
+INFO - Running donut detection and measurement
+INFO - Subtracting median background level: 0.139404296875
+INFO - Pre-convolving image with donut template
+INFO - Installing PSF for exposure
+INFO - Detecting objects in exposure
+INFO - Found 53 sources in exposure
+INFO - Measured 53 of 53 sources in exposure
+INFO - Running Donut Selector
+WARNING - /sdf/group/rubin/sw/conda/envs/lsst-scipipe-13.0.0/lib/python3.13/site-packages/astropy/units/function/logarithmic.py:67: RuntimeWarning: invalid value encountered in log10
+  return dex.to(self._function_unit, np.log10(x))
+
+INFO - Selected 13/53 references
+INFO - Execution of task 'generateDonutDirectDetectTask' on quantum {instrument: 'LSSTCam', detector: 192, visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'} took 2.234 seconds
+INFO - Starting to process cutOutDonutsCwfsPairTask
+INFO - Preparing execution of quantum for label=cutOutDonutsCwfsPairTask dataId={instrument: 'LSSTCam', detector: 192, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}.
+INFO - Constructing task and executing quantum for label=cutOutDonutsCwfsPairTask dataId={instrument: 'LSSTCam', detector: 192, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}.
+INFO - Median Recentering Shift: (2.0, 1.0)
+WARNING - Donut Recentering Failed. Flagging and not shifting center of stamp for intra-focal source at (2406.060914724796, 1241.0184382649015). Catalog row: 9. Proposed Shift: (152, -59).
+INFO - Execution of task 'cutOutDonutsCwfsPairTask' on quantum {instrument: 'LSSTCam', detector: 192, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'} took 2.070 seconds
+
+--------------------------------------------------------------------------------

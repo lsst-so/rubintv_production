@@ -1,0 +1,25 @@
+================================================================================
+Exit Code: timeout
+================================================================================
+
+STDOUT:
+--------------------------------------------------------------------------------
+Running LSSTCam FWHM_PLOTTER at usdf_testing, consuming from FWHM_PLOTTER-LSSTCam-000...
+Termination signal received for /sdf/home/m/mfl/lsst/rubintv_production/scripts/LSSTCam/runFWHMPlotting.py:usdf_testing, exiting...
+
+--------------------------------------------------------------------------------
+
+LOGS:
+--------------------------------------------------------------------------------
+WARNING - Sentry DSN not found or client inactive — events will not be reported
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Making FWHMFocalPlane plot for visitId 2025111500226
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_fwhm_focal_plane_dayObs_20251115_seqNum_000226.png to lsstcam/20251115/fwhm_focal_plane/000226/lsstcam_fwhm_focal_plane_20251115_000226.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_fwhm_focal_plane_dayObs_20251115_seqNum_000226.png to lsstcam/20251115/fwhm_focal_plane/000226/lsstcam_fwhm_focal_plane_20251115_000226.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Finished making FWHMFocalPlane plot in 1.08s for 2025111500226
+
+--------------------------------------------------------------------------------

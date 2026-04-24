@@ -1,0 +1,82 @@
+================================================================================
+Exit Code: timeout
+================================================================================
+
+STDOUT:
+--------------------------------------------------------------------------------
+Running LSSTCam ONE_OFF_EXPRECORD_WORKER at usdf_testing,consuming from ONE_OFF_EXPRECORD_WORKER-LSSTCam-000...
+Termination signal received for /sdf/home/m/mfl/lsst/rubintv_production/scripts/LSSTCam/runOneOffExpRecord.py:usdf_testing, exiting...
+
+--------------------------------------------------------------------------------
+
+LOGS:
+--------------------------------------------------------------------------------
+WARNING - Sentry DSN not found or client inactive — events will not be reported
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Pipeline running configured to consume from ONE_OFF_EXPRECORD_WORKER-LSSTCam-000
+INFO - Calculating extra coords...
+INFO - Finished publishing extra coords
+INFO - Writing mount analysis shard for 20251115-227
+INFO - Creating mount plot for 20251115-227
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_mount_dayObs_20251115_seqNum_000227.png to lsstcam/20251115/mount/000227/lsstcam_mount_20251115_000227.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_mount_dayObs_20251115_seqNum_000227.png to lsstcam/20251115/mount/000227/lsstcam_mount_20251115_000227.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Sending mount jitter to ConsDB
+INFO - Creating exposure timing plot for 2025111500227
+WARNING - no data was returned by the query for the specified time range
+WARNING - No vignetted data found for the given time range. Assuming always vignetted.
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000227.png to lsstcam/20251115/event_timeline/000227/lsstcam_event_timeline_20251115_000227.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000227.png to lsstcam/20251115/event_timeline/000227/lsstcam_event_timeline_20251115_000227.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Event timeline upload complete
+INFO - Calculating extra coords...
+INFO - Finished publishing extra coords
+INFO - Writing mount analysis shard for 20251115-228
+INFO - Creating mount plot for 20251115-228
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_mount_dayObs_20251115_seqNum_000228.png to lsstcam/20251115/mount/000228/lsstcam_mount_20251115_000228.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_mount_dayObs_20251115_seqNum_000228.png to lsstcam/20251115/mount/000228/lsstcam_mount_20251115_000228.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Sending mount jitter to ConsDB
+INFO - Creating exposure timing plot for 2025111500228
+WARNING - no data was returned by the query for the specified time range
+WARNING - No vignetted data found for the given time range. Assuming always vignetted.
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000228.png to lsstcam/20251115/event_timeline/000228/lsstcam_event_timeline_20251115_000228.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000228.png to lsstcam/20251115/event_timeline/000228/lsstcam_event_timeline_20251115_000228.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Event timeline upload complete
+INFO - Calculating extra coords...
+INFO - Finished publishing extra coords
+INFO - Writing mount analysis shard for 20251115-226
+INFO - Creating mount plot for 20251115-226
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_mount_dayObs_20251115_seqNum_000226.png to lsstcam/20251115/mount/000226/lsstcam_mount_20251115_000226.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_mount_dayObs_20251115_seqNum_000226.png to lsstcam/20251115/mount/000226/lsstcam_mount_20251115_000226.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Sending mount jitter to ConsDB
+INFO - Creating exposure timing plot for 2025111500226
+WARNING - no data was returned by the query for the specified time range
+WARNING - No vignetted data found for the given time range. Assuming always vignetted.
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000226.png to lsstcam/20251115/event_timeline/000226/lsstcam_event_timeline_20251115_000226.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000226.png to lsstcam/20251115/event_timeline/000226/lsstcam_event_timeline_20251115_000226.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Event timeline upload complete
+INFO - Calculating extra coords...
+INFO - Skipping ecliptic coords for 2025111500436 - missing/non-finite RA/Dec
+INFO - Finished publishing extra coords
+WARNING - Skipping mount analysis for 2025111500436 - no zenith angle
+INFO - Creating exposure timing plot for 2025111500436
+WARNING - No vignetted data found for the given time range. Assuming always vignetted.
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000436.png to lsstcam/20251115/event_timeline/000436/lsstcam_event_timeline_20251115_000436.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000436.png to lsstcam/20251115/event_timeline/000436/lsstcam_event_timeline_20251115_000436.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Event timeline upload complete
+
+--------------------------------------------------------------------------------

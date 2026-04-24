@@ -1,0 +1,31 @@
+================================================================================
+Exit Code: timeout
+================================================================================
+
+STDOUT:
+--------------------------------------------------------------------------------
+Running LSSTCam ONE_OFF_VISITIMAGE_WORKER at usdf_testing,consuming from ONE_OFF_VISITIMAGE_WORKER-LSSTCam-000...
+Termination signal received for /sdf/home/m/mfl/lsst/rubintv_production/scripts/LSSTCam/runOneOffVisitImage.py:usdf_testing, exiting...
+
+--------------------------------------------------------------------------------
+
+LOGS:
+--------------------------------------------------------------------------------
+WARNING - Sentry DSN not found or client inactive — events will not be reported
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Pipeline running configured to consume from ONE_OFF_VISITIMAGE_WORKER-LSSTCam-000
+INFO - Waiting for preliminary_visit_image for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Publishing visit summary stats...
+INFO - Finished publishing visit summary stats
+INFO - Calculating pointing offsets...
+INFO - Finished calculating pointing offsets
+INFO - Making witness detector image...
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000226.jpg to lsstcam/20251115/witness_detector/000226/lsstcam_witness_detector_20251115_000226.jpg
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000226.jpg to lsstcam/20251115/witness_detector/000226/lsstcam_witness_detector_20251115_000226.jpg
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Finished making witness detector image
+
+--------------------------------------------------------------------------------

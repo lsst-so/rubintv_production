@@ -1,0 +1,53 @@
+================================================================================
+Exit Code: timeout
+================================================================================
+
+STDOUT:
+--------------------------------------------------------------------------------
+Running LATISS ONE_OFF_POSTISR_WORKER at usdf_testing,consuming from ONE_OFF_POSTISR_WORKER-LATISS-000...
+Using CoM for centroid (because was forced to, or multiple max pixels, or saturated
+Centroid adjusted by [ 0.66728223 -1.8614379 ] pixels
+Contoured from 648 to 135,523 using 10 contours of 14986.1
+Plot saved to /sdf/home/m/mfl/u/rubintv/plots/LATISS/20240813/LATISS_imexam_dayObs_20240813_seqNum_000632.png
+Termination signal received for /sdf/home/m/mfl/lsst/rubintv_production/scripts/LATISS/runOneOffPostIsr.py:usdf_testing, exiting...
+
+--------------------------------------------------------------------------------
+
+LOGS:
+--------------------------------------------------------------------------------
+WARNING - Sentry DSN not found or client inactive — events will not be reported
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Pipeline running configured to consume from ONE_OFF_POSTISR_WORKER-LATISS-000
+INFO - Waiting for post_isr_image for {instrument: 'LATISS', detector: 0, exposure: 2024081300632, band: 'white', day_obs: 20240813, group: '2024-08-14T05:00:33.156', physical_filter: 'empty~holo4_003'}
+INFO - Writing focus Z for {instrument: 'LATISS', detector: 0, exposure: 2024081300632, band: 'white', day_obs: 20240813, group: '2024-08-14T05:00:33.156', physical_filter: 'empty~holo4_003'}
+INFO - Pulling OBSANNOT from image header for {instrument: 'LATISS', detector: 0, exposure: 2024081300632, band: 'white', day_obs: 20240813, group: '2024-08-14T05:00:33.156', physical_filter: 'empty~holo4_003'}
+INFO - Getting physical rotation data from EFD for {instrument: 'LATISS', detector: 0, exposure: 2024081300632, band: 'white', day_obs: 20240813, group: '2024-08-14T05:00:33.156', physical_filter: 'empty~holo4_003'}
+INFO - Making witness detector image...
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.jpg to auxtel/20240813/monitor/000632/auxtel_monitor_20240813_000632.jpg
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.jpg to auxtel/20240813/monitor/000632/auxtel_monitor_20240813_000632.jpg
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Finished making witness detector image
+INFO - Running imexam on {instrument: 'LATISS', exposure: 2024081300632}
+INFO - Found 10 sources in exposure
+INFO - Measured 10 of 10 sources in exposure
+INFO - Uploading imExam to storage bucket
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LATISS/20240813/LATISS_imexam_dayObs_20240813_seqNum_000632.png to auxtel/20240813/imexam/000632/auxtel_imexam_20240813_000632.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LATISS/20240813/LATISS_imexam_dayObs_20240813_seqNum_000632.png to auxtel/20240813/imexam/000632/auxtel_imexam_20240813_000632.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Upload complete
+INFO - Running specExam on {instrument: 'LATISS', exposure: 2024081300632}
+INFO - Found 10 sources in exposure
+INFO - Measured 10 of 10 sources in exposure
+INFO - Uploading specExam to storage bucket
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LATISS/20240813/LATISS_specexam_dayObs_20240813_seqNum_000632.png to auxtel/20240813/specexam/000632/auxtel_specexam_20240813_000632.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LATISS/20240813/LATISS_specexam_dayObs_20240813_seqNum_000632.png to auxtel/20240813/specexam/000632/auxtel_specexam_20240813_000632.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Upload complete
+INFO - Finished one-off processing {instrument: 'LATISS', detector: 0, exposure: 2024081300632, band: 'white', day_obs: 20240813, group: '2024-08-14T05:00:33.156', physical_filter: 'empty~holo4_003'}
+
+--------------------------------------------------------------------------------

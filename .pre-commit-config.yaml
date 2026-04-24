@@ -3,6 +3,9 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        # CI-log fixtures are captured pod output and must stay byte-exact so
+        # tests see the same formatting real logs have.
+        exclude: ^tests/data/ci_logs(_synthetic)?/
       - id: check-yaml
 
   - repo: https://github.com/PyCQA/isort
