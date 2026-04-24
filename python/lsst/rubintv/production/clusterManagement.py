@@ -21,7 +21,7 @@
 
 from __future__ import annotations
 
-__all__ = "ClusterManager"
+__all__ = ["ClusterManager"]
 
 
 import json
@@ -41,7 +41,7 @@ from .workerSets import AosWorkerSet, SfmWorkerSet, Step1bWorkerSet
 if TYPE_CHECKING:
     from lsst.daf.butler import Butler
 
-    from .utils import LocationConfig
+    from .locationConfig import LocationConfig
 
 
 step1aMap = {
@@ -133,7 +133,7 @@ class ClusterManager:
         self.focalPlaneControl = CameraControlConfig()
         self._lastRubinTVStates: dict[str, dict[str, Any]] = {}
         self._backlogAffinity: dict[int, PodDetails] = {}
-        self.log = logging.getLogger("lsst.rubintv.produciton.clusterManager")
+        self.log = logging.getLogger("lsst.rubintv.production.clusterManager")
 
     def drainWorker(self, pod: PodDetails, newQueue: str | None = None, noWarn: bool = False) -> None:
         """Drain all the work from a worker, optionally moving to a new queue.
@@ -479,7 +479,7 @@ class ClusterManager:
         SFM and AOS workers are grouped by depth and sent to depth-specific
         streams. Step1b and backlog workers are sent to flat streams. Other
         worker types with non-zero queues are sent to a general status stream
-        which is displaye in a table at the bottom of the page.
+        which is displayed in a table at the bottom of the page.
 
         Parameters
         ----------
@@ -600,11 +600,13 @@ class ClusterManager:
             Set of free backlog workers to choose from.
         Returns
         -------
-        worker: `PodDetails` or `None`
+        worker : `PodDetails` or `None`
             The selected backlog worker or ``None`` if no suitable worker is
             found.
         matches : `bool`
-            Whether a worker with the same detector number was found.
+            Whether assigning this work to ``worker`` will preserve cache
+            affinity, i.e. the worker has either previously handled this
+            detector or has not yet been used at all.
         """
         # Try to find a worker that previously handled this detector
         backlogWorker = None
@@ -636,7 +638,7 @@ class ClusterManager:
 
         return backlogWorker, False
 
-    def getRecuitableWorkers(self, status: ClusterStatus, onlyFreeWorkers: bool = True) -> set[PodDetails]:
+    def getRecruitableWorkers(self, status: ClusterStatus, onlyFreeWorkers: bool = True) -> set[PodDetails]:
         """Get pods that are currently recruitable for work.
         Recruitable pods are those that have been deselected from processing
         work, and are therefore temporarily available for other work.
@@ -678,7 +680,7 @@ class ClusterManager:
         is added to identify temporary assignments, which is then displayed on
         RubinTV.
 
-        ``inaccessibleWorkers`` are ones which the head nodes does not
+        ``inaccessibleWorkers`` are ones which the head node does not
         currently dispatch any work to, but exist for "reasons". This set could
         shrink to none (arguably it should).
 
@@ -696,7 +698,7 @@ class ClusterManager:
         """
         freeBacklogWorkers = set(status.flavorStatuses[PodFlavor.BACKLOG_WORKER].freeWorkers)
         inaccessibleWorkers = self.getInaccessiblePods(status)
-        recruitableWorkers = self.getRecuitableWorkers(status)
+        recruitableWorkers = self.getRecruitableWorkers(status)
 
         freeBacklogWorkers = freeBacklogWorkers | inaccessibleWorkers | recruitableWorkers
 
@@ -762,7 +764,7 @@ class ClusterManager:
         permanently free, as far as it's concerned.
 
         This is different from recruitable pods, which are pods that have been
-        deselected from from processing work, and are therefore temporarily
+        deselected from processing work, and are therefore temporarily
         available for other work.
 
         Note that this function needs to be kept up to date with the way things

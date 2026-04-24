@@ -21,8 +21,8 @@
 
 import sys
 
+from lsst.rubintv.production.locationConfig import LocationConfig
 from lsst.rubintv.production.rubinTv import NightReportChannel
-from lsst.rubintv.production.utils import LocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()

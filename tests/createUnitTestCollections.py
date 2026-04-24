@@ -27,8 +27,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils import getUserRunCollectionName, removeUserRunCollection  # type: ignore[import]
 
 import lsst.summit.utils.butlerUtils as butlerUtils
+from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
 from lsst.rubintv.production.processingControl import PIPELINE_NAMES, PipelineComponents, buildPipelines
-from lsst.rubintv.production.utils import getAutomaticLocationConfig
 from lsst.summit.utils.utils import setupLogging
 
 ALL_VISIT_QUERY = "visit in (202511150026,2025111500227,2025111500228)"
@@ -56,13 +56,13 @@ PER_PIPELINE_EXTRAS: dict[str, list[str]] = {
     "AOS_DANISH": [
         "reassignCwfsCutoutsPairTask:customQG=False",
     ],
-    "AOS_WCS_DANISH": [
+    "AOS_WCS_DANISH_BIN_2": [
+        "reassignCwfsCutoutsPairTask:customQG=False",
+    ],
+    "AOS_WCS_DANISH_BIN_1": [
         "reassignCwfsCutoutsPairTask:customQG=False",
     ],
     "AOS_TIE": [
-        "reassignCwfsCutoutsPairTask:customQG=False",
-    ],
-    "AOS_REFIT_WCS": [
         "reassignCwfsCutoutsPairTask:customQG=False",
     ],
     "AOS_AI_DONUT": [

@@ -4,10 +4,10 @@ import time
 t0 = time.time()
 
 from lsst.daf.butler import Butler, DimensionRecord  # noqa: E402
+from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig  # noqa: E402
 from lsst.rubintv.production.payloads import Payload  # noqa: E402
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor  # noqa: E402
 from lsst.rubintv.production.redisUtils import RedisHelper  # noqa: E402
-from lsst.rubintv.production.utils import getAutomaticLocationConfig  # noqa: E402
 
 print(f"Imports took {(time.time() - t0):.2f} seconds")
 t0 = time.time()

@@ -43,16 +43,13 @@ from lsst.summit.utils.utils import getCameraFromInstrumentName
 
 from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
+from .formatters import getRubinTvInstrumentName, makePlotFile
+from .locationConfig import LocationConfig
+from .predicates import raiseIf
 from .redisUtils import RedisHelper
-from .utils import (
-    LocationConfig,
-    getRubinTvInstrumentName,
-    logDuration,
-    makePlotFile,
-    raiseIf,
-    writeExpRecordMetadataShard,
-    writeMetadataShard,
-)
+from .shardIo import writeExpRecordMetadataShard, writeMetadataShard
+from .timing import logDuration
+from .uploaders import MultiUploader
 
 if TYPE_CHECKING:
     from pandas import DataFrame
@@ -241,21 +238,10 @@ class GuiderWorker(BaseButlerChannel):
         super().__init__(
             locationConfig=locationConfig,
             butler=butler,
-            # TODO: DM-43764 this shouldn't be necessary on the
-            # base class after this ticket, I think.
-            detectors=None,  # unused
-            dataProduct=None,  # unused
-            # TODO: DM-43764 should also be able to fix needing
-            # channelName when tidying up the base class. Needed
-            # in some contexts but not all. Maybe default it to
-            # ''?
-            channelName="",  # unused
             podDetails=podDetails,
             doRaise=doRaise,
-            addUploader=True,
         )
-        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-        assert self.podDetails is not None  # XXX why is this necessary? Fix mypy better!
+        self.s3Uploader: MultiUploader = MultiUploader()
         self.log.info(f"Guider worker running, consuming from {self.podDetails.queueName}")
         self.shardsDirectory = locationConfig.guiderShardsDirectory
         self.consdbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
@@ -352,9 +338,11 @@ class GuiderWorker(BaseButlerChannel):
             record = dataId.records["visit"]
 
         assert record is not None, f"Failed to find exposure or visit record in {dataId=}"
-        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
 
-        if record.definition.name == "exposure" and not record.can_see_sky:
+        # process all on-sky images and daytime checkout darks == BLOCK-T594
+        if (record.definition.name == "exposure" and not record.can_see_sky) and (
+            not record.science_program == "BLOCK-T594"
+        ):
             # can_see_sky only on exposure records, all visits should be on-sky
             self.log.info(f"Skipping {dataId=} as it's not on sky")
             return

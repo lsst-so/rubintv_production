@@ -1,0 +1,24 @@
+================================================================================
+Exit Code: timeout
+================================================================================
+
+STDOUT:
+--------------------------------------------------------------------------------
+Running LSSTCam PSF_PLOTTER at usdf_testing, consuming from PSF_PLOTTER-LSSTCam-000...
+Termination signal received for /sdf/home/m/mfl/lsst/rubintv_production/scripts/LSSTCam/runPsfPlotting.py:usdf_testing, exiting...
+
+--------------------------------------------------------------------------------
+
+LOGS:
+--------------------------------------------------------------------------------
+WARNING - Sentry DSN not found or client inactive — events will not be reported
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Making PsfAzEl plot for visitId 2025111500226
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_psf_shape_azel_dayObs_20251115_seqNum_000226.png to lsstcam/20251115/psf_shape_azel/000226/lsstcam_psf_shape_azel_20251115_000226.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_psf_shape_azel_dayObs_20251115_seqNum_000226.png to lsstcam/20251115/psf_shape_azel/000226/lsstcam_psf_shape_azel_20251115_000226.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+
+--------------------------------------------------------------------------------

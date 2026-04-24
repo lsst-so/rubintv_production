@@ -36,11 +36,11 @@ from lsst.summit.utils.dateTime import getCurrentDayObsInt
 
 from .allSky import cleanupAllSkyIntermediates
 from .highLevelTools import remakeDay
+from .predicates import hasDayRolledOver, raiseIf
 from .uploaders import MultiUploader
-from .utils import hasDayRolledOver, raiseIf
 
 if TYPE_CHECKING:
-    from .utils import LocationConfig
+    from .locationConfig import LocationConfig
 
 __all__ = ["RubinTvBackgroundService"]
 
@@ -69,7 +69,7 @@ class RubinTvBackgroundService:
 
     Parameters
     ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The LocationConfig containing all the necessary paths.
     doRaise : `bool`
         Raise on error?
@@ -297,10 +297,10 @@ class RubinTvBackgroundService:
             self.dayObs = getCurrentDayObsInt()
 
     def runEndOfDayManual(self, dayObs: int) -> None:
-        """Manually run the end of day routine for a specific dayObs by hand.
+        """Manually run the end of day routine for a specific dayObs.
 
-        Useful for if the final catchup and end of day animation/clearup have
-        failed to run and this needs to be redone by manually.
+        Useful when the final catchup and end-of-day animation/cleanup have
+        failed to run and need to be redone by hand.
 
         Parameters
         ----------
