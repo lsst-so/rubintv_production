@@ -40,6 +40,18 @@ class Traceback:
         return f"Traceback from {self.logFile.name}"
 
 
+class WarningMatch:
+    """Represents a warning found in a log file."""
+
+    def __init__(self, logFile: Path, lineNum: int, warningLines: list[str]) -> None:
+        self.logFile = logFile
+        self.lineNum = lineNum
+        self.warningLines = warningLines
+
+    def __str__(self) -> str:
+        return f"Warning from {self.logFile.name}:{self.lineNum}"
+
+
 def getBaseLogDir() -> Path:
     """
     Get the base CI logs directory path.
@@ -459,6 +471,216 @@ def printAllTracebacksForFile(logFile: Path, tracebacks: list[Traceback]) -> Non
         printTraceback(tb)
 
 
+# Python warnings module output, e.g. "/path/file.py:42: UserWarning: msg"
+_PY_WARN_PATTERN = re.compile(r":\d+:\s*\w*Warning:")
+# Log-level warning entries emitted by the `logging` / lsst.log stacks.
+_LOG_WARN_PATTERN = re.compile(r"\b(?:WARNING|WARN)\b")
+
+
+def extractWarnings(logFile: Path) -> list[WarningMatch]:
+    """
+    Extract warnings from a log file.
+
+    Matches two kinds of warnings:
+    - Python ``warnings`` module output (e.g. ``file.py:42: UserWarning:``);
+      the following indented source line is captured too when present.
+    - Log-level ``WARNING`` / ``WARN`` entries from the ``logging`` stack.
+
+    Parameters
+    ----------
+    logFile : `pathlib.Path`
+        The log file to search.
+
+    Returns
+    -------
+    warnings : `list` [`WarningMatch`]
+        List of found warnings.
+    """
+    warnings: list[WarningMatch] = []
+
+    with open(logFile, "r") as f:
+        lines = f.readlines()
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if _PY_WARN_PATTERN.search(line):
+            warningLines = [line]
+            # The warnings module typically follows the warning header with an
+            # indented snippet of the offending source line; include it.
+            if i + 1 < len(lines) and lines[i + 1].startswith(" "):
+                warningLines.append(lines[i + 1])
+                i += 1
+            warnings.append(WarningMatch(logFile, i + 1 - (len(warningLines) - 1), warningLines))
+        elif _LOG_WARN_PATTERN.search(line):
+            warnings.append(WarningMatch(logFile, i + 1, [line]))
+        i += 1
+
+    return warnings
+
+
+def findAllWarnings(logDir: Path) -> dict[Path, list[WarningMatch]]:
+    """
+    Find all warnings in all log files in a directory, grouped by file.
+
+    Parameters
+    ----------
+    logDir : `pathlib.Path`
+        The directory containing log files.
+
+    Returns
+    -------
+    warningsByFile : `dict` [`pathlib.Path`, `list` [`WarningMatch`]]
+        Dictionary mapping log files to their warnings.
+    """
+    warningsByFile: dict[Path, list[WarningMatch]] = {}
+    logFiles = listLogFiles(logDir)
+
+    for logFile in logFiles:
+        # Skip meta test logs, same as the traceback search.
+        if "meta" in logFile.name:
+            continue
+
+        warnings = extractWarnings(logFile)
+        if warnings:
+            warningsByFile[logFile] = warnings
+
+    return warningsByFile
+
+
+def printWarning(warning: WarningMatch) -> None:
+    """
+    Print a single warning.
+
+    Parameters
+    ----------
+    warning : `WarningMatch`
+        The warning to print.
+    """
+    print(f"  Line {warning.lineNum}:")
+    for line in warning.warningLines:
+        print(f"    {line.rstrip()}")
+
+
+def printAllWarningsForFile(logFile: Path, warnings: list[WarningMatch]) -> None:
+    """
+    Print all warnings from a specific log file.
+
+    Parameters
+    ----------
+    logFile : `pathlib.Path`
+        The log file.
+    warnings : `list[WarningMatch]`
+        List of warnings from this file.
+    """
+    print(f"\n{'#' * 80}")
+    print(f"# Log file: {logFile.name}")
+    print(f"# Found {len(warnings)} warning(s)")
+    print(f"{'#' * 80}\n")
+
+    for w in warnings:
+        printWarning(w)
+
+
+def handleWarningMode(logDir: Path) -> None:
+    """
+    Handle the warning finding and display mode.
+
+    The user first picks which logs to scan: all logs in the run, or a
+    subset filtered by a name substring. Warnings found in the selected
+    logs are summarised per file and can then be viewed individually.
+
+    Parameters
+    ----------
+    logDir : `pathlib.Path`
+        The directory containing log files to search.
+    """
+    print("\nWarning Search Mode")
+    print("=" * 80)
+    print("\nOptions:")
+    print("  1. Scan all logs in this run")
+    print("  2. Scan only logs whose name matches a substring")
+    print("  b. Back to menu")
+
+    choice = input("\nYour choice: ").strip().lower()
+
+    if choice == "b":
+        return
+
+    if choice == "1":
+        targetLogs = listLogFiles(logDir)
+        scanLabel = "all logs"
+    elif choice == "2":
+        searchTerm = input("\nEnter log-name substring (or 'b' to go back): ").strip()
+        if searchTerm.lower() == "b":
+            return
+        if not searchTerm:
+            print("Empty search term. Aborting.")
+            input("\nPress any key to continue...")
+            return
+        targetLogs = findLogsByName(logDir, searchTerm)
+        scanLabel = f"logs matching '{searchTerm}'"
+    else:
+        print("Invalid choice.")
+        input("\nPress any key to continue...")
+        return
+
+    # Skip meta logs to match the traceback scan's behaviour.
+    targetLogs = [log for log in targetLogs if "meta" not in log.name]
+
+    if not targetLogs:
+        print(f"\nNo log files to scan for {scanLabel}.")
+        input("\nPress any key to continue...")
+        return
+
+    print(f"\nSearching for warnings in {len(targetLogs)} log(s) ({scanLabel})...\n")
+
+    warningsByFile: dict[Path, list[WarningMatch]] = {}
+    for logFile in targetLogs:
+        warnings = extractWarnings(logFile)
+        if warnings:
+            warningsByFile[logFile] = warnings
+
+    if not warningsByFile:
+        print("No warnings found!")
+        input("\nPress any key to continue...")
+        return
+
+    totalWarnings = sum(len(ws) for ws in warningsByFile.values())
+    print(f"Found {totalWarnings} warning(s) across {len(warningsByFile)} log file(s):\n")
+
+    fileList = sorted(warningsByFile.items(), key=lambda x: x[0].name)
+
+    for i, (logFile, warnings) in enumerate(fileList, 1):
+        print(f"  {i}. {logFile.name} ({len(warnings)} warning(s))")
+
+    print("\nOptions:")
+    print("  - Enter number(s) to view (e.g., '1', '1,3,5', or '1-3')")
+    print("  - Enter 'all' to view all warnings from all files")
+    print("  - Enter 'q' to quit")
+
+    selection = input("\nYour choice: ").strip()
+
+    if selection.lower() == "q":
+        return
+
+    if selection.lower() == "all":
+        for logFile, warnings in fileList:
+            printAllWarningsForFile(logFile, warnings)
+        input("\nPress any key to continue...")
+        return
+
+    try:
+        indices = parseSelection(selection, len(fileList))
+        for idx in indices:
+            logFile, warnings = fileList[idx]
+            printAllWarningsForFile(logFile, warnings)
+        input("\nPress any key to continue...")
+    except ValueError as e:
+        print(f"Error: {e}")
+        input("\nPress any key to continue...")
+
+
 def displaySearchResults(
     searchString: str, resultsByFile: dict[Path, list[tuple[int, str]]], maxLinesPerFile: int = 50
 ) -> None:
@@ -802,27 +1024,30 @@ def displayLogsMenu(logDir: Path) -> None:
         print("Options:")
         print("  1. View individual logs")
         print("  2. View all tracebacks")
-        print("  3. List all log files")
-        print("  4. Search logs by name")
-        print("  5. Search for string in logs")
-        print("  6. Back to run selection")
+        print("  3. View all warnings")
+        print("  4. List all log files")
+        print("  5. Search logs by name")
+        print("  6. Search for string in logs")
+        print("  7. Back to run selection")
         print("  q. Quit")
 
         choice = input("\nYour choice: ").strip().lower()
 
         if choice == "q":
             sys.exit(0)
-        elif choice == "6":
+        elif choice == "7":
             return
         elif choice == "1":
             viewIndividualLogs(logFiles)
         elif choice == "2":
             handleTracebackMode(logDir)
         elif choice == "3":
-            listLogsDisplay(logFiles)
+            handleWarningMode(logDir)
         elif choice == "4":
-            searchLogsByName(logDir)
+            listLogsDisplay(logFiles)
         elif choice == "5":
+            searchLogsByName(logDir)
+        elif choice == "6":
             handleStringSearchMode(logDir)
         else:
             print("Invalid choice. Please try again.")
