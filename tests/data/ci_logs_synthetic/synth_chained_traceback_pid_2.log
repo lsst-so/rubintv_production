@@ -1,0 +1,18 @@
+2026-04-24 10:00:00 - lsst.synth - INFO - starting synthetic pod for chained-traceback test
+2026-04-24 10:00:01 - lsst.synth - ERROR - primary operation failed
+Traceback (most recent call last):
+  File "/sdf/home/example/pkg/inner.py", line 10, in inner
+    raise ValueError("inner cause")
+ValueError: inner cause
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/sdf/home/example/pkg/outer.py", line 20, in outer
+    inner()
+  File "/sdf/home/example/pkg/inner.py", line 10, in inner
+    raise ValueError("inner cause")
+  File "/sdf/home/example/pkg/outer.py", line 25, in outer
+    raise RuntimeError("outer wrap") from e
+RuntimeError: outer wrap
+2026-04-24 10:00:02 - lsst.synth - INFO - continuing after chained failure

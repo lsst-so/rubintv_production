@@ -1,0 +1,154 @@
+================================================================================
+Exit Code: timeout
+================================================================================
+
+STDOUT:
+--------------------------------------------------------------------------------
+Running LSSTCam ONE_OFF_POSTISR_WORKER at usdf_testing,consuming from ONE_OFF_POSTISR_WORKER-LSSTCam-000...
+Termination signal received for /sdf/home/m/mfl/lsst/rubintv_production/scripts/LSSTCam/runOneOffPostIsr.py:usdf_testing, exiting...
+
+--------------------------------------------------------------------------------
+
+LOGS:
+--------------------------------------------------------------------------------
+WARNING - Sentry DSN not found or client inactive — events will not be reported
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Pipeline running configured to consume from ONE_OFF_POSTISR_WORKER-LSSTCam-000
+INFO - Waiting for post_isr_image for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500227, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Writing focus Z for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500227, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Pulling OBSANNOT from image header for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500227, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Getting physical rotation data from EFD for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500227, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Writing physical rotator angle 24.848 for 2025111500227 to consDB
+INFO - Skipping consDB insert at usdf_testing for LSSTCam.visit1_quicklook
+INFO - Calculating PSF for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500227, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - focusZ=-2.99845020200831 mm
+INFO - donutDiameter = 242.98624003308834 pixels
+WARNING - Too few points in grid to constrain fit: min(nx, ny) < approxOrder) [min(4, 4) < 6]
+WARNING - Reducing approxOrder to 3
+INFO - Setting factor for negative detections equal to that for positive detections: 1.000000
+INFO - Detected 20 positive peaks in 1 footprints to 50 +ve and 50 -ve sigma
+INFO - Measuring 1 source
+INFO - Wrote measured PSF for 20251115-227 det=94: 24.971
+INFO - Finished one-off processing {instrument: 'LSSTCam', detector: 94, exposure: 2025111500227, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Waiting for post_isr_image for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500227, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Writing focus Z for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500227, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Pulling OBSANNOT from image header for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500227, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Getting physical rotation data from EFD for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500227, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Writing physical rotator angle 24.848 for 2025111500227 to consDB
+INFO - Skipping consDB insert at usdf_testing for LSSTCam.visit1_quicklook
+INFO - Calculating PSF for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500227, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - focusZ=-2.99845020200831 mm
+INFO - donutDiameter = 242.98624003308834 pixels
+WARNING - Too few points in grid to constrain fit: min(nx, ny) < approxOrder) [min(4, 4) < 6]
+WARNING - Reducing approxOrder to 3
+INFO - Setting factor for negative detections equal to that for positive detections: 1.000000
+INFO - Detected 20 positive peaks in 1 footprints to 50 +ve and 50 -ve sigma
+INFO - Measuring 1 source
+INFO - Wrote measured PSF for 20251115-227 det=94: 24.971
+INFO - Finished one-off processing {instrument: 'LSSTCam', detector: 94, exposure: 2025111500227, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Waiting for post_isr_image for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Writing focus Z for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Pulling OBSANNOT from image header for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Getting physical rotation data from EFD for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Writing physical rotator angle 24.849 for 2025111500226 to consDB
+INFO - Skipping consDB insert at usdf_testing for LSSTCam.visit1_quicklook
+INFO - Calculating PSF for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - focusZ=-1.50872532717829 mm
+INFO - donutDiameter = 122.26299247798138 pixels
+WARNING - Too few points in grid to constrain fit: min(nx, ny) < approxOrder) [min(5, 5) < 6]
+WARNING - Reducing approxOrder to 4
+INFO - Setting factor for negative detections equal to that for positive detections: 1.000000
+INFO - Detected 107 positive peaks in 1 footprints to 50 +ve and 50 -ve sigma
+INFO - Measuring 1 source
+INFO - Wrote measured PSF for 20251115-226 det=94: 9.885
+INFO - Finished one-off processing {instrument: 'LSSTCam', detector: 94, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Waiting for post_isr_image for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500228, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Writing focus Z for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500228, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Pulling OBSANNOT from image header for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500228, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Getting physical rotation data from EFD for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500228, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Writing physical rotator angle 24.846 for 2025111500228 to consDB
+INFO - Skipping consDB insert at usdf_testing for LSSTCam.visit1_quicklook
+INFO - Calculating PSF for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500228, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - focusZ=0.00311354901047207 mm
+INFO - donutDiameter = 0.25231353407391166 pixels
+INFO - Setting factor for negative detections equal to that for positive detections: 1.000000
+INFO - Detected 10169 positive peaks in 637 footprints to 10 +ve and 10 -ve sigma
+INFO - Measuring 637 sources
+INFO - Wrote measured PSF for 20251115-228 det=94: 1.358
+INFO - Finished one-off processing {instrument: 'LSSTCam', detector: 94, exposure: 2025111500228, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Waiting for post_isr_image for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500228, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Writing focus Z for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500228, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Pulling OBSANNOT from image header for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500228, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Getting physical rotation data from EFD for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500228, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Writing physical rotator angle 24.846 for 2025111500228 to consDB
+INFO - Skipping consDB insert at usdf_testing for LSSTCam.visit1_quicklook
+INFO - Calculating PSF for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500228, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - focusZ=0.00311354901047207 mm
+INFO - donutDiameter = 0.25231353407391166 pixels
+INFO - Setting factor for negative detections equal to that for positive detections: 1.000000
+INFO - Detected 10169 positive peaks in 637 footprints to 10 +ve and 10 -ve sigma
+INFO - Measuring 637 sources
+INFO - Wrote measured PSF for 20251115-228 det=94: 1.358
+INFO - Finished one-off processing {instrument: 'LSSTCam', detector: 94, exposure: 2025111500228, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}
+INFO - Waiting for post_isr_image for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Writing focus Z for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Pulling OBSANNOT from image header for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Getting physical rotation data from EFD for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Writing physical rotator angle 24.849 for 2025111500226 to consDB
+INFO - Skipping consDB insert at usdf_testing for LSSTCam.visit1_quicklook
+INFO - Calculating PSF for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - focusZ=-1.50872532717829 mm
+INFO - donutDiameter = 122.26299247798138 pixels
+WARNING - Too few points in grid to constrain fit: min(nx, ny) < approxOrder) [min(5, 5) < 6]
+WARNING - Reducing approxOrder to 4
+INFO - Setting factor for negative detections equal to that for positive detections: 1.000000
+INFO - Detected 107 positive peaks in 1 footprints to 50 +ve and 50 -ve sigma
+INFO - Measuring 1 source
+INFO - Wrote measured PSF for 20251115-226 det=94: 9.885
+INFO - Finished one-off processing {instrument: 'LSSTCam', detector: 94, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Waiting for post_isr_image for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Writing focus Z for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Pulling OBSANNOT from image header for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Getting physical rotation data from EFD for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Writing physical rotator angle 24.849 for 2025111500226 to consDB
+INFO - Skipping consDB insert at usdf_testing for LSSTCam.visit1_quicklook
+INFO - Calculating PSF for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - focusZ=-1.50872532717829 mm
+INFO - donutDiameter = 122.26299247798138 pixels
+WARNING - Too few points in grid to constrain fit: min(nx, ny) < approxOrder) [min(5, 5) < 6]
+WARNING - Reducing approxOrder to 4
+INFO - Setting factor for negative detections equal to that for positive detections: 1.000000
+INFO - Detected 107 positive peaks in 1 footprints to 50 +ve and 50 -ve sigma
+INFO - Measuring 1 source
+INFO - Wrote measured PSF for 20251115-226 det=94: 9.885
+INFO - Finished one-off processing {instrument: 'LSSTCam', detector: 94, exposure: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}
+INFO - Waiting for post_isr_image for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}
+INFO - Writing focus Z for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}
+INFO - Pulling OBSANNOT from image header for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}
+INFO - Getting physical rotation data from EFD for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}
+INFO - Writing physical rotator angle -0.000 for 2025111500436 to consDB
+INFO - Skipping consDB insert at usdf_testing for LSSTCam.visit1_quicklook
+INFO - Making witness detector image...
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000436.jpg to lsstcam/20251115/witness_detector/000436/lsstcam_witness_detector_20251115_000436.jpg
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000436.jpg to lsstcam/20251115/witness_detector/000436/lsstcam_witness_detector_20251115_000436.jpg
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Finished making witness detector image
+INFO - Finished one-off processing {instrument: 'LSSTCam', detector: 94, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}
+INFO - Waiting for post_isr_image for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}
+INFO - Writing focus Z for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}
+INFO - Pulling OBSANNOT from image header for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}
+INFO - Getting physical rotation data from EFD for {instrument: 'LSSTCam', detector: 94, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}
+INFO - Writing physical rotator angle -0.000 for 2025111500436 to consDB
+INFO - Skipping consDB insert at usdf_testing for LSSTCam.visit1_quicklook
+INFO - Making witness detector image...
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000436.jpg to lsstcam/20251115/witness_detector/000436/lsstcam_witness_detector_20251115_000436.jpg
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000436.jpg to lsstcam/20251115/witness_detector/000436/lsstcam_witness_detector_20251115_000436.jpg
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Finished making witness detector image
+INFO - Finished one-off processing {instrument: 'LSSTCam', detector: 94, exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'}
+
+--------------------------------------------------------------------------------

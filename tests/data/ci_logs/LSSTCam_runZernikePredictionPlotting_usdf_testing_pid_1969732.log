@@ -1,0 +1,47 @@
+================================================================================
+Exit Code: timeout
+================================================================================
+
+STDOUT:
+--------------------------------------------------------------------------------
+Running LSSTCam ZERNIKE_PREDICTED_FWHM_PLOTTER at usdf_testing, consuming from ZERNIKE_PREDICTED_FWHM_PLOTTER-LSSTCam-000...
+Termination signal received for /sdf/home/m/mfl/lsst/rubintv_production/scripts/LSSTCam/runZernikePredictionPlotting.py:usdf_testing, exiting...
+
+--------------------------------------------------------------------------------
+
+LOGS:
+--------------------------------------------------------------------------------
+WARNING - Sentry DSN not found or client inactive — events will not be reported
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Making ZernikePredictedFWHM plots for visitId 2025111500226
+INFO - Getting source catalogs for visitId=2025111500226 took 20.927s
+INFO - Making table from source catalogs took 1.050s
+INFO - Making dataframe from zernikes took 2.166s
+INFO - Making the actual Zernike predicted FWHM plot took 1.771s
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_zernike_predicted_fwhm_dayObs_20251115_seqNum_000226.png to lsstcam_aos/20251115/zernike_predicted_fwhm/000226/lsstcam_aos_zernike_predicted_fwhm_20251115_000226.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_zernike_predicted_fwhm_dayObs_20251115_seqNum_000226.png to lsstcam_aos/20251115/zernike_predicted_fwhm/000226/lsstcam_aos_zernike_predicted_fwhm_20251115_000226.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+WARNING - Number of sensors (4) less than the noise covariance sensor matrix size (8). This mode is not supported yet, so an identity matrix will be used for now.
+INFO - Subtracting intrinsic wavefront errors from measured wavefront errors.
+INFO - Estimating telescope state took 0.314s
+WARNING - /sdf/group/rubin/sw/conda/envs/lsst-scipipe-13.0.0/lib/python3.13/site-packages/batoid_rubin/builder.py:732: FutureWarning: Default dof_coord_system will change from ZCS to OCS in a future release. Please explicitly set dof_coord_system to avoid this warning.
+  warnings.warn(
+
+WARNING - /sdf/group/rubin/sw/conda/envs/lsst-scipipe-13.0.0/lib/python3.13/site-packages/batoid_rubin/builder.py:744: FutureWarning: Default flip_m2_bending_modes will change from True to False in a future release. Please explicitly set flip_m2_bending_modes to avoid this warning.
+  warnings.warn(
+
+WARNING - /sdf/group/rubin/sw/conda/envs/lsst-scipipe-13.0.0/lib/python3.13/site-packages/batoid_rubin/builder.py:755: FutureWarning: Default dof_angle_units will change from arcsec to degree in a future release. Please explicitly set dof_angle_units to avoid this warning.
+  warnings.warn(
+
+INFO - Estimating wavefront data from DOFs took 12.322s
+INFO - Making the actual DOF predicted FWHM plot took 3.101s
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_dof_predicted_fwhm_dayObs_20251115_seqNum_000226.png to lsstcam_aos/20251115/dof_predicted_fwhm/000226/lsstcam_aos_dof_predicted_fwhm_20251115_000226.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_dof_predicted_fwhm_dayObs_20251115_seqNum_000226.png to lsstcam_aos/20251115/dof_predicted_fwhm/000226/lsstcam_aos_dof_predicted_fwhm_20251115_000226.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Total time for making zernike prediction plots for visitId=2025111500226 took 49.760s
+
+--------------------------------------------------------------------------------

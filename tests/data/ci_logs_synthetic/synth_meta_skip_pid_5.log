@@ -1,0 +1,6 @@
+2026-04-24 10:00:00 - lsst.synth - INFO - this file's name contains 'meta' so it must be skipped by findAllTracebacks / findAllWarnings
+2026-04-24 10:00:01 - lsst.synth - WARNING - this warning should NOT appear in aggregated results
+Traceback (most recent call last):
+  File "/sdf/home/example/pkg/x.py", line 1, in main
+    raise RuntimeError("should be skipped")
+RuntimeError: should be skipped

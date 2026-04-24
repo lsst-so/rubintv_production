@@ -1,0 +1,29 @@
+================================================================================
+Exit Code: timeout
+================================================================================
+
+STDOUT:
+--------------------------------------------------------------------------------
+Running LATISS ONE_OFF_EXPRECORD_WORKER at usdf_testing,consuming from ONE_OFF_EXPRECORD_WORKER-LATISS-000...
+Termination signal received for /sdf/home/m/mfl/lsst/rubintv_production/scripts/LATISS/runOneOffExpRecord.py:usdf_testing, exiting...
+
+--------------------------------------------------------------------------------
+
+LOGS:
+--------------------------------------------------------------------------------
+WARNING - Sentry DSN not found or client inactive — events will not be reported
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Pipeline running configured to consume from ONE_OFF_EXPRECORD_WORKER-LATISS-000
+INFO - Calculating extra coords...
+INFO - Finished publishing extra coords
+INFO - Uploading mount torque plot to storage bucket
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png to auxtel/20240813/mount/000632/auxtel_mount_20240813_000632.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png to auxtel/20240813/mount/000632/auxtel_mount_20240813_000632.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Upload complete
+INFO - Sending mount jitter to ConsDB
+
+--------------------------------------------------------------------------------

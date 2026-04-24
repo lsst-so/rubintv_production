@@ -1,0 +1,90 @@
+================================================================================
+Exit Code: timeout
+================================================================================
+
+STDOUT:
+--------------------------------------------------------------------------------
+Running LSSTCam MOSAIC_WORKER at usdf_testing,consuming from MOSAIC_WORKER-LSSTCam-000...
+Termination signal received for /sdf/home/m/mfl/lsst/rubintv_production/scripts/LSSTCam/runPlotter.py:usdf_testing, exiting...
+
+--------------------------------------------------------------------------------
+
+LOGS:
+--------------------------------------------------------------------------------
+WARNING - Sentry DSN not found or client inactive — events will not be reported
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Making plots for {instrument: 'LSSTCam', exposure: 2025111500227}
+INFO - Found 197 dRefs for dayObs=20251115, seqNum=227
+INFO - Finding binned images in S3 took 0.044s
+INFO - Prefetching 18 existing binned images took 0.160s
+INFO - Reading existing files from local cache and assembling took 0.035s
+INFO - Assembling the mosaic image took 0.244s
+INFO - Made mosaic image for dayObs=20251115, seqNum=227
+INFO - Rendering the mosaic took 2.149s
+INFO - Saved mosaic image for dayObs=20251115, seqNum=227 to /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000227.jpg
+INFO - Wrote focal plane plot for {instrument: 'LSSTCam', exposure: 2025111500227} to /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000227.jpg
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000227.jpg to lsstcam/20251115/focal_plane_mosaic/000227/lsstcam_focal_plane_mosaic_20251115_000227.jpg
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000227.jpg to lsstcam/20251115/focal_plane_mosaic/000227/lsstcam_focal_plane_mosaic_20251115_000227.jpg
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Making plots for {instrument: 'LSSTCam', exposure: 2025111500228}
+INFO - Found 197 dRefs for dayObs=20251115, seqNum=228
+INFO - Finding binned images in S3 took 0.040s
+INFO - Prefetching 18 existing binned images took 0.128s
+INFO - Reading existing files from local cache and assembling took 0.039s
+INFO - Assembling the mosaic image took 0.213s
+INFO - Made mosaic image for dayObs=20251115, seqNum=228
+INFO - Rendering the mosaic took 2.396s
+INFO - Saved mosaic image for dayObs=20251115, seqNum=228 to /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000228.jpg
+INFO - Wrote focal plane plot for {instrument: 'LSSTCam', exposure: 2025111500228} to /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000228.jpg
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000228.jpg to lsstcam/20251115/focal_plane_mosaic/000228/lsstcam_focal_plane_mosaic_20251115_000228.jpg
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000228.jpg to lsstcam/20251115/focal_plane_mosaic/000228/lsstcam_focal_plane_mosaic_20251115_000228.jpg
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Making plots for {instrument: 'LSSTCam', exposure: 2025111500226}
+INFO - Found 197 dRefs for dayObs=20251115, seqNum=226
+INFO - Finding binned images in S3 took 0.048s
+INFO - Prefetching 26 existing binned images took 0.180s
+INFO - Reading existing files from local cache and assembling took 0.056s
+INFO - Assembling the mosaic image took 0.289s
+INFO - Made mosaic image for dayObs=20251115, seqNum=226
+INFO - Rendering the mosaic took 3.810s
+INFO - Saved mosaic image for dayObs=20251115, seqNum=226 to /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000226.jpg
+INFO - Wrote focal plane plot for {instrument: 'LSSTCam', exposure: 2025111500226} to /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000226.jpg
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000226.jpg to lsstcam/20251115/focal_plane_mosaic/000226/lsstcam_focal_plane_mosaic_20251115_000226.jpg
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000226.jpg to lsstcam/20251115/focal_plane_mosaic/000226/lsstcam_focal_plane_mosaic_20251115_000226.jpg
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Making plots for {instrument: 'LSSTCam', exposure: 2025111500226}
+INFO - Found 197 dRefs for dayObs=20251115, seqNum=226
+INFO - Finding binned images in S3 took 0.059s
+INFO - Prefetching 18 existing binned images took 0.155s
+WARNING - Expected 26 binned images but found 18 in S3.
+INFO - Reading existing files from local cache and assembling took 0.030s
+INFO - Assembling the mosaic image took 0.249s
+INFO - Made mosaic image for dayObs=20251115, seqNum=226
+INFO - Rendering the mosaic took 8.503s
+INFO - Saved mosaic image for dayObs=20251115, seqNum=226 to /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_calexp_mosaic_dayObs_20251115_seqNum_000226.jpg
+INFO - Wrote focal plane plot for {instrument: 'LSSTCam', exposure: 2025111500226} to /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_calexp_mosaic_dayObs_20251115_seqNum_000226.jpg
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_calexp_mosaic_dayObs_20251115_seqNum_000226.jpg to lsstcam/20251115/calexp_mosaic/000226/lsstcam_calexp_mosaic_20251115_000226.jpg
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_calexp_mosaic_dayObs_20251115_seqNum_000226.jpg to lsstcam/20251115/calexp_mosaic/000226/lsstcam_calexp_mosaic_20251115_000226.jpg
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Making plots for {instrument: 'LSSTCam', exposure: 2025111500436}
+INFO - Found 197 dRefs for dayObs=20251115, seqNum=436
+INFO - Finding binned images in S3 took 0.051s
+INFO - Prefetching 26 existing binned images took 0.163s
+INFO - Reading existing files from local cache and assembling took 0.054s
+INFO - Assembling the mosaic image took 0.273s
+INFO - Made mosaic image for dayObs=20251115, seqNum=436
+INFO - Rendering the mosaic took 2.692s
+INFO - Saved mosaic image for dayObs=20251115, seqNum=436 to /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000436.jpg
+INFO - Wrote focal plane plot for {instrument: 'LSSTCam', exposure: 2025111500436} to /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000436.jpg
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000436.jpg to lsstcam/20251115/focal_plane_mosaic/000436/lsstcam_focal_plane_mosaic_20251115_000436.jpg
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000436.jpg to lsstcam/20251115/focal_plane_mosaic/000436/lsstcam_focal_plane_mosaic_20251115_000436.jpg
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+
+--------------------------------------------------------------------------------

@@ -1,0 +1,57 @@
+================================================================================
+Exit Code: timeout
+================================================================================
+
+STDOUT:
+--------------------------------------------------------------------------------
+Found WORKER_NUMBER=None in the env
+Running LATISS SFM_WORKER at usdf_testing,consuming from SFM_WORKER-LATISS-000-000...
+Termination signal received for /sdf/home/m/mfl/lsst/rubintv_production/scripts/LATISS/runSfmRunner.py:usdf_testing:0, exiting...
+
+--------------------------------------------------------------------------------
+
+LOGS:
+--------------------------------------------------------------------------------
+WARNING - Sentry DSN not found or client inactive — events will not be reported
+INFO - Creating CachingLimitedButler with cachedOnPut={'atmospecCentroid', 'icExp', 'icSrc'}, cachedOnGet={'flat', 'the_monster_20250219', 'raw', 'defects', 'dark', 'crosstalk', 'gain_correction', 'camera', 'ptc', 'linearizer', 'post_isr_image', 'bias'}, noCopyOnCache={'flat', 'astrometry_camera', 'dark', 'camera', 'defects', 'bias'}
+INFO - Pipeline running configured to consume from SFM_WORKER-LATISS-000-000
+INFO - Running pipeline for {instrument: 'LATISS', detector: 0, exposure: 2024081300632, band: 'white', day_obs: 20240813, group: '2024-08-14T05:00:33.156', physical_filter: 'empty~holo4_003'}
+INFO - Waiting for raw for {instrument: 'LATISS', detector: 0, exposure: 2024081300632, band: 'white', day_obs: 20240813, group: '2024-08-14T05:00:33.156', physical_filter: 'empty~holo4_003'}
+INFO - Spent 1.52 seconds waiting for the raw (should be ~1s per id)
+INFO - Making TrivialQG builder for step1a for expId 2024081300632 for SFM
+INFO - Processing pipeline subgraph 1 of 1 with 1 task(s).
+INFO - Added regular input isr.ccdExposure for {instrument: 'LATISS', detector: 0, exposure: 2024081300632, band: 'white', day_obs: 20240813, group: '2024-08-14T05:00:33.156', physical_filter: 'empty~holo4_003'}
+INFO - Added output isr.outputExposure for {instrument: 'LATISS', detector: 0, exposure: 2024081300632, band: 'white', day_obs: 20240813, group: '2024-08-14T05:00:33.156', physical_filter: 'empty~holo4_003'}
+INFO - Added output isr.outputStatistics for {instrument: 'LATISS', detector: 0, exposure: 2024081300632, band: 'white', day_obs: 20240813, group: '2024-08-14T05:00:33.156', physical_filter: 'empty~holo4_003'}
+INFO - Added output isr._metadata for {instrument: 'LATISS', detector: 0, exposure: 2024081300632, band: 'white', day_obs: 20240813, group: '2024-08-14T05:00:33.156', physical_filter: 'empty~holo4_003'}
+INFO - Added output isr._log for {instrument: 'LATISS', detector: 0, exposure: 2024081300632, band: 'white', day_obs: 20240813, group: '2024-08-14T05:00:33.156', physical_filter: 'empty~holo4_003'}
+INFO - Generated 1 quantum for task isr.
+INFO - Fetching and attaching datastore records for all overall inputs.
+INFO - Transforming graph skeleton into PredictedQuantumGraph components.
+INFO - Graph build complete.
+INFO - Building quantum graph for {instrument: 'LATISS', detector: 0, exposure: 2024081300632, band: 'white', day_obs: 20240813, group: '2024-08-14T05:00:33.156', physical_filter: 'empty~holo4_003'} for SFM took 0.268s
+INFO - Using 4 CPUs for LATISS step1a SFM
+INFO - Starting to process isr
+INFO - Preparing execution of quantum for label=isr dataId={instrument: 'LATISS', detector: 0, exposure: 2024081300632, band: 'white', day_obs: 20240813, group: '2024-08-14T05:00:33.156', physical_filter: 'empty~holo4_003'}.
+INFO - Constructing task and executing quantum for label=isr dataId={instrument: 'LATISS', detector: 0, exposure: 2024081300632, band: 'white', day_obs: 20240813, group: '2024-08-14T05:00:33.156', physical_filter: 'empty~holo4_003'}.
+INFO - Calibration PTC missing keywords SEQNAME,SEQFILE,SEQCKSUM,TEMP_SET, which were not checked.
+INFO - Calibration defects missing keywords SEQNAME,SEQFILE,SEQCKSUM,TEMP_SET, which were not checked.
+INFO - Seeding dithering random number generator with 1828878336.
+INFO - Skipping gain correction because no GainCorrection available.
+INFO - Using gain values to convert from adu to electron units.
+INFO - Assembling CCD from amplifiers.
+INFO - Adding ITL_DIP mask plane to image.
+INFO - Applying bias correction.
+INFO - Applying defect masking.
+INFO - Adding UNMASKEDNAN mask plane to image.
+INFO - Masking non-finite (NAN, inf) value pixels.
+INFO - Setting values in large contiguous bad regions.
+INFO - Set 104444 BAD pixels to 56.345482.
+INFO - Interpolating masked pixels.
+INFO - Execution of task 'isr' on quantum {instrument: 'LATISS', detector: 0, exposure: 2024081300632, band: 'white', day_obs: 20240813, group: '2024-08-14T05:00:33.156', physical_filter: 'empty~holo4_003'} took 7.786 seconds
+INFO - Found credentials in shared credentials file: /sdf/home/m/mfl/.lsst/aws-credentials.ini
+INFO - Found credentials in shared credentials file: /sdf/home/m/mfl/.lsst/aws-credentials.ini
+INFO - writeBinnedImage took 1.935s
+INFO - Wrote binned post_isr_image for {instrument: 'LATISS', detector: 0, exposure: 2024081300632, band: 'white', day_obs: 20240813, group: '2024-08-14T05:00:33.156', physical_filter: 'empty~holo4_003'}
+
+--------------------------------------------------------------------------------
