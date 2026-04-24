@@ -34,7 +34,9 @@ import lsst.utils.tests
 from lsst.rubintv.production import redisKeys
 from lsst.rubintv.production.redisKeys import (
     QUEUE_LENGTHS_KEY,
+    TRACKING_BINNED_ISR_PREFIX,
     TRACKING_INITIALIZED_FIELD,
+    TRACKING_MOSAIC_DISPATCHED_FIELD,
     TRACKING_PIPELINE_CONFIG_FIELD,
     WITNESS_DETECTOR_KEY,
     getActiveExposuresKey,
@@ -51,6 +53,7 @@ from lsst.rubintv.production.redisKeys import (
     getPodSecondaryStatusKey,
     getTaskFailedCounterKey,
     getTaskFinishedCounterKey,
+    getTrackingBinnedIsrField,
     getTrackingExpectedField,
     getTrackingFailedField,
     getTrackingFinishedField,
@@ -78,6 +81,12 @@ class ConstantsTestCase(lsst.utils.tests.TestCase):
 
     def test_trackingPipelineConfigField(self) -> None:
         self.assertEqual(TRACKING_PIPELINE_CONFIG_FIELD, "pipeline_config")
+
+    def test_trackingMosaicDispatchedField(self) -> None:
+        self.assertEqual(TRACKING_MOSAIC_DISPATCHED_FIELD, "_mosaicDispatched")
+
+    def test_trackingBinnedIsrPrefix(self) -> None:
+        self.assertEqual(TRACKING_BINNED_ISR_PREFIX, "_binnedIsr:")
 
     def test_allListedInDunderAll(self) -> None:
         # Every public symbol the module exposes should be in __all__ so
@@ -276,6 +285,23 @@ class TrackingHashFieldsTestCase(lsst.utils.tests.TestCase):
 
     def test_step1bFinishedField(self) -> None:
         self.assertEqual(getTrackingStep1bFinishedField("SFM"), "SFM:step1bFinished")
+
+    def test_binnedIsrField(self) -> None:
+        self.assertEqual(getTrackingBinnedIsrField(94), "_binnedIsr:94")
+        self.assertEqual(getTrackingBinnedIsrField(0), "_binnedIsr:0")
+
+    def test_binnedIsrAndMosaicFieldsAreNotWhoKeyed(self) -> None:
+        # These fields are deliberately *not* matched by the per-who
+        # parser regex — they're pipeline-agnostic. If this assertion
+        # starts failing, the parser in
+        # `ExposureProcessingInfo.fromRedisHash` must route them via
+        # the regex; today it handles them by explicit prefix/equality
+        # checks before running the regex.
+        import re
+
+        pattern = re.compile(r"^([A-Z_]+):(\w+?)(?::(\d+))?$")
+        self.assertIsNone(pattern.match(getTrackingBinnedIsrField(42)))
+        self.assertIsNone(pattern.match(TRACKING_MOSAIC_DISPATCHED_FIELD))
 
     def test_fieldsAreParseableByExistingRegex(self) -> None:
         # `ExposureProcessingInfo.fromRedisHash` parses these field names

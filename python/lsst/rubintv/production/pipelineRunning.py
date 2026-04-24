@@ -693,8 +693,12 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             )
             if dRef is not None:
                 # it shouldn't ever be None here, but technically could be, so
-                # check here for mypy, and reraise if it was None
-                self.redisHelper.reportTaskFinished(self.instrument, "binnedIsrCreation", dRef.dataId)
+                # check here for mypy, and reraise if it was None. Report the
+                # binned-ISR slot as completed even on failure so the mosaic
+                # dispatch isn't held up by a single failed detector.
+                expId = int(dRef.dataId["exposure"])
+                detector = int(dRef.dataId["detector"])
+                self.redisHelper.reportBinnedIsrProduced(self.instrument, expId, detector)
             else:
                 raise AssertionError(
                     f"Failed to post-process *failed* isr quantum {quantum} and dRef was None. This shouldn't"
@@ -715,7 +719,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             locationConfig=self.locationConfig,
         )
         self.log.info(f"Wrote binned {output_dataset_name} for {dRef.dataId}")
-        self.redisHelper.reportTaskFinished(self.instrument, "binnedIsrCreation", dRef.dataId)
+        self.redisHelper.reportBinnedIsrProduced(
+            self.instrument, int(expRecord.id), int(dRef.dataId["detector"])
+        )
         if self.locationConfig.location in ["summit", "bts", "tts"]:  # don't fill ConsDB at USDF
             try:
                 detectorNum = exp.getDetector().getId()

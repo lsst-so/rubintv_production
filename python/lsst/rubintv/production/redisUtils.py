@@ -46,7 +46,9 @@ from .podDefinition import PodDetails, PodFlavor, getQueueName
 from .predicates import runningPyTest, runningScons
 from .redisKeys import (
     QUEUE_LENGTHS_KEY,
+    TRACKING_BINNED_ISR_PREFIX,
     TRACKING_INITIALIZED_FIELD,
+    TRACKING_MOSAIC_DISPATCHED_FIELD,
     TRACKING_PIPELINE_CONFIG_FIELD,
     WITNESS_DETECTOR_KEY,
     getActiveExposuresKey,
@@ -63,6 +65,7 @@ from .redisKeys import (
     getPodSecondaryStatusKey,
     getTaskFailedCounterKey,
     getTaskFinishedCounterKey,
+    getTrackingBinnedIsrField,
     getTrackingExpectedField,
     getTrackingFailedField,
     getTrackingFinishedField,
@@ -151,6 +154,8 @@ class ExposureProcessingInfo:
     step1aDispatched: dict[str, bool] = field(default_factory=dict)
     step1bDispatched: dict[str, bool] = field(default_factory=dict)
     step1bFinished: dict[str, bool] = field(default_factory=dict)
+    binnedIsrProduced: set[int] = field(default_factory=set)
+    mosaicDispatched: bool = False
     pipelineConfig: str | None = None
 
     @classmethod
@@ -165,6 +170,10 @@ class ExposureProcessingInfo:
         - ``{who}:step1aDispatched`` -> "1"
         - ``{who}:step1bDispatched`` -> "1"
         - ``{who}:step1bFinished`` -> "1"
+        - ``_binnedIsr:{det}`` -> "1" per detector that produced a
+          binned post-ISR image (pipeline-agnostic)
+        - ``_mosaicDispatched`` -> "1" once the post-ISR focal-plane
+          mosaic has been dispatched
         - ``pipeline_config`` -> pipeline name string
         - ``_initialized`` -> sentinel, ignored
 
@@ -186,6 +195,8 @@ class ExposureProcessingInfo:
         step1aDispatched: dict[str, bool] = {}
         step1bDispatched: dict[str, bool] = {}
         step1bFinished: dict[str, bool] = {}
+        binnedIsrProduced: set[int] = set()
+        mosaicDispatched = False
         pipelineConfig: str | None = None
 
         for key, value in fields.items():
@@ -193,6 +204,14 @@ class ExposureProcessingInfo:
                 pipelineConfig = value
                 continue
             if key == TRACKING_INITIALIZED_FIELD:
+                continue
+            if key == TRACKING_MOSAIC_DISPATCHED_FIELD:
+                mosaicDispatched = True
+                continue
+            if key.startswith(TRACKING_BINNED_ISR_PREFIX):
+                detStr = key[len(TRACKING_BINNED_ISR_PREFIX) :]
+                if detStr.isdigit():
+                    binnedIsrProduced.add(int(detStr))
                 continue
 
             match = _TRACKING_FIELD_RE.match(key)
@@ -227,6 +246,8 @@ class ExposureProcessingInfo:
             step1aDispatched=step1aDispatched,
             step1bDispatched=step1bDispatched,
             step1bFinished=step1bFinished,
+            binnedIsrProduced=binnedIsrProduced,
+            mosaicDispatched=mosaicDispatched,
             pipelineConfig=pipelineConfig,
         )
 
@@ -272,11 +293,45 @@ class ExposureProcessingInfo:
         """Mark the step1a gather as dispatched (Python-side only)."""
         self.step1aDispatched[who] = True
 
+    def getBinnedIsrProduced(self) -> set[int]:
+        """Get the set of detectors that have produced a binned post-ISR
+        image (pipeline-agnostic).
+        """
+        return self.binnedIsrProduced
+
+    def getAllExpectedDetectors(self) -> set[int]:
+        """Return the union of expected detectors across all whos.
+
+        This is the set of detectors that the head node has dispatched
+        at least one step1a pipeline to, and therefore the set of
+        detectors that are expected to produce a binned post-ISR image.
+        """
+        out: set[int] = set()
+        for dets in self.expected.values():
+            out |= dets
+        return out
+
+    def isMosaicDispatched(self) -> bool:
+        """Check if the post-ISR focal-plane mosaic has been dispatched."""
+        return self.mosaicDispatched
+
+    def markMosaicDispatched(self) -> None:
+        """Mark the post-ISR mosaic as dispatched (Python-side only)."""
+        self.mosaicDispatched = True
+
     def allGathersDispatched(self) -> bool:
-        """Check if all whos with expected detectors have been dispatched."""
+        """Check if all whos with expected detectors have been dispatched.
+
+        Also gates on the post-ISR mosaic once any binned-ISR production
+        has begun, so the head node keeps the exposure in its active set
+        until ``dispatchPostIsrMosaic`` has had a chance to fire. LATISS
+        never produces binned-ISR mosaics, so the gate is a no-op there.
+        """
         for who, dets in self.expected.items():
             if dets and not self.step1aDispatched.get(who, False):
                 return False
+        if self.binnedIsrProduced and not self.mosaicDispatched:
+            return False
         return True
 
     def _formatDetectors(self, detectors: set[int]) -> str:
@@ -313,6 +368,10 @@ class ExposureProcessingInfo:
                 f", step1b_dispatched={step1bDispatched}"
                 f", step1b_finished={step1bFinished}"
             )
+        parts.append(
+            f"  binned_isr_produced={len(self.binnedIsrProduced)}"
+            f", mosaic_dispatched={self.mosaicDispatched}"
+        )
         if self.pipelineConfig:
             parts.append(f"  pipeline_config={self.pipelineConfig}")
         return "\n".join(parts) + ")"
@@ -348,6 +407,13 @@ class ExposureProcessingInfo:
                 flags.append("step1b finished")
             if flags:
                 lines.append(f"    flags:     {', '.join(flags)}")
+
+        lines.append(
+            f"  binned-ISR produced: {len(self.binnedIsrProduced)}"
+            f"    mosaic dispatched: {self.mosaicDispatched}"
+        )
+        if self.binnedIsrProduced:
+            lines.append(f"    {self._formatDetectors(self.binnedIsrProduced)}")
 
         if self.pipelineConfig:
             lines.append(f"  AOS pipeline: {self.pipelineConfig}")
@@ -1254,6 +1320,38 @@ class RedisHelper:
         self.redis.hset(key, getTrackingFinishedField(who, detector), "1")
         if failed:
             self.redis.hset(key, getTrackingFailedField(who, detector), "1")
+
+    def reportBinnedIsrProduced(self, instrument: str, expId: int, detector: int) -> None:
+        """Mark that a binned post-ISR image has been produced for
+        ``detector`` of ``expId`` (pipeline-agnostic).
+
+        Called from every ``postProcessIsr`` invocation, regardless of
+        which pipeline the ISR quantum belongs to. Idempotent under
+        re-runs; multiple pipelines writing the same detector just set
+        the same field to "1".
+        """
+        key = getTrackingKey(instrument, expId)
+        self.redis.hset(key, getTrackingBinnedIsrField(detector), "1")
+
+    def getNumBinnedIsrProduced(self, instrument: str, expId: int) -> int:
+        """Return the number of binned post-ISR images produced so far
+        for ``expId``.
+        """
+        key = getTrackingKey(instrument, expId)
+        rawFields = self.redis.hkeys(key)
+        count = 0
+        for raw in rawFields:
+            field = raw.decode("utf-8") if isinstance(raw, bytes) else raw
+            if field.startswith(TRACKING_BINNED_ISR_PREFIX):
+                count += 1
+        return count
+
+    def markMosaicDispatched(self, instrument: str, expId: int) -> None:
+        """Mark the post-ISR focal-plane mosaic as dispatched for
+        ``expId``.
+        """
+        key = getTrackingKey(instrument, expId)
+        self.redis.hset(key, TRACKING_MOSAIC_DISPATCHED_FIELD, "1")
 
     def getExposureProcessingInfo(self, instrument: str, expId: int) -> ExposureProcessingInfo | None:
         """Get the full tracking state for an exposure.
