@@ -24,7 +24,12 @@
 import unittest
 
 import lsst.utils.tests
-from lsst.rubintv.production.processingControl import CameraControlConfig
+from lsst.rubintv.production.processingControl import (
+    PIPELINE_NAMES,
+    CameraControlConfig,
+    VisitProcessingMode,
+    WorkerProcessingMode,
+)
 
 
 class CamearaControlConfigTestCase(lsst.utils.tests.TestCase):
@@ -130,6 +135,96 @@ class CamearaControlConfigTestCase(lsst.utils.tests.TestCase):
 
         camConfig.setWavefrontOn()
         camConfig.setRaftCheckerboard(phase=1)
+
+
+class WorkerProcessingModeTestCase(lsst.utils.tests.TestCase):
+    """Pin the integer values of `WorkerProcessingMode`.
+
+    These values are persisted to Redis as the worker's processing mode and
+    consumed by the runner. Pinning them prevents an accidental reorder of
+    the enum members from silently flipping every running worker into a
+    different mode.
+    """
+
+    def test_values(self) -> None:
+        self.assertEqual(WorkerProcessingMode.WAITING.value, 0)
+        self.assertEqual(WorkerProcessingMode.CONSUMING.value, 1)
+        self.assertEqual(WorkerProcessingMode.MURDEROUS.value, 2)
+
+    def test_isIntEnum(self) -> None:
+        # IntEnum is what allows the integer comparison and JSON-serialisation
+        # the rest of the code relies on.
+        self.assertTrue(issubclass(WorkerProcessingMode, int))
+        self.assertEqual(int(WorkerProcessingMode.WAITING), 0)
+
+    def test_membersExhaustive(self) -> None:
+        # If a new mode is added, this test forces the addition to be
+        # explicit so other tests / Redis consumers can be updated.
+        self.assertEqual(
+            set(WorkerProcessingMode),
+            {
+                WorkerProcessingMode.WAITING,
+                WorkerProcessingMode.CONSUMING,
+                WorkerProcessingMode.MURDEROUS,
+            },
+        )
+
+
+class VisitProcessingModeTestCase(lsst.utils.tests.TestCase):
+    """Pin the integer values of `VisitProcessingMode`."""
+
+    def test_values(self) -> None:
+        self.assertEqual(VisitProcessingMode.CONSTANT.value, 0)
+        self.assertEqual(VisitProcessingMode.ALTERNATING.value, 1)
+        self.assertEqual(VisitProcessingMode.ALTERNATING_BY_TWOS.value, 2)
+
+    def test_isIntEnum(self) -> None:
+        self.assertTrue(issubclass(VisitProcessingMode, int))
+
+    def test_membersExhaustive(self) -> None:
+        self.assertEqual(
+            set(VisitProcessingMode),
+            {
+                VisitProcessingMode.CONSTANT,
+                VisitProcessingMode.ALTERNATING,
+                VisitProcessingMode.ALTERNATING_BY_TWOS,
+            },
+        )
+
+
+class PipelineNamesTestCase(lsst.utils.tests.TestCase):
+    """Sanity tests for the `PIPELINE_NAMES` constant.
+
+    PIPELINE_NAMES is consumed by the test helpers in tests/utils.py to
+    validate user-RUN collection names, and by every pipeline-aware piece
+    of code in the package. The tests below catch the easy ways for it to
+    drift: duplicate entries (which would silently mask new pipelines),
+    non-string entries, and lower-case strings (the convention is upper).
+    """
+
+    def test_isTuple(self) -> None:
+        self.assertIsInstance(PIPELINE_NAMES, tuple)
+
+    def test_allEntriesAreNonEmptyStrings(self) -> None:
+        for name in PIPELINE_NAMES:
+            self.assertIsInstance(name, str)
+            self.assertTrue(name, "PIPELINE_NAMES contains an empty string")
+
+    def test_noDuplicates(self) -> None:
+        self.assertEqual(len(PIPELINE_NAMES), len(set(PIPELINE_NAMES)))
+
+    def test_allUpperCase(self) -> None:
+        for name in PIPELINE_NAMES:
+            self.assertEqual(
+                name,
+                name.upper(),
+                f"PIPELINE_NAMES entry {name!r} is not upper-case",
+            )
+
+    def test_sfmAlwaysPresent(self) -> None:
+        # The "SFM" entry is the science pipeline and is referenced by
+        # name throughout the package — guard it explicitly.
+        self.assertIn("SFM", PIPELINE_NAMES)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

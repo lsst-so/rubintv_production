@@ -24,9 +24,92 @@ from __future__ import annotations
 import statistics
 import time
 from collections import deque
-from typing import Deque
+from contextlib import contextmanager
+from dataclasses import dataclass
+from functools import wraps
+from time import perf_counter
+from typing import TYPE_CHECKING, Callable, Deque, Iterator
 
-__all__ = ["BoxCarTimer"]
+if TYPE_CHECKING:
+    from logging import Logger
+
+__all__ = [
+    "BoxCarTimer",
+    "DurationResult",
+    "logDuration",
+    "timeFunction",
+]
+
+
+@dataclass
+class DurationResult:
+    duration: float | None = None
+
+
+@contextmanager
+def logDuration(logger: Logger, label: str) -> Iterator[DurationResult]:
+    """Context manager to log the duration of a block of code.
+
+    Example usage::
+
+        with logDuration(log, "this block of code") as timing:
+            doSomething()
+        duration = timing.duration
+
+    This will log the time taken to execute the block of code with the label
+    message "<loggerName>.info this block of code took 1.23s" and return 1.23
+    as the duration attribute of the yielded object.
+
+    Parameters
+    ----------
+    logger : `logging.Logger`
+        The logger to use for logging the duration.
+    label : `str`
+        A label for the block of code being timed, used in the log message.
+
+    Returns
+    -------
+    result : `DurationResult`
+        A context manager that returns a ``DurationResult`` when entered.
+    """
+    start = perf_counter()
+    result = DurationResult()
+    try:
+        yield result
+    finally:
+        result.duration = perf_counter() - start
+        logger.info("%s took %.3fs", label, result.duration)
+
+
+def timeFunction(logger: Logger) -> Callable:
+    """Decorator to log the duration of a function call.
+
+    Example usage:
+    @timeFunction(logger)
+    def my_function():
+        doSomething()
+
+    This will log the time taken to execute the function with the label
+    message "<loggerName>.info my_function took 1.23s".
+
+    Parameters
+    ----------
+    logger : `logging.Logger`
+        The logger to use for logging the duration of the function call.
+    """
+
+    def decorate(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            start = perf_counter()
+            try:
+                return func(*args, **kwargs)
+            finally:
+                logger.info("%s took %.3fs", func.__qualname__, (perf_counter() - start))
+
+        return wrapper
+
+    return decorate
 
 
 class BoxCarTimer:
@@ -43,6 +126,10 @@ class BoxCarTimer:
         The number of lap times to store in the buffer. ``None`` can be passed
         for an infinite buffer, but this is not the default to discourage its
         usage as this is expected to be used for long-running processes.
+    clock : `Callable` [[], `float`], optional
+        Function returning the current time in seconds. Defaults to
+        `time.time`; tests can pass a deterministic substitute to avoid
+        depending on real-clock timing.
 
     Raises
     ------
@@ -51,8 +138,9 @@ class BoxCarTimer:
         is started.
     """
 
-    def __init__(self, length: int):
+    def __init__(self, length: int | None, *, clock: Callable[[], float] = time.time):
         self._buffer: Deque[float] = deque(maxlen=length)
+        self._clock = clock
         self.lastTime: float | None = None
         self.paused = False
         self.pauseStartTime: float | None = None
@@ -61,7 +149,7 @@ class BoxCarTimer:
 
     def start(self) -> None:
         """Start the timer."""
-        self.lastTime = time.time()
+        self.lastTime = self._clock()
         self.started = True
 
     def lap(self) -> None:
@@ -76,10 +164,10 @@ class BoxCarTimer:
             raise RuntimeError("Timer has not been started. Cannot record lap.")
         if self.paused:
             raise RuntimeError("Timer is paused. Cannot record lap.")
-        currentTime = time.time()
+        currentTime = self._clock()
         if self.lastTime is not None:
-            elapsed_time = currentTime - self.lastTime
-            self._buffer.append(elapsed_time)
+            elapsedTime = currentTime - self.lastTime
+            self._buffer.append(elapsedTime)
         self.lastTime = currentTime
         self.totalLaps += 1
 
@@ -88,7 +176,7 @@ class BoxCarTimer:
         if not self.started:
             raise RuntimeError("Timer has not been started. Cannot pause.")
         if not self.paused:
-            self.pauseStartTime = time.time()
+            self.pauseStartTime = self._clock()
             self.paused = True
 
     def resume(self) -> None:
@@ -97,7 +185,7 @@ class BoxCarTimer:
             raise RuntimeError("Timer has not been started. Cannot resume.")
         if self.paused:
             assert self.pauseStartTime is not None
-            pauseDuration = time.time() - self.pauseStartTime
+            pauseDuration = self._clock() - self.pauseStartTime
             assert self.lastTime is not None
             self.lastTime += pauseDuration
             self.paused = False

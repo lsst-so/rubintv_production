@@ -44,7 +44,7 @@ from matplotlib.markers import CARETLEFTBASE, MarkerStyle
 from matplotlib.patches import Patch
 
 from lsst.daf.butler import MissingDatasetTypeError
-from lsst.rubintv.production.utils import getFilterColorName
+from lsst.rubintv.production.formatters import getFilterColorName
 from lsst.summit.utils.dateTime import dayObsIntToString
 from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.utils import getCameraFromInstrumentName
@@ -52,8 +52,13 @@ from lsst.utils.plotting import get_multiband_plot_colors
 from lsst.utils.plotting.figures import make_figure
 
 from .baseChannels import BaseButlerChannel
+from .butlerQueries import getCurrentOutputRun
+from .formatters import makePlotFile
+from .locationConfig import LocationConfig
+from .predicates import runningCI
 from .processingControl import CameraControlConfig, PipelineComponents, buildPipelines
-from .utils import LocationConfig, getCurrentOutputRun, makePlotFile, runningCI, writeMetadataShard
+from .shardIo import writeMetadataShard
+from .uploaders import MultiUploader
 
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
@@ -202,7 +207,11 @@ def getExpRecord(butler: Butler, dayObs: int, seqNum: int) -> DimensionRecord | 
             "exposure", where=f"exposure.day_obs={dayObs} and exposure.seq_num={seqNum}"
         )
         return expRecord
-    except Exception:  # XXX make this a little less broad
+    except ValueError:
+        # ``(x,) = it`` raises ValueError when ``it`` is empty or has
+        # more than one element — i.e. the day_obs/seq_num combination
+        # is unknown to the butler. Any other exception (bad query,
+        # missing collection, etc.) is a real bug and should propagate.
         return None
 
 
@@ -225,7 +234,10 @@ def getVisitRecord(butler: Butler, expRecord: DimensionRecord) -> DimensionRecor
     try:
         (visitRecord,) = butler.registry.queryDimensionRecords("visit", where=f"visit={expRecord.id}")
         return visitRecord
-    except Exception:  # XXX make this a little less broad
+    except ValueError:
+        # ``(x,) = it`` raises ValueError when the visit hasn't been
+        # defined yet — i.e. ``define-visits`` hasn't run for this
+        # exposure. Any other exception is a real bug.
         return None
 
 
@@ -245,9 +257,7 @@ def makeWhere(task: TaskNode, record: DimensionRecord) -> str:
     where : `str`
         The where clause.
     """
-    isVisit = isExposureType(task)
-
-    if isVisit == "isr":
+    if isVisitType(task):
         return f"visit={record.id}"
     else:
         return f"exposure={record.id}"
@@ -540,7 +550,6 @@ class TaskResult:
         self.logs: dict[int | None, ButlerLogRecords] = {}
         self.detectorTimings: dict[int | None, float] = {}
         self.failures: dict[int | None, str] = {}
-        self.logs: dict[int | None, ButlerLogRecords] = {}
 
         where = makeWhere(task, record)
         dRefs: list[DatasetRef] = []
@@ -610,7 +619,7 @@ class TaskResult:
         return isFocalPlaneLevel(self.task)
 
     @property
-    def dayObs(self) -> bool:
+    def dayObs(self) -> int:
         return self.record.day_obs
 
     @property
@@ -623,7 +632,7 @@ class TaskResult:
             raise RuntimeError(f"Unknown record type for {self.taskName=}")
 
     @property
-    def seqNum(self) -> bool:
+    def seqNum(self) -> int:
         if self.isExposureType:
             return self.record.seq_num
         else:
@@ -790,15 +799,14 @@ class PerformanceBrowser:
         self.debug = debug
         self.camera = getCameraFromInstrumentName(instrument)
         self.detNums = [d.getId() for d in self.camera]
-        self.pipelines: dict[str, PipelineComponents] = {}
-        self.whos = list(self.pipelines.keys())
 
         _, pipelines = buildPipelines(
             instrument=instrument,
             locationConfig=locationConfig,
             butler=butler,
         )
-        self.pipelines = pipelines
+        self.pipelines: dict[str, PipelineComponents] = pipelines
+        self.whos = list(self.pipelines.keys())
         self.data: dict[DimensionRecord, dict[str, TaskResult]] = {}
 
         self.taskDict: dict[str, TaskNode] = {}
@@ -874,7 +882,7 @@ class PerformanceBrowser:
 
     def plot(
         self, expRecord: DimensionRecord, reload: bool = False, ignoreTasks: list[str] | None = None
-    ) -> None:
+    ) -> Figure:
         """
         Plot the results for all tasks.
 
@@ -886,6 +894,11 @@ class PerformanceBrowser:
             Whether to force reload data. Default is False.
         ignoreTasks : `list` of `str`, optional
             List of task names to ignore.
+
+        Returns
+        -------
+        fig : `matplotlib.figure.Figure`
+            The Gantt chart figure for the exposure.
         """
         self.loadData(expRecord, reload=reload)
         data = self.data[expRecord]
@@ -1044,21 +1057,10 @@ class PerformanceMonitor(BaseButlerChannel):
         super().__init__(
             locationConfig=locationConfig,
             butler=butler,
-            # TODO: DM-43764 this shouldn't be necessary on the
-            # base class after this ticket, I think.
-            detectors=None,  # unused
-            dataProduct=None,  # unused
-            # TODO: DM-43764 should also be able to fix needing
-            # channelName when tidying up the base class. Needed
-            # in some contexts but not all. Maybe default it to
-            # ''?
-            channelName="",  # unused
             podDetails=podDetails,
             doRaise=doRaise,
-            addUploader=True,
         )
-        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
-        assert self.podDetails is not None  # XXX why is this necessary? Fix mypy better!
+        self.s3Uploader: MultiUploader = MultiUploader()
         self.log.info(f"Performance monitor running, consuming from {self.podDetails.queueName}")
         self.perf = PerformanceBrowser(butler, instrument, locationConfig)
         self.shardsDirectory = locationConfig.raPerformanceShardsDirectory
@@ -1133,7 +1135,6 @@ class PerformanceMonitor(BaseButlerChannel):
         )
         fig.tight_layout()
         fig.savefig(plotFile)
-        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument="ra_performance",
             plotName=plotName,
@@ -1211,7 +1212,6 @@ class PerformanceMonitor(BaseButlerChannel):
             self.locationConfig, self.instrument, record.day_obs, record.seq_num, plotName, "jpg"
         )
         fig.savefig(plotFile)
-        assert self.s3Uploader is not None
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument="ra_performance",
             plotName=plotName,

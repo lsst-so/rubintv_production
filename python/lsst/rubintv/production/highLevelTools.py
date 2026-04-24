@@ -34,7 +34,6 @@ from typing import TYPE_CHECKING, Any, cast
 import numpy as np
 import pandas as pd
 from astropy.table import Column, MaskedColumn, Table
-from galsim.zernike import zernikeRotMatrix
 from tqdm import tqdm
 
 from lsst.daf.butler import Butler, DatasetNotFoundError, DimensionRecord
@@ -46,10 +45,12 @@ from lsst.summit.utils.utils import computeCcdExposureId, setupLogging
 from lsst.utils import getPackageDir
 from lsst.utils.iteration import sequence_to_string
 
+from .aosRecipes import computeAosResidualFwhm, computeRotatedZernikesForConsDB
 from .channels import CHANNELS, PREFIXES
 from .consdbUtils import CCD_VISIT_MAPPING, ConsDBPopulator, changeType
+from .formatters import FakeExposureRecord, expRecordToUploadFilename
+from .locationConfig import LocationConfig
 from .uploaders import Uploader
-from .utils import FakeExposureRecord, LocationConfig, expRecordToUploadFilename
 
 HAS_EFD_CLIENT = True
 try:
@@ -967,7 +968,6 @@ def backfillVisit1QuicklookForDayAos(
         data.
     """
     from lsst.ts.ofc import OFCData
-    from lsst.ts.wep.utils import convertZernikesToPsfWidth, makeDense
 
     ofcData = OFCData("lsst")
 
@@ -986,36 +986,10 @@ def backfillVisit1QuicklookForDayAos(
             noData.append(record)
             continue
 
-        rowSums = []
-
-        # NOTE: this recipe is copied and pasted from
-        # SingleCorePipelineRunner.postProcessAggregateZernikeTables - if
-        # that recipe is updated, this needs to be updated too
-        # TODO: refactor this for proper reuse and remove this note
-
-        nollIndices = zernikes.meta["nollIndices"]
-        maxNollIndex = np.max(zernikes.meta["nollIndices"])
-        for row in zernikes:
-            zkOcs = row["zk_deviation_OCS"]
-            detector = row["detector"]
-            zkDense = makeDense(zkOcs, nollIndices, maxNollIndex)
-            zkDense -= ofcData.y2_correction[detector][: len(zkDense)]
-            zkFwhm = convertZernikesToPsfWidth(zkDense)
-            rowSums.append(np.sqrt(np.sum(zkFwhm**2)))
-
-        average_result = np.nanmean(rowSums)
-        residual = 1.06 * np.log(1 + average_result)  # adjustement per John Franklin's paper
-        donutBlurFwhm = float("nan")  # needs to be defined for lower block but nans are removed on send
-        if "estimatorInfo" in zernikes.meta and zernikes.meta["estimatorInfo"] is not None:
-            # If danish is run then fwhm is in the metadata, if TIE then
-            # it's not. danish models the width of the Kolmogorov profile
-            # needed to convolve with the geometric donut model (the
-            # optics) to match the donut. If AI_DONUT then "estimatorInfo"
-            # might not be present.
-            donutBlurFwhm = zernikes.meta["estimatorInfo"].get("fwhm")
+        residual, donutBlurFwhm = computeAosResidualFwhm(zernikes, ofcData)
 
         consDbValues = {"aos_fwhm": residual, "visit_id": record.id}
-        if donutBlurFwhm:
+        if not np.isnan(donutBlurFwhm):
             consDbValues["donut_blur_fwhm"] = donutBlurFwhm
         populator.populateArbitrary(
             record.instrument,
@@ -1023,7 +997,7 @@ def backfillVisit1QuicklookForDayAos(
             consDbValues,
             record.day_obs,
             record.seq_num,
-            True,  # insert into existing an row requires allowUpdate
+            True,  # inserting into an existing row requires allowUpdate
         )
         rowsInserted.append(record)
 
@@ -1033,7 +1007,7 @@ def backfillVisit1QuicklookForDayAos(
 def backfillCcdVisit1QuicklookForDay(
     butler: Butler, populator: ConsDBPopulator, dayObs: int
 ) -> tuple[dict[DimensionRecord, list[int]], list[DimensionRecord]]:
-    """Backfill the visit1_quicklook table for a given dayObs.
+    """Backfill the ccdvisit1_quicklook table for a given dayObs.
 
     Parameters
     ----------
@@ -1112,7 +1086,7 @@ def backfillCcdVisit1QuicklookForDay(
 def backfillCcdVisit1QuicklookForDayAos(
     butler: Butler, populator: ConsDBPopulator, dayObs: int, efdClient: EfdClient
 ) -> tuple[dict[DimensionRecord, list[int]], dict[DimensionRecord, list[int]]]:
-    """Backfill the visit1_quicklook table for a given dayObs.
+    """Backfill the ccdvisit1_quicklook table with AOS values for a dayObs.
 
     Parameters
     ----------
@@ -1122,6 +1096,8 @@ def backfillCcdVisit1QuicklookForDayAos(
         The ConsDBPopulator to use to populate the table.
     dayObs : `int`
         The dayObs to backfill.
+    efdClient : `lsst_efd_client.EfdClient`
+        The EFD client used to fetch the rotator angle for each visit.
 
     Returns
     -------
@@ -1132,9 +1108,7 @@ def backfillCcdVisit1QuicklookForDayAos(
         Dictionary mapping DimensionRecord to list of detectors which could
         not be populated due to missing data.
     """
-    from lsst.ts.wep.utils.zernikeUtils import makeDense
-
-    where = f"exposure.day_obs={dayObs} AND instrument='LSSTCam'"
+    where = f"visit.day_obs={dayObs} AND instrument='LSSTCam'"
     records = butler.query_dimension_records("visit", where=where, order_by="-visit.id")
 
     detectors = (191, 192, 195, 196, 199, 200, 203, 204)
@@ -1143,7 +1117,9 @@ def backfillCcdVisit1QuicklookForDayAos(
     noData: dict[DimensionRecord, list[int]] = {}
 
     slowInserts = 0
-    for record in tqdm(reversed(records), total=len(records), mininterval=30.0, ncols=120):
+    for nInsert, record in enumerate(
+        tqdm(reversed(records), total=len(records), mininterval=30.0, ncols=120)
+    ):
         for detector in detectors:
             t0 = time.time()
 
@@ -1155,37 +1131,11 @@ def backfillCcdVisit1QuicklookForDayAos(
                 noData[record].append(detector)
                 continue
 
-            # NOTE: this recipe is copied and pasted from
-            # SingleCorePipelineRunner.postProcessCalcZernikes -
-            # if that recipe is updated, this needs to be updated too
-
-            # TODO: refactor this for proper reuse and remove this note
-            MAX_NOLL_INDEX = 28
-
             data = getEfdData(efdClient, "lsst.sal.MTRotator.rotation", expRecord=record)
             physicalRotation = np.nanmean(data["actualPosition"])
 
             try:
-                zkTable = zkTable[zkTable["label"] == "average"]
-                zkColsHere = zkTable.meta["opd_columns"]
-                nollIndicesHere = np.asarray(zkTable.meta["noll_indices"])
-                # Grab Zernike values, convert to dense array, save
-                zkSparse = zkTable[zkColsHere].to_pandas().values[0]
-                zkDense = makeDense(zkSparse, nollIndicesHere, MAX_NOLL_INDEX)
-                rotationMatrix = zernikeRotMatrix(MAX_NOLL_INDEX, -np.deg2rad(physicalRotation))
-                # we only track z4 upwards and ConsDB only has slots for z4 to
-                # z28
-                zernikeValues: np.ndarray = zkDense / 1e3 @ rotationMatrix[4:, 4:]
-
-                consDbValues: dict[str, float] = {}
-                for i in range(len(zernikeValues)):  # these start at z4 and are dense so contain zeros
-                    value = float(zernikeValues[i])  # make a real float for ConsDB
-                    # skip the ones which were zero due to sparseness so
-                    # they're null in the DB
-                    if value == 0:
-                        continue
-                    consDbValues[f"z{i + 4}"] = float(zernikeValues[i])
-
+                consDbValues = computeRotatedZernikesForConsDB(zkTable, physicalRotation)
                 populator.populateCcdVisitRowZernikes(record, detector, consDbValues, allowUpdate=True)
             except IndexError:
                 # ideally we wouldn't catch IndexError, but sometimes the
@@ -1205,7 +1155,7 @@ def backfillCcdVisit1QuicklookForDayAos(
                 slowInserts += 1
                 time.sleep(30)  # give the DB some rest
                 if slowInserts >= 3:
-                    print(f"Aborted after {i} inserts due to poor ConsDB performance")
+                    print(f"Aborted after {nInsert} inserts due to poor ConsDB performance")
                     return rowsInserted, noData
 
             else:

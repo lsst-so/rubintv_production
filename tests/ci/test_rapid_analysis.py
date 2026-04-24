@@ -38,11 +38,11 @@ CliLog.initLog = do_nothing  # type: ignore
 # Import test utilities
 from ciutils import Check, TestScript, conditional_redirect  # type: ignore # noqa: E402
 
+# Only import from lsst packages after logging is configured
+from lsst.rubintv.production.locationConfig import LocationConfig  # noqa: E402
+from lsst.rubintv.production.predicates import getDoRaise, runningCI  # noqa: E402
 from lsst.rubintv.production.redisUtils import RedisHelper  # noqa: E402
 from lsst.rubintv.production.resources import getBasePath, listDir, rmtree  # noqa: E402
-
-# Only import from lsst packages after logging is configured
-from lsst.rubintv.production.utils import LocationConfig, getDoRaise, runningCI  # noqa: E402
 
 
 # Add mock uploader class for testing

@@ -2,11 +2,11 @@
 
 ## System Overview
 
-RubinTV Production is a distributed real-time data processing system. Raw
+Rapid analysis is a distributed real-time data processing system. Raw
 telescope exposures arrive in a Butler repository; the system detects them,
 fans work out to parallel workers via Redis queues, runs LSST Science Pipeline
 tasks, and publishes results (binned images, metadata JSON, plots) to S3 for
-the RubinTV web frontend.
+the (separate) RubinTV web frontend.
 
 ```
 Telescope
@@ -61,21 +61,31 @@ type, optional depth, and optional detector number.
 **Per-detector workers (step1a):**
 - `SFM_WORKER` - Source Finding & Measurement (one per detector)
 - `AOS_WORKER` - Adaptive Optics (corner wavefront sensors only)
-- `BACKLOG_WORKER` - processes backlog exposures
 
 **Per-instrument workers (step1b / aggregation):**
 - `STEP1B_WORKER` - visit-level SFM gather
 - `STEP1B_AOS_WORKER` - visit-level AOS gather
-- `NIGHTLYROLLUP_WORKER` - nightly aggregation
+- `NIGHTLYROLLUP_WORKER` - nightly aggregation (pod exists; head-node
+  dispatch currently disabled)
 - `MOSAIC_WORKER` - focal plane mosaics
 - `GUIDER_WORKER` - guider camera analysis
+- `BACKLOG_WORKER` - runs any step1 workload for backlog exposures (no
+  detector affinity; depth only)
 
 **One-off / plotting:**
 - `ONE_OFF_EXPRECORD_WORKER` - per-exposure metadata
 - `ONE_OFF_POSTISR_WORKER` - post-ISR mosaics
 - `ONE_OFF_VISITIMAGE_WORKER` - visit image mosaics
 - `PSF_PLOTTER` - PSF shape plots
+- `FWHM_PLOTTER` - per-visit FWHM focal-plane plot
+- `ZERNIKE_PREDICTED_FWHM_PLOTTER` - predicted FWHM from Zernikes
+- `RADIAL_PLOTTER` - radial diagnostic plotter
 - `PERFORMANCE_MONITOR` - timing metrics
+
+**OCS-driven singletons (consume from OCS-pushed Redis lists rather than
+the standard payload queues):**
+- `FOCUS_SWEEP_ANALYZER` - focus-sweep analysis on OCS command
+- `DONUT_LAUNCHER` - launches donut processing on OCS command
 
 ### Queue Naming
 
@@ -148,16 +158,24 @@ The head node's `getPipelineConfig()` routes exposures:
 2. **Get new exposure** - `getNewExposureAndDefineVisit()` pops from incoming
    queue, calls `defineVisit()` to register in Butler
 3. **Dispatch one-off** - send expRecord to `ONE_OFF_EXPRECORD_WORKER`
-4. **Write metadata shard** - ISR config info for the frontend
+4. **Write exposure record metadata shard** - for the frontend
 5. **Detector fanout** - `doDetectorFanout()` creates a Payload per enabled
-   detector and enqueues to the matching `SFM_WORKER` queue
-6. **AOS fanout** - `doAosFanout()` for LSSTCam corner chips (8 detectors)
-7. **Guider dispatch** - for on-sky LSSTCam observations
-8. **Check gather readiness** - `dispatchGatherSteps()` for SFM, AOS, ISR:
+   detector and enqueues to the matching `SFM_WORKER` queue; it also calls
+   `doAosFanout()` internally for LSSTCam corner chips (8 detectors)
+6. **Guider dispatch** - for on-sky LSSTCam observations, send the
+   expRecord to `GUIDER_WORKER`
+7. **Check gather readiness** - `dispatchGatherSteps()` for SFM, AOS, ISR:
    compares finished detector count vs expected; dispatches step1b when ready
-9. **PostISR mosaic** - dispatch when ISR complete across detectors
-10. **Nightly rollup** - currently disabled
-11. **Repattern** - apply focal plane detector pattern if configured
+8. **PostISR mosaic** - `dispatchPostIsrMosaic()` when ISR complete across
+   detectors (also fans out downstream one-off/plotter work from inside
+   `dispatchGatherSteps("ISR")`)
+9. **Repattern** - LSSTCam only, apply the focal plane detector pattern if
+   configured (runs after fanout so commands apply to the next image)
+10. **Regulate loop speed** - `regulateLoopSpeed()` caps the loop at 5 Hz
+
+*Nightly rollup dispatch has been removed from the head node; the
+`NIGHTLYROLLUP_WORKER` pod flavor and scripts still exist but are not
+currently triggered.*
 
 ## Worker Event Loop
 
@@ -218,7 +236,7 @@ while remote backup happens asynchronously.
 
 ## Configuration
 
-`LocationConfig` (in `utils.py`) is the central configuration object. It reads
+`LocationConfig` (in `locationConfig.py`) is the central configuration object. It reads
 a YAML config file selected by the `RAPID_ANALYSIS_LOCATION` environment
 variable and provides ~100 cached properties for all paths:
 
@@ -379,9 +397,10 @@ calls `dispatchGatherSteps()` for each one every loop iteration.
 
 After step1b completes on a worker, the worker itself triggers further
 downstream processing via Redis:
-- SFM step1b completion pushes the visit ID to `{instrument}-PSFPLOTTER`,
-  `{instrument}-FWHMPLOTTER`, and `{instrument}-ZERNIKE_PREDICTION_PLOTTER`
-  queues
+- SFM step1b completion picks one free pod of each plotter flavor
+  (`PSF_PLOTTER`, `FWHM_PLOTTER`, `ZERNIKE_PREDICTED_FWHM_PLOTTER`) via
+  `RedisHelper.getSingleWorker()` and enqueues a visit-level `Payload`
+  on that pod's queue
 - AOS step1b completion reports the Zernike count to MTAOS
 
 ### PostISR Mosaic Dispatch

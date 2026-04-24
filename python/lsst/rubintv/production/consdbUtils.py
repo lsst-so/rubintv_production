@@ -46,7 +46,7 @@ from lsst.summit.utils.utils import computeCcdExposureId, getDetectorIds
 from .redisUtils import RedisHelper
 
 if TYPE_CHECKING:
-    from .utils import LocationConfig
+    from .locationConfig import LocationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -119,8 +119,10 @@ VISIT_MIN_MED_MAX_TOTAL_MAPPING = {
 }
 
 
-def _removeNans(values: Mapping[str, float | int | str]) -> dict[str, float | int | str]:
-    out: dict[str, float | int | str] = {}
+def _removeNans(
+    values: Mapping[str, float | int | str | np.floating],
+) -> dict[str, float | int | str | np.floating]:
+    out: dict[str, float | int | str | np.floating] = {}
     for k, v in values.items():
         if isinstance(v, (float, np.floating)) and np.isnan(v):
             continue
@@ -360,15 +362,15 @@ class ConsDBPopulator:
         if createRows:
             self._createExposureRow(expRecord, allowUpdate=allowUpdate)
             self._createCcdExposureRows(expRecord, allowUpdate=allowUpdate)
-            print(f"Populated tables for exposure and ccdexposure for {expRecord.instrument}+{expRecord.id})")
+            print(f"Populated tables for exposure and ccdexposure for {expRecord.instrument}+{expRecord.id}")
 
         detectorNums = getDetectorIds(expRecord.instrument)
-        nFillled = 0
+        nFilled = 0
         for detectorNum in detectorNums:
-            nFillled += self.populateCcdVisitRowWithButler(
+            nFilled += self.populateCcdVisitRowWithButler(
                 butler, expRecord, detectorNum, allowUpdate=allowUpdate
             )
-        return nFillled
+        return nFilled
 
     def populateVisitRowWithButler(
         self, butler: Butler, expRecord: DimensionRecord, allowUpdate: bool = False
@@ -393,7 +395,7 @@ class ConsDBPopulator:
         visits = visitSummary["visit"]
         visit = visits[0]
         assert all(v == visit for v in visits)  # this has to be true, but let's be careful
-        visit = int(visit)  # must be python into not np.int64
+        visit = int(visit)  # must be python int not np.int64
 
         values: dict[str, int | float] = {}
         for summaryKey, consDbKeyNoSuffix in itertools.chain(
@@ -455,12 +457,14 @@ class ConsDBPopulator:
         table : `str`
             The table name within the instrument schema (e.g.,
             "visit1_quicklook").
-        values : `dict[str, int | float | str]`
+        values : `dict` [`str`, `int` or `float`]
             Mapping of consDB column names to values to write. Values are
             coerced to the database column types using the table schema; NaN
             values are dropped.
-        visitOrExposureId : `int`
-            The visit or exposure identifier, i.e. the row in the table.
+        dayObs : `int`
+            The dayObs of the row to populate.
+        seqNum : `int`
+            The seqNum of the row to populate.
         allowUpdate : `bool`, optional
             If True, allow updating existing rows in the table. An error is
             raised if False and a value exists.
@@ -473,7 +477,7 @@ class ConsDBPopulator:
 
         if not self._shouldInsert():  # ugly but need to check this before accessing the schema
             location = self.locationConfig.location
-            logger.info(f"Skipping consDB insert at {location} for {instrument}.visit1_quicklook")
+            logger.info(f"Skipping consDB insert at {location} for {instrument}.{table}")
             return
 
         schema = self.client.schema(instrument.lower(), table)

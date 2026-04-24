@@ -60,31 +60,28 @@ from lsst.utils.plotting.figures import make_figure
 from .baseChannels import BaseButlerChannel
 from .consdbUtils import ConsDBPopulator
 from .exposureLogUtils import LOG_ITEM_MAPPINGS, getLogsForDayObs
+from .formatters import (
+    getFilterColorName,
+    getRubinTvInstrumentName,
+    makePlotFile,
+    makeWitnessDetectorTitle,
+)
 from .mountTorques import MOUNT_IMAGE_BAD_LEVEL as MOUNT_IMAGE_BAD_LEVEL_AUXTEL
 from .mountTorques import MOUNT_IMAGE_WARNING_LEVEL as MOUNT_IMAGE_WARNING_LEVEL_AUXTEL
 from .mountTorques import calculateMountErrors as _calculateMountErrors_oldVersion
+from .predicates import hasRaDec, isCalibration, raiseIf, runningCI
 from .redisUtils import RedisHelper
-from .utils import (
-    getAirmass,
-    getFilterColorName,
-    getRubinTvInstrumentName,
-    getShardPath,
-    hasRaDec,
-    isCalibration,
-    makePlotFile,
-    makeWitnessDetectorTitle,
-    raiseIf,
-    runningCI,
-    writeMetadataShard,
-)
+from .shardIo import getShardPath, writeMetadataShard
+from .uploaders import MultiUploader
+from .utils import getAirmass
 
 if TYPE_CHECKING:
     from lsst.afw.image import Exposure
     from lsst.daf.butler import Butler, DataCoordinate, DimensionRecord
 
+    from .locationConfig import LocationConfig
     from .payloads import Payload
     from .podDefinition import PodDetails
-    from .utils import LocationConfig
 
 __all__ = [
     "OneOffProcessor",
@@ -99,7 +96,7 @@ class OneOffProcessor(BaseButlerChannel):
 
     Parameters
     ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
     butler : `lsst.daf.butler.Butler`
         The butler to use.
@@ -135,22 +132,13 @@ class OneOffProcessor(BaseButlerChannel):
         super().__init__(
             locationConfig=locationConfig,
             butler=butler,
-            # TODO: DM-43764 this shouldn't be necessary on the
-            # base class after this ticket, I think.
-            detectors=None,
-            dataProduct=processingStage,
-            # TODO: DM-43764 should also be able to fix needing
-            # channelName when tidying up the base class. Needed
-            # in some contexts but not all. Maybe default it to
-            # ''?
-            channelName="",
             podDetails=podDetails,
             doRaise=doRaise,
-            addUploader=True,
         )
+        self.s3Uploader: MultiUploader = MultiUploader()
+        self.dataProduct = processingStage
         self.instrument = instrument
         self.butler = butler
-        self.podDetails = podDetails
         self.detector = detectorNumber
         self.shardsDirectory = shardsDirectory
         self.processingStage = processingStage
@@ -253,7 +241,6 @@ class OneOffProcessor(BaseButlerChannel):
             shape = result.psfEquatorialShape
             fwhm = np.nan
             if shape is not None:
-                SIGMA2FWHM = np.sqrt(8 * np.log(2))
                 ellipse = ellipses.SeparableDistortionDeterminantRadius(shape)
                 fwhm = SIGMA2FWHM * ellipse.getDeterminantRadius()
 
@@ -343,7 +330,7 @@ class OneOffProcessor(BaseButlerChannel):
 
         visitImageWcs = visitImage.wcs
         if visitImageWcs is None:
-            self.log.warning(f"Astrometic failed for {dataId} - no pointing offsets calculated")
+            self.log.warning(f"Astrometric failed for {dataId} - no pointing offsets calculated")
             md = {expRecord.seq_num: offsets}
             writeMetadataShard(self.shardsDirectory, expRecord.day_obs, md)
             return
@@ -410,7 +397,6 @@ class OneOffProcessor(BaseButlerChannel):
         )
         fig.tight_layout()
         fig.savefig(plotFile)
-        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument=getRubinTvInstrumentName(expRecord.instrument),
             plotName=plotName,
@@ -468,7 +454,7 @@ class OneOffProcessor(BaseButlerChannel):
         # is triggered once all CCDs have finished step1a so should be instant
         visitImage = self._waitForDataProduct(visitDataId, gettingButler=self.butler, timeout=3)
         if visitImage is None:
-            self.log.warning(f"Failed to get post_isr_image for {dataId}")
+            self.log.warning(f"Failed to get preliminary_visit_image for {dataId}")
             return
 
         self.log.info("Publishing visit summary stats...")
@@ -537,7 +523,6 @@ class OneOffProcessor(BaseButlerChannel):
         )
         fig = make_figure(figsize=(12, 8))
         plotMountErrors(data, errors, fig, saveFilename=plotFile)
-        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument=getRubinTvInstrumentName(expRecord.instrument),
             plotName=plotName,
@@ -677,7 +662,7 @@ class OneOffProcessor(BaseButlerChannel):
                 self.log.warning(f"Failed to create exposure timing plot for {expRecord.id}")
                 return
         except KeyError as e:  # this often fails due to missing mount data, so this is just a warn
-            self.log.warning(f"KeyError during plotting mount torques for LSSTCam: {e}")
+            self.log.warning(f"KeyError while creating exposure timing plot for {expRecord.id}: {e}")
             return
         except Exception as e:  # but all others are a raiseIf
             raiseIf(self.doRaise, e, self.log)
@@ -686,7 +671,6 @@ class OneOffProcessor(BaseButlerChannel):
         plotName = "event_timeline"
         plotFile = makePlotFile(self.locationConfig, self.instrument, dayObs, seqNum, plotName, "png")
         fig.savefig(plotFile)
-        assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
         self.s3Uploader.uploadPerSeqNumPlot(
             instrument=getRubinTvInstrumentName(expRecord.instrument),
             plotName=plotName,
@@ -716,7 +700,6 @@ class OneOffProcessor(BaseButlerChannel):
                 return
 
             self.log.info("Uploading mount torque plot to storage bucket")
-            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
             self.s3Uploader.uploadPerSeqNumPlot(
                 instrument="auxtel",
                 plotName=plotName,
@@ -776,8 +759,8 @@ class OneOffProcessor(BaseButlerChannel):
 
         # the contribution to the image error from the mount. This is the part
         # that matters and gets a quality flag. Note that the rotator error
-        # contibution is zero at the field centre and increases radially, and
-        # is usually very small, so we don't add that here as its contrinution
+        # contribution is zero at the field centre and increases radially, and
+        # is usually very small, so we don't add that here as its contribution
         # is not really well defined and including it would be misleading.
         image_az_rms = errors["image_az_rms"]
         image_el_rms = errors["image_el_rms"]
@@ -842,6 +825,7 @@ class OneOffProcessorAuxTel(OneOffProcessor):
     def runImexam(self, exp: Exposure, expRecord: DimensionRecord) -> None:
         if expRecord.observation_type in ["bias", "dark", "flat"]:
             self.log.info(f"Skipping running imExam on calib image: {expRecord.observation_type}")
+            return
         self.log.info(f"Running imexam on {expRecord.dataId}")
 
         try:
@@ -852,7 +836,6 @@ class OneOffProcessorAuxTel(OneOffProcessor):
             imExam = ImageExaminer(exp, savePlots=plotFile, doTweakCentroid=True)
             imExam.plot()
             self.log.info("Uploading imExam to storage bucket")
-            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
             self.s3Uploader.uploadPerSeqNumPlot(
                 instrument="auxtel",
                 plotName=plotName,
@@ -884,7 +867,6 @@ class OneOffProcessorAuxTel(OneOffProcessor):
             summary = SpectrumExaminer(exp, savePlotAs=plotFile)
             summary.run()
             self.log.info("Uploading specExam to storage bucket")
-            assert self.s3Uploader is not None  # XXX why is this necessary? Fix mypy better!
             self.s3Uploader.uploadPerSeqNumPlot(
                 instrument="auxtel",
                 plotName=plotName,

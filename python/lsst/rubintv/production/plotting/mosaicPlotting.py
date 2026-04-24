@@ -29,9 +29,10 @@ import lsst.afw.display as afwDisplay
 from lsst.summit.utils.utils import getCameraFromInstrumentName
 from lsst.utils.plotting.figures import make_figure
 
+from ..formatters import makeFocalPlaneTitle, makePlotFile
+from ..locationConfig import LocationConfig
 from ..redisUtils import RedisHelper
 from ..uploaders import MultiUploader
-from ..utils import LocationConfig, makeFocalPlaneTitle, makePlotFile
 from ..watchers import RedisWatcher
 from .mosaicing import plotFocalPlaneMosaic
 
@@ -60,7 +61,7 @@ class Plotter:
     ----------
     butler : `lsst.daf.butler.Butler`
         The butler.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location configuration.
     instrument : `str`
         The instrument.
@@ -212,7 +213,10 @@ class Plotter:
             what we have.
         """
         dataId = payload.dataId
-        dataProduct = payload.run  # TODO: this really needs improving
+        dataProduct = payload.taskName
+        if dataProduct is None:
+            self.log.warning(f"Mosaic dispatch missing taskName on payload for {dataId}, dropping")
+            return
         (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
         self.log.info(f"Making plots for {expRecord.dataId}")
         dayObs = expRecord.day_obs

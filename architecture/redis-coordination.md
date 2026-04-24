@@ -1,8 +1,8 @@
 # Redis Coordination
 
 Redis is the central nervous system for distributed work coordination in
-RubinTV Production. All inter-pod communication flows through Redis - there
-is no direct pod-to-pod communication.
+the rapid analysis backend. All inter-pod communication flows through Redis
+- there is no direct pod-to-pod communication.
 
 ## Connection
 
@@ -320,7 +320,7 @@ on the same per-exposure tracking hash.
       - ONE_OFF_POSTISR_WORKER (always for SFM/ISR/AOS)
       - ONE_OFF_VISITIMAGE_WORKER (SFM, non-LATISS)
       - MOSAIC_WORKER for visit_image mosaic (SFM, non-LATISS)
-      - Radial plotter queue (SFM, non-LATISS)
+      - RADIAL_PLOTTER (SFM, non-LATISS)
 ```
 
 **Key subtlety**: the ISR expected detectors in the tracking hash are
@@ -331,15 +331,18 @@ detectors, the AOS expected field covers only CWFS detectors.
 
 ### Post-step1b Worker-Initiated Dispatch
 
-After the step1b worker finishes, it pushes directly to downstream queues
-(no head node involvement):
+After the step1b worker finishes, it pushes directly to downstream pod
+queues (no head node involvement). Each plotter dispatch picks one
+free pod of the chosen flavor via `RedisHelper.getSingleWorker()` and
+enqueues a minimal `Payload` carrying the visit-level dataId on that
+pod's queue:
 
 ```
 SFM step1b completion:
   HSET {instrument}-TRACKING-{expId} SFM:step1bFinished 1
-  LPUSH {instrument}-PSFPLOTTER {visitId}
-  LPUSH {instrument}-FWHMPLOTTER <visitRecord JSON>
-  LPUSH {instrument}-ZERNIKE_PREDICTION_PLOTTER {visitId}
+  enqueuePayload(visit dataId) -> PSF_PLOTTER pod
+  enqueuePayload(visit dataId) -> FWHM_PLOTTER pod
+  enqueuePayload(visit dataId) -> ZERNIKE_PREDICTED_FWHM_PLOTTER pod
   INCR {instrument}-step1b-SFM-VISIT_FINISIHED_COUNTER
 
 AOS step1b completion:

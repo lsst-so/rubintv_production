@@ -20,9 +20,11 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import lsst.daf.butler as dafButler
+from lsst.rubintv.production.formatters import getPodWorkerNumber
+from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, getDoRaise, getPodWorkerNumber
+from lsst.rubintv.production.predicates import getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()
