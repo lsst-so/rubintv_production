@@ -35,8 +35,9 @@ from PIL.ExifTags import TAGS
 from lsst.summit.utils.dateTime import dayObsIntToString, getCurrentDayObsDatetime, getCurrentDayObsInt
 from lsst.utils.iteration import ensure_iterable
 
+from .formatters import FakeExposureRecord, expRecordToUploadFilename
+from .predicates import hasDayRolledOver, raiseIf
 from .uploaders import MultiUploader, Uploader
-from .utils import FakeExposureRecord, expRecordToUploadFilename, hasDayRolledOver, raiseIf
 
 try:
     from google.cloud import storage
@@ -48,7 +49,7 @@ except ImportError:
 if TYPE_CHECKING:
     from logging import Logger
 
-    from lsst.rubintv.production.utils import LocationConfig
+    from lsst.rubintv.production.locationConfig import LocationConfig
 
 __all__ = ["DayAnimator", "AllSkyMovieChannel", "dayObsFromDirName", "cleanupAllSkyIntermediates"]
 
@@ -260,6 +261,8 @@ def _imagesToMp4(indir: str, outfile: str, framerate: float, verbose: bool = Fal
         "-f",
         "image2",
         "-y",
+        "-threads",
+        "1",
         "-pattern_type glob",
         "-framerate",
         f"{framerate}",
@@ -267,14 +270,16 @@ def _imagesToMp4(indir: str, outfile: str, framerate: float, verbose: bool = Fal
         pathPattern,
         "-vcodec",
         "libx264",
+        "-preset",
+        "veryfast",
         "-b:v",
         "20000k",
         "-profile:v",
         "main",
         "-pix_fmt",
         "yuv420p",
-        "-threads",
-        "10",
+        "-threads",  # "-threads 1" repeated deliberately: one for the decoder/demuxer, one for the encoder
+        "1",
         "-r",
         f"{framerate}",
         os.path.join(outfile),
@@ -674,7 +679,7 @@ class AllSkyMovieChannel:
 
     Parameters
     ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The LocationConfig containing the relevant path items:
             ``allSkyRootDataPath`` : `str`
             Where to find the per-day data direcories.

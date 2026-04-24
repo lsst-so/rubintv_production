@@ -1,0 +1,56 @@
+================================================================================
+Exit Code: timeout
+================================================================================
+
+STDOUT:
+--------------------------------------------------------------------------------
+Running LSSTCam PERFORMANCE_MONITOR at usdf_testing,consuming from PERFORMANCE_MONITOR-LSSTCam...
+Termination signal received for /sdf/home/m/mfl/lsst/rubintv_production/scripts/LSSTCam/runPerformanceMonitor.py:usdf_testing, exiting...
+
+--------------------------------------------------------------------------------
+
+LOGS:
+--------------------------------------------------------------------------------
+WARNING - Sentry DSN not found or client inactive — events will not be reported
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Performance monitor running, consuming from PERFORMANCE_MONITOR-LSSTCam
+INFO - Analyzing timing info for 2025111500228...
+INFO - Loaded data for 2025111500228 in 2.84s
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000228.jpg to ra_performance/20251115/timing_diagram/000228/ra_performance_timing_diagram_20251115_000228.jpg
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000228.jpg to ra_performance/20251115/timing_diagram/000228/ra_performance_timing_diagram_20251115_000228.jpg
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+WARNING - no data was returned by the query for the specified time range
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_aos_timing_dayObs_20251115_seqNum_000228.jpg to ra_performance/20251115/aos_timing/000228/ra_performance_aos_timing_20251115_000228.jpg
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_aos_timing_dayObs_20251115_seqNum_000228.jpg to ra_performance/20251115/aos_timing/000228/ra_performance_aos_timing_20251115_000228.jpg
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Analyzing timing info for 2025111500226...
+INFO - Loaded data for 2025111500226 in 2.68s
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000226.jpg to ra_performance/20251115/timing_diagram/000226/ra_performance_timing_diagram_20251115_000226.jpg
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000226.jpg to ra_performance/20251115/timing_diagram/000226/ra_performance_timing_diagram_20251115_000226.jpg
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+WARNING - no data was returned by the query for the specified time range
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_aos_timing_dayObs_20251115_seqNum_000226.jpg to ra_performance/20251115/aos_timing/000226/ra_performance_aos_timing_20251115_000226.jpg
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_aos_timing_dayObs_20251115_seqNum_000226.jpg to ra_performance/20251115/aos_timing/000226/ra_performance_aos_timing_20251115_000226.jpg
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Analyzing timing info for 2025111500436...
+INFO - Loaded data for 2025111500436 in 0.73s
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000436.jpg to ra_performance/20251115/timing_diagram/000436/ra_performance_timing_diagram_20251115_000436.jpg
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000436.jpg to ra_performance/20251115/timing_diagram/000436/ra_performance_timing_diagram_20251115_000436.jpg
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+WARNING - Skipping AOS plot for 2025111500436: missing isr and/or zernike-calculating task
+INFO - Analyzing timing info for 2025111500227...
+INFO - Loaded data for 2025111500227 in 2.33s
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000227.jpg to ra_performance/20251115/timing_diagram/000227/ra_performance_timing_diagram_20251115_000227.jpg
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000227.jpg to ra_performance/20251115/timing_diagram/000227/ra_performance_timing_diagram_20251115_000227.jpg
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+WARNING - Skipping AOS plot for 2025111500227: missing isr and/or zernike-calculating task
+
+--------------------------------------------------------------------------------

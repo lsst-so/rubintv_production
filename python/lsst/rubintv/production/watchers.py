@@ -29,9 +29,10 @@ from typing import TYPE_CHECKING
 
 from lsst.daf.butler import Butler
 
+from .locationConfig import LocationConfig
 from .payloads import isRestartPayload
+from .predicates import raiseIf
 from .redisUtils import RedisHelper
-from .utils import LocationConfig, raiseIf
 
 if TYPE_CHECKING:
     from lsst.daf.butler import DimensionRecord
@@ -49,8 +50,13 @@ class RedisWatcher:
 
     Parameters
     ----------
-    detectors : `int` or `list` [`int`]
-        The detector, or detectors, to process data for.
+    butler : `lsst.daf.butler.Butler`
+        The butler used by the head node when sending work, used here to
+        rehydrate dataIds attached to incoming payloads.
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
+        The location config for the running pod.
+    podDetails : `lsst.rubintv.production.podDefinition.PodDetails`
+        The pod identity that selects which Redis queue to consume from.
     """
 
     def __init__(self, butler: Butler, locationConfig: LocationConfig, podDetails: PodDetails) -> None:
@@ -100,12 +106,12 @@ class ButlerWatcher:
 
     Parameters
     ----------
-    butler : `lsst.daf.butler.Butler`
-        The butler.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location config.
-    dataProducts : `str` or `list` [`str`]
-        The data products to watch for.
+    instrument : `str`
+        The instrument name to watch for new exposures of.
+    butler : `lsst.daf.butler.Butler`
+        The butler used to query for the most recent exposure record.
     doRaise : `bool`, optional
         Raise exceptions or log them as warnings?
     """
@@ -128,15 +134,12 @@ class ButlerWatcher:
         self.redisHelper = RedisHelper(butler, locationConfig, isHeadNode=True)
 
     def _getLatestExpRecord(self) -> DimensionRecord:
-        """Get the most recent expRecords from the butler.
-
-        Get the most recent expRecord for all the dataset types. These are
-        written to redis for watchers to pick up.
+        """Get the most recent expRecord from the butler.
 
         Returns
         -------
-        expRecords : `dict` [`str`, `lsst.daf.butler.DimensionRecord` or `None`]  # noqa: W505
-            A dict of the most recent exposure records, keyed by dataProduct.
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The most recent exposure record, sorted by ``timespan.end``.
         """
         # runtime is ~200ms on the summit. If the dayObs were added and the
         # results and then sorted in python this would bring this to ~30ms, but
@@ -155,7 +158,6 @@ class ButlerWatcher:
 
     def run(self) -> None:
         lastSeen = None
-        warnedAbout: set[int] = set()
         while True:
             try:
                 start = perf_counter()
@@ -164,13 +166,13 @@ class ButlerWatcher:
 
                 if lastSeen is None:  # starting up for the first time
                     seenBefore = self.redisHelper.checkButlerWatcherList(self.instrument, latestRecord)
-                    if seenBefore and int(latestRecord.id) not in warnedAbout:
+                    if seenBefore:
                         self.log.info(
                             f"Skipping dispatching {latestRecord.instrument}-{latestRecord.id} as"
                             " it was dispatched by a ButlerWatcher in a previous life. You should only"
                             " ever see this on pod startup."
                         )
-                        warnedAbout.add(int(latestRecord.id))
+                        lastSeen = latestRecord
                         continue
 
                 if latestRecord == lastSeen:

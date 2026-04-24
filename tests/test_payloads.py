@@ -19,6 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import json
 import unittest
 
 from utils import getSampleExpRecord  # type: ignore[import]
@@ -115,6 +116,102 @@ class TestPayload(unittest.TestCase):
         payload = Payload.from_json(self.validJson, self.butler)  # type: ignore[arg-type]
         self.assertEqual(payload.dataId, self.expRecord.dataId)
         self.assertEqual(payload.pipelineGraphBytes, self.pipelineBytes)
+
+    def test_taskName_defaults_to_none(self) -> None:
+        # The graph-bearing flavour of Payload should not need to set
+        # taskName; it must default to None so existing call sites that
+        # only pass a real pipeline graph keep working.
+        payload = Payload(
+            dataId=self.expRecord.dataId,
+            run="test run",
+            pipelineGraphBytes=self.pipelineBytes,
+            who="SFM",
+        )
+        self.assertIsNone(payload.taskName)
+
+    def test_taskName_command_dispatch(self) -> None:
+        # Command-style dispatch (used by the focal-plane mosaic plotters)
+        # carries no graph and no output run, just the task name to invoke.
+        payload = Payload(
+            dataId=self.expRecord.dataId,
+            run="",
+            pipelineGraphBytes=b"",
+            who="SFM",
+            taskName="preliminary_visit_image",
+        )
+        self.assertEqual(payload.taskName, "preliminary_visit_image")
+        self.assertEqual(payload.run, "")
+        self.assertEqual(payload.pipelineGraphBytes, b"")
+
+    def test_taskName_in_equality(self) -> None:
+        payloadNoTask = Payload(
+            dataId=self.expRecord.dataId,
+            run="test run",
+            who="SFM",
+            pipelineGraphBytes=self.pipelineBytes,
+        )
+        payloadWithTask = Payload(
+            dataId=self.expRecord.dataId,
+            run="test run",
+            who="SFM",
+            pipelineGraphBytes=self.pipelineBytes,
+            taskName="preliminary_visit_image",
+        )
+        payloadDifferentTask = Payload(
+            dataId=self.expRecord.dataId,
+            run="test run",
+            who="SFM",
+            pipelineGraphBytes=self.pipelineBytes,
+            taskName="post_isr_image",
+        )
+        self.assertNotEqual(payloadNoTask, payloadWithTask)
+        self.assertNotEqual(payloadWithTask, payloadDifferentTask)
+
+    def test_taskName_serialised_in_to_json(self) -> None:
+        payload = Payload(
+            dataId=self.expRecord.dataId,
+            run="",
+            pipelineGraphBytes=b"",
+            who="SFM",
+            taskName="preliminary_visit_image",
+        )
+        decoded = json.loads(payload.to_json())
+        self.assertIn("taskName", decoded)
+        self.assertEqual(decoded["taskName"], "preliminary_visit_image")
+
+        payloadNoTask = Payload(
+            dataId=self.expRecord.dataId,
+            run="test run",
+            pipelineGraphBytes=self.pipelineBytes,
+            who="SFM",
+        )
+        decodedNoTask = json.loads(payloadNoTask.to_json())
+        self.assertIn("taskName", decodedNoTask)
+        self.assertIsNone(decodedNoTask["taskName"])
+
+    @unittest.skipIf(NO_BUTLER, "Skipping butler-driven tests")
+    def test_taskName_roundtrip(self) -> None:
+        payload = Payload(
+            dataId=self.expRecord.dataId,
+            run="",
+            pipelineGraphBytes=b"",
+            who="SFM",
+            taskName="preliminary_visit_image",
+        )
+        reconstructed = Payload.from_json(payload.to_json(), self.butler)  # type: ignore[arg-type]
+        self.assertEqual(reconstructed.taskName, "preliminary_visit_image")
+        self.assertEqual(payload, reconstructed)
+
+    @unittest.skipIf(NO_BUTLER, "Skipping butler-driven tests")
+    def test_from_json_legacy_payload_without_taskName(self) -> None:
+        # Old payloads on the wire (pre-taskName) won't have the key at
+        # all. They must still deserialise, with taskName defaulting to
+        # None, so a rolling rollout doesn't break in-flight work.
+        legacyDict = json.loads(self.validJson)
+        legacyDict.pop("taskName", None)
+        legacyJson = json.dumps(legacyDict)
+        payload = Payload.from_json(legacyJson, self.butler)  # type: ignore[arg-type]
+        self.assertIsNone(payload.taskName)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

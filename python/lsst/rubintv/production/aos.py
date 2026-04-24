@@ -71,70 +71,102 @@ from .aosUtils import (
     extractWavefrontData,
     makeDataframeFromZernikes,
 )
+
+from .formatters import getRubinTvInstrumentName, makePlotFile
+from .consdbUtils import ConsDBPopulator
 from .redisUtils import RedisHelper, _extractExposureIds
+from .shardIo import writeExpRecordMetadataShard, writeMetadataShard
+from .timing import logDuration
 from .uploaders import MultiUploader
-from .utils import (
-    getRubinTvInstrumentName,
-    logDuration,
-    makePlotFile,
-    writeExpRecordMetadataShard,
-    writeMetadataShard,
-)
+from .watchers import RedisWatcher
 
 if TYPE_CHECKING:
     from lsst.daf.butler import Butler, DimensionRecord
 
-    from .utils import LocationConfig
+    from .locationConfig import LocationConfig
+    from .payloads import Payload
+    from .podDefinition import PodDetails
 
 
 class DonutLauncher:
     """The DonutLauncher, for automatically launching donut processing.
 
+    NOTE: this class has been effectively dead since ComCam was
+    decommissioned. The ``LSSTComCam`` and ``LSSTComCamSim`` launcher
+    scripts in ``scripts/`` still construct it, but the
+    ``locationConfig.getAosPipelineFile`` call below references a
+    method that no longer exists on ``LocationConfig`` — anyone who
+    actually invoked the launcher would hit an ``AttributeError`` at
+    construction. Resurrecting it for any future shellable WEP
+    processing will require deciding what pipeline file to point at
+    for the new instrument and either restoring ``getAosPipelineFile``
+    or switching to one of the per-mode AOS pipeline-file properties
+    that are still on ``LocationConfig``.
+
+    Consumes exposure-ID pairs from an OCS-pushed Redis list (the wire
+    contract is ``f"{instrument}-FROM-OCS_DONUTPAIR"``) and shells out
+    a ``pipetask run`` for each pair. The ``podDetails`` argument is
+    used for identity, logging and operational monitoring; the OCS
+    queue name is computed from ``podDetails.instrument`` so the wire
+    contract lives here rather than in every launcher script.
+
     Parameters
     ----------
     butler : `lsst.daf.butler.Butler`
         The Butler object used for data access.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
     inputCollection : `str`
         The name of the input collection.
     outputCollection : `str`
         The name of the output collection.
-    instrument : `str`
-        The instrument.
-    queueName : `str`
-        The name of the redis queue to consume from.
+    podDetails : `lsst.rubintv.production.podDefinition.PodDetails`
+        The pod identity. Must have ``podFlavor=PodFlavor.DONUT_LAUNCHER``.
+        Carries the instrument name used to derive the OCS queue.
+    metadataShardPath : `str`
+        The path to write metadata shards to.
     allowMissingDependencies : `bool`, optional
         Can the class be instantiated when there are missing dependencies?
     """
 
+    runningProcesses: dict[int, subprocess.Popen[bytes]]
+
     def __init__(
         self,
         *,
-        butler,
-        locationConfig,
-        inputCollection,
-        outputCollection,
-        instrument,
-        queueName,
-        metadataShardPath,
-        allowMissingDependencies=False,
-    ):
+        butler: Butler,
+        locationConfig: LocationConfig,
+        inputCollection: str,
+        outputCollection: str,
+        podDetails: PodDetails,
+        metadataShardPath: str,
+        allowMissingDependencies: bool = False,
+    ) -> None:
         self.butler = butler
         self.locationConfig = locationConfig
         self.inputCollection = inputCollection
         self.outputCollection = outputCollection
-        self.queueName = queueName
+        self.podDetails = podDetails
+        self.instrument: str = podDetails.instrument
+        # OCS-pushed queue: this is the wire contract with the OCS team.
+        # Centralised here rather than in each launcher script so a
+        # rename happens in one place.
+        self.queueName: str = f"{self.instrument}-FROM-OCS_DONUTPAIR"
         self.metadataShardPath = metadataShardPath
         self.allowMissingDependencies = allowMissingDependencies
 
-        self.instrument = instrument
-        self.pipelineFile = locationConfig.getAosPipelineFile(instrument)
-        self.repo = locationConfig.comCamButlerPath.replace("/butler.yaml", "")
-        self.log = logging.getLogger("lsst.rubintv.production.DonutLauncher")
+        # See the class docstring NOTE: ``getAosPipelineFile`` no
+        # longer exists on LocationConfig and this would AttributeError
+        # if anyone tried to instantiate the launcher. Left in place
+        # so the dead code remains visibly dead.
+        self.pipelineFile: str = locationConfig.getAosPipelineFile(  # type: ignore[attr-defined]
+            self.instrument
+        )
+        self.repo: str = locationConfig.comCamButlerPath.replace("/butler.yaml", "")
+        self.log = logging.getLogger(f"lsst.rubintv.production.aos.DonutLauncher.{self.instrument}")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
         self.checkSetup()
-        self.numCoresToUse = 9
+        self.numCoresToUse: int = 9
 
         self.runningProcesses = {}  # dict of running processes keyed by PID
         self.lock = threading.Lock()
@@ -284,12 +316,12 @@ class PsfAzElPlotter:
     ----------
     butler : `lsst.daf.butler.Butler`
         The Butler object used for data access.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
     instrument : `str`
         The instrument.
-    queueName : `str`
-        The name of the redis queue to consume from.
+    podDetails : `lsst.rubintv.production.podDefinition.PodDetails`
+        The pod identity that selects which Redis queue to consume from.
     """
 
     def __init__(
@@ -298,17 +330,21 @@ class PsfAzElPlotter:
         butler: Butler,
         locationConfig: LocationConfig,
         instrument: str,
-        queueName: str,
+        podDetails: PodDetails,
     ) -> None:
         self.butler = butler
         self.locationConfig = locationConfig
         self.instrument = instrument
-        self.queueName = queueName
-
-        self.instrument = instrument
+        self.podDetails = podDetails
         self.camera = getCameraFromInstrumentName(self.instrument)
         self.log = logging.getLogger("lsst.rubintv.production.aos.PsfAzElPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
+
+        self.watcher = RedisWatcher(butler=butler, locationConfig=locationConfig, podDetails=podDetails)
+        #
+        self.consDbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
+        # TODO: DM-54675 remove this from being done here
+        self.consDBPopulator = ConsDBPopulator(self.consDbClient, self.redisHelper, self.locationConfig)
         self.s3Uploader = MultiUploader()
 
     def makePlot(self, visitId: int) -> None:
@@ -330,6 +366,18 @@ class PsfAzElPlotter:
                 srcDict[detectorId] = self.butler.get(
                     "single_visit_star_footprints", visit=visitId, detector=detectorId
                 )
+                # TODO: DM-54675 remove this from being done here
+                try:
+                    self.consDBPopulator.populateHigherOrderMoments(
+                        expRecord,
+                        detectorId,
+                        srcDict[detectorId],
+                        allowUpdate=True,
+                    )
+                except Exception:
+                    self.log.info(
+                        f"ConsDB population for {visitId}, {detectorId} failed, skipping", exc_info=True
+                    )
             except DatasetNotFoundError:
                 pass
 
@@ -363,16 +411,22 @@ class PsfAzElPlotter:
             filename=plotFile,
         )
 
+    def callback(self, payload: Payload) -> None:
+        """Run the plot for an incoming payload.
+
+        Parameters
+        ----------
+        payload : `lsst.rubintv.production.payloads.Payload`
+            The payload to process. The payload's ``dataId`` is expected to
+            contain a ``visit`` key.
+        """
+        visitId = int(payload.dataId["visit"])
+        self.log.info(f"Making PsfAzEl plot for visitId {visitId}")
+        self.makePlot(visitId)
+
     def run(self) -> None:
         """Start the event loop, listening for data and launching plotting."""
-        while True:
-            visitIdBytes = self.redisHelper.redis.lpop(self.queueName)
-            if visitIdBytes is not None:
-                visitId = int(visitIdBytes.decode("utf-8"))
-                self.log.info(f"Making for PsfAzEl plot for visitId {visitId}")
-                self.makePlot(visitId)
-            else:
-                sleep(0.5)
+        self.watcher.run(self.callback)
 
 
 class ZernikePredictedFWHMPlotter:
@@ -383,12 +437,12 @@ class ZernikePredictedFWHMPlotter:
     ----------
     butler : `lsst.daf.butler.Butler`
         The Butler object used for data access.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
     instrument : `str`
         The instrument.
-    queueName : `str`
-        The name of the redis queue to consume from.
+    podDetails : `lsst.rubintv.production.podDefinition.PodDetails`
+        The pod identity that selects which Redis queue to consume from.
     """
 
     def __init__(
@@ -397,17 +451,16 @@ class ZernikePredictedFWHMPlotter:
         butler: Butler,
         locationConfig: LocationConfig,
         instrument: str,
-        queueName: str,
+        podDetails: PodDetails,
     ) -> None:
         self.butler = butler
         self.locationConfig = locationConfig
         self.instrument = instrument
-        self.queueName = queueName
-
-        self.instrument = instrument
+        self.podDetails = podDetails
         self.camera = getCameraFromInstrumentName(self.instrument)
         self.log = logging.getLogger("lsst.rubintv.production.aos.ZernikePredictedFWHMPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
+        self.watcher = RedisWatcher(butler=butler, locationConfig=locationConfig, podDetails=podDetails)
         self.s3Uploader = MultiUploader()
         configMttcsDir = getPackageDir("ts_config_mttcs")
         ofcDir = os.path.join(configMttcsDir, "MTAOS", "ofc")
@@ -546,17 +599,23 @@ class ZernikePredictedFWHMPlotter:
             filename=plotFile,
         )
 
+    def callback(self, payload: Payload) -> None:
+        """Run the plot for an incoming payload.
+
+        Parameters
+        ----------
+        payload : `lsst.rubintv.production.payloads.Payload`
+            The payload to process. The payload's ``dataId`` is expected to
+            contain a ``visit`` key.
+        """
+        visitId = int(payload.dataId["visit"])
+        self.log.info(f"Making ZernikePredictedFWHM plots for visitId {visitId}")
+        with logDuration(self.log, f"Total time for making zernike prediction plots for {visitId=}"):
+            self.makePlots(visitId)
+
     def run(self) -> None:
         """Start the event loop, listening for data and launching plotting."""
-        while True:
-            visitIdBytes = self.redisHelper.redis.lpop(self.queueName)
-            if visitIdBytes is not None:
-                visitId = int(visitIdBytes.decode("utf-8"))
-                self.log.info(f"Making for ZernikePredictedFWHM plots for visitId {visitId}")
-                with logDuration(self.log, f"Total time for making zernike prediction plots for {visitId=}"):
-                    self.makePlots(visitId)
-            else:
-                sleep(0.5)
+        self.watcher.run(self.callback)
 
 
 class FocalPlaneFWHMPlotter:
@@ -567,12 +626,12 @@ class FocalPlaneFWHMPlotter:
     ----------
     butler : `lsst.daf.butler.Butler`
         The Butler object used for data access.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
     instrument : `str`
         The instrument.
-    queueName : `str`
-        The name of the redis queue to consume from.
+    podDetails : `lsst.rubintv.production.podDefinition.PodDetails`
+        The pod identity that selects which Redis queue to consume from.
     """
 
     def __init__(
@@ -581,29 +640,29 @@ class FocalPlaneFWHMPlotter:
         butler: Butler,
         locationConfig: LocationConfig,
         instrument: str,
-        queueName: str,
+        podDetails: PodDetails,
     ) -> None:
         self.butler = butler
         self.locationConfig = locationConfig
         self.instrument = instrument
-        self.queueName = queueName
-        self.instrument = instrument
+        self.podDetails = podDetails
         self.camera = getCameraFromInstrumentName(self.instrument)
         self.log = logging.getLogger("lsst.rubintv.production.aos.FocalPlaneFWHMPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
+        self.watcher = RedisWatcher(butler=butler, locationConfig=locationConfig, podDetails=podDetails)
         self.s3Uploader = MultiUploader()
         self.efdClient = makeEfdClient()
 
     def plotAndUpload(self, visitRecord: DimensionRecord) -> None:
-        """Make the FWHM Focal Plane plot for the given visit ID.
+        """Make the FWHM Focal Plane plot for the given visit.
 
         Makes the plot by getting the available data from the butler, saves it
         to a temporary file, and uploads it to RubinTV.
 
         Parameters
         ----------
-        visitId : `int`
-            The visit ID for which to make the plot.
+        visitRecord : `lsst.daf.butler.DimensionRecord`
+            The visit record for which to make the plot.
         """
         visitSummary = None
         try:
@@ -635,7 +694,7 @@ class FocalPlaneFWHMPlotter:
         )
 
     def makeTitle(self, visitRecord: DimensionRecord) -> str:
-        """Create the title for the FWHM Focal Plane plot inc mining the EFD.
+        """Create the title for the FWHM Focal Plane plot, including EFD data.
 
         Parameters
         ----------
@@ -658,33 +717,48 @@ class FocalPlaneFWHMPlotter:
 
         return title
 
+    def callback(self, payload: Payload) -> None:
+        """Run the plot for an incoming payload.
+
+        Parameters
+        ----------
+        payload : `lsst.rubintv.production.payloads.Payload`
+            The payload to process. The payload's ``dataId`` is expected to
+            contain a ``visit`` key.
+        """
+        visitId = int(payload.dataId["visit"])
+        (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", visit=visitId)
+        t0 = time()
+        self.log.info(f"Making FWHMFocalPlane plot for visitId {visitRecord.id}")
+        self.plotAndUpload(visitRecord)
+        t1 = time()
+        self.log.info(f"Finished making FWHMFocalPlane plot in {(t1 - t0):.2f}s for {visitRecord.id}")
+
     def run(self) -> None:
         """Start the event loop, listening for data and launching plotting."""
-        while True:
-            expRecord = self.redisHelper.getExpRecordFromQueue(self.queueName)
-            if expRecord is not None:
-                t0 = time()
-                self.log.info(f"Making for FWHMFocalPlane plot for visitId {expRecord.id}")
-                self.plotAndUpload(expRecord)
-                t1 = time()
-                self.log.info(f"Finished making FWHMFocalPlane plot in {(t1 - t0):.2f}s for {expRecord.id}")
-            else:
-                sleep(0.5)
+        self.watcher.run(self.callback)
 
 
 class FocusSweepAnalysis:
     """The FocusSweepAnalysis, for automatically plotting focus sweep data.
 
+    Consumes a list of visit IDs from an OCS-pushed Redis list (the
+    wire contract is ``f"{instrument}-FROM-OCS_FOCUSSWEEP"``) and makes
+    a focus-sweep parabola plot for each. The ``podDetails`` argument
+    is used for identity, logging and operational monitoring; the OCS
+    queue name is computed from ``podDetails.instrument`` so the wire
+    contract lives here rather than in every launcher script.
+
     Parameters
     ----------
     butler : `lsst.daf.butler.Butler`
         The Butler object used for data access.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
-    queueName : `str`
-        The name of the redis queue to consume from.
-    instrument : `str`
-        The instrument.
+    podDetails : `lsst.rubintv.production.podDefinition.PodDetails`
+        The pod identity. Must have
+        ``podFlavor=PodFlavor.FOCUS_SWEEP_ANALYZER``. Carries the
+        instrument name used to derive the OCS queue.
     metadataShardPath : `str`
         The path to write metadata shards to.
     """
@@ -694,42 +768,35 @@ class FocusSweepAnalysis:
         *,
         butler: Butler,
         locationConfig: LocationConfig,
-        queueName: str,
-        instrument: str,
+        podDetails: PodDetails,
         metadataShardPath: str,
-    ):
+    ) -> None:
         self.butler = butler
         self.locationConfig = locationConfig
-        self.queueName = queueName
+        self.podDetails = podDetails
+        self.instrument: str = podDetails.instrument
+        # OCS-pushed queue: see DonutLauncher for the rationale for
+        # putting the wire contract here.
+        self.queueName: str = f"{self.instrument}-FROM-OCS_FOCUSSWEEP"
         self.metadataShardPath = metadataShardPath
 
-        self.instrument = instrument
         self.camera = getCameraFromInstrumentName(self.instrument)
-        self.log = logging.getLogger("lsst.rubintv.production.aos.PsfAzElPlotter")
+        self.log = logging.getLogger(f"lsst.rubintv.production.aos.FocusSweepAnalysis.{self.instrument}")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
-        self.s3Uploader = MultiUploader()
+        self.s3Uploader: MultiUploader = MultiUploader()
         self.consDbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
         self.efdClient = makeEfdClient()
         self.fig = Figure(figsize=(12, 9))
         self.fig, self.axes = makeFigureAndAxes()
 
     def makePlot(self, visitIds) -> None:
-        """Extract the exposure IDs from the byte string.
+        """Make and upload a focus-sweep parabola plot for a set of visits.
 
         Parameters
         ----------
-        visitId : `int`
-            The byte string containing the exposure IDs.
-
-        Returns
-        -------
-        expIds : `list` of `int`
-            A list of two exposure IDs extracted from the byte string.
-
-        Raises
-        ------
-        ValueError
-            If the number of exposure IDs extracted is not equal to 2.
+        visitIds : `list` [`int`]
+            The visit IDs that make up the focus sweep. The plot is keyed off
+            the most recent visit in the list.
         """
         visitIds = sorted(visitIds)
         lastVisit = visitIds[-1]
@@ -737,7 +804,7 @@ class FocusSweepAnalysis:
         # blocking call which waits for RA to announce that visit level info
         # is in consDB.
         self.log.info(f"Waiting for PSF measurements for last image {lastVisit}")
-        self.redisHelper.waitForResultInConsdDb(
+        self.redisHelper.waitForResultInConsDb(
             self.instrument, f"cdb_{self.instrument.lower()}.visit1_quicklook", lastVisit, timeout=90
         )
         self.log.info(f"Finished waiting for PSF measurements for last image {lastVisit}")
@@ -751,6 +818,9 @@ class FocusSweepAnalysis:
 
         data = collectSweepData(records, self.consDbClient, self.efdClient)
         varName = inferSweepVariable(data)
+        if varName is None:
+            self.log.warning(f"Could not infer the swept variable for visits {visitIds}; skipping plot")
+            return
         fit = fitSweepParabola(data, varName)
 
         self.fig.clf()
@@ -775,7 +845,7 @@ class FocusSweepAnalysis:
             visitIdsBytes = self.redisHelper.redis.lpop(self.queueName)
             if visitIdsBytes is not None:
                 visitIds = _extractExposureIds(visitIdsBytes, self.instrument)
-                self.log.info(f"Making for focus sweep plots for visitIds: {visitIds}")
+                self.log.info(f"Making focus sweep plots for visitIds: {visitIds}")
                 self.makePlot(visitIds)
             else:
                 sleep(0.5)
@@ -788,12 +858,12 @@ class RadialPlotter:
     ----------
     butler : `lsst.daf.butler.Butler`
         The Butler object used for data access.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
     instrument : `str`
         The instrument.
-    queueName : `str`
-        The name of the redis queue to consume from.
+    podDetails : `lsst.rubintv.production.podDefinition.PodDetails`
+        The pod identity that selects which Redis queue to consume from.
     """
 
     def __init__(
@@ -802,17 +872,16 @@ class RadialPlotter:
         butler: Butler,
         locationConfig: LocationConfig,
         instrument: str,
-        queueName: str,
+        podDetails: PodDetails,
     ) -> None:
         self.butler = butler
         self.locationConfig = locationConfig
         self.instrument = instrument
-        self.queueName = queueName
-
-        self.instrument = instrument
+        self.podDetails = podDetails
         self.camera = getCameraFromInstrumentName(self.instrument)
         self.log = logging.getLogger("lsst.rubintv.production.aos.RadialPlotter")
         self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
+        self.watcher = RedisWatcher(butler=butler, locationConfig=locationConfig, podDetails=podDetails)
         self.s3Uploader = MultiUploader()
 
     def plotAndUpload(self, expRecord: DimensionRecord) -> None:
@@ -838,15 +907,23 @@ class RadialPlotter:
             filename=plotFile,
         )
 
+    def callback(self, payload: Payload) -> None:
+        """Run the plot for an incoming payload.
+
+        Parameters
+        ----------
+        payload : `lsst.rubintv.production.payloads.Payload`
+            The payload to process. The payload's ``dataId`` is expected to
+            contain an ``exposure`` key.
+        """
+        exposureId = int(payload.dataId["exposure"])
+        (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", exposure=exposureId)
+        t0 = time()
+        self.log.info(f"Making radial plot for {expRecord.id}")
+        self.plotAndUpload(expRecord)
+        t1 = time()
+        self.log.info(f"Finished making radial plot in {(t1 - t0):.2f}s for {expRecord.id}")
+
     def run(self) -> None:
         """Start the event loop, listening for data and launching plotting."""
-        while True:
-            expRecord = self.redisHelper.getExpRecordFromQueue(self.queueName)
-            if expRecord is not None:
-                t0 = time()
-                self.log.info(f"Making for radial plot for {expRecord.id}")
-                self.plotAndUpload(expRecord)
-                t1 = time()
-                self.log.info(f"Finished making radial plot in {(t1 - t0):.2f}s for {expRecord.id}")
-            else:
-                sleep(0.5)
+        self.watcher.run(self.callback)

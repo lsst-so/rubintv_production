@@ -1,0 +1,1391 @@
+================================================================================
+Exit Code: timeout
+================================================================================
+
+STDOUT:
+--------------------------------------------------------------------------------
+Found WORKER_NUMBER=None in the env
+Running LATISS STEP1B_WORKER at usdf_testing,consuming from STEP1B_WORKER-LATISS-000...
+Loading config from /sdf/home/m/mfl/lsst/atmospec/python/lsst/atmospec/resources/config/auxtel.ini
+ASTROMETRYNET_DIR 
+BGD_ORDER 1
+CALIB_BGD_NPARAMS 4
+CALIB_BGD_ORDER 3
+CALIB_BGD_WIDTH 15
+CALIB_PEAK_WIDTH 7
+CALIB_SAVGOL_ORDER 2
+CALIB_SAVGOL_WINDOW 5
+CALLING_CODE LSST_DM
+CCD_ARCSEC2RADIANS 4.84813681109536e-06
+CCD_GAIN 1.1
+CCD_IMSIZE 4000
+CCD_MAXADU 170000
+CCD_PIXEL2ARCSEC 0.0952
+CCD_PIXEL2MM 0.01
+CCD_REBIN 2
+CONFIG_DIR ../config/
+DEBUG True
+DEBUG_LOGGING False
+DISPERSER_DIR extractor/dispersers/
+DISPLAY True
+DISTANCE2CCD 186.0
+DISTANCE2CCD_ERR 0.4
+FLAM_TO_ADURATE 4409886113167.414
+GRATING_ORDER_2OVER1 0.1
+LAMBDAS [ 300.  301.  302.  303.  304.  305.  306.  307.  308.  309.  310.  311.
+  312.  313.  314.  315.  316.  317.  318.  319.  320.  321.  322.  323.
+  324.  325.  326.  327.  328.  329.  330.  331.  332.  333.  334.  335.
+  336.  337.  338.  339.  340.  341.  342.  343.  344.  345.  346.  347.
+  348.  349.  350.  351.  352.  353.  354.  355.  356.  357.  358.  359.
+  360.  361.  362.  363.  364.  365.  366.  367.  368.  369.  370.  371.
+  372.  373.  374.  375.  376.  377.  378.  379.  380.  381.  382.  383.
+  384.  385.  386.  387.  388.  389.  390.  391.  392.  393.  394.  395.
+  396.  397.  398.  399.  400.  401.  402.  403.  404.  405.  406.  407.
+  408.  409.  410.  411.  412.  413.  414.  415.  416.  417.  418.  419.
+  420.  421.  422.  423.  424.  425.  426.  427.  428.  429.  430.  431.
+  432.  433.  434.  435.  436.  437.  438.  439.  440.  441.  442.  443.
+  444.  445.  446.  447.  448.  449.  450.  451.  452.  453.  454.  455.
+  456.  457.  458.  459.  460.  461.  462.  463.  464.  465.  466.  467.
+  468.  469.  470.  471.  472.  473.  474.  475.  476.  477.  478.  479.
+  480.  481.  482.  483.  484.  485.  486.  487.  488.  489.  490.  491.
+  492.  493.  494.  495.  496.  497.  498.  499.  500.  501.  502.  503.
+  504.  505.  506.  507.  508.  509.  510.  511.  512.  513.  514.  515.
+  516.  517.  518.  519.  520.  521.  522.  523.  524.  525.  526.  527.
+  528.  529.  530.  531.  532.  533.  534.  535.  536.  537.  538.  539.
+  540.  541.  542.  543.  544.  545.  546.  547.  548.  549.  550.  551.
+  552.  553.  554.  555.  556.  557.  558.  559.  560.  561.  562.  563.
+  564.  565.  566.  567.  568.  569.  570.  571.  572.  573.  574.  575.
+  576.  577.  578.  579.  580.  581.  582.  583.  584.  585.  586.  587.
+  588.  589.  590.  591.  592.  593.  594.  595.  596.  597.  598.  599.
+  600.  601.  602.  603.  604.  605.  606.  607.  608.  609.  610.  611.
+  612.  613.  614.  615.  616.  617.  618.  619.  620.  621.  622.  623.
+  624.  625.  626.  627.  628.  629.  630.  631.  632.  633.  634.  635.
+  636.  637.  638.  639.  640.  641.  642.  643.  644.  645.  646.  647.
+  648.  649.  650.  651.  652.  653.  654.  655.  656.  657.  658.  659.
+  660.  661.  662.  663.  664.  665.  666.  667.  668.  669.  670.  671.
+  672.  673.  674.  675.  676.  677.  678.  679.  680.  681.  682.  683.
+  684.  685.  686.  687.  688.  689.  690.  691.  692.  693.  694.  695.
+  696.  697.  698.  699.  700.  701.  702.  703.  704.  705.  706.  707.
+  708.  709.  710.  711.  712.  713.  714.  715.  716.  717.  718.  719.
+  720.  721.  722.  723.  724.  725.  726.  727.  728.  729.  730.  731.
+  732.  733.  734.  735.  736.  737.  738.  739.  740.  741.  742.  743.
+  744.  745.  746.  747.  748.  749.  750.  751.  752.  753.  754.  755.
+  756.  757.  758.  759.  760.  761.  762.  763.  764.  765.  766.  767.
+  768.  769.  770.  771.  772.  773.  774.  775.  776.  777.  778.  779.
+  780.  781.  782.  783.  784.  785.  786.  787.  788.  789.  790.  791.
+  792.  793.  794.  795.  796.  797.  798.  799.  800.  801.  802.  803.
+  804.  805.  806.  807.  808.  809.  810.  811.  812.  813.  814.  815.
+  816.  817.  818.  819.  820.  821.  822.  823.  824.  825.  826.  827.
+  828.  829.  830.  831.  832.  833.  834.  835.  836.  837.  838.  839.
+  840.  841.  842.  843.  844.  845.  846.  847.  848.  849.  850.  851.
+  852.  853.  854.  855.  856.  857.  858.  859.  860.  861.  862.  863.
+  864.  865.  866.  867.  868.  869.  870.  871.  872.  873.  874.  875.
+  876.  877.  878.  879.  880.  881.  882.  883.  884.  885.  886.  887.
+  888.  889.  890.  891.  892.  893.  894.  895.  896.  897.  898.  899.
+  900.  901.  902.  903.  904.  905.  906.  907.  908.  909.  910.  911.
+  912.  913.  914.  915.  916.  917.  918.  919.  920.  921.  922.  923.
+  924.  925.  926.  927.  928.  929.  930.  931.  932.  933.  934.  935.
+  936.  937.  938.  939.  940.  941.  942.  943.  944.  945.  946.  947.
+  948.  949.  950.  951.  952.  953.  954.  955.  956.  957.  958.  959.
+  960.  961.  962.  963.  964.  965.  966.  967.  968.  969.  970.  971.
+  972.  973.  974.  975.  976.  977.  978.  979.  980.  981.  982.  983.
+  984.  985.  986.  987.  988.  989.  990.  991.  992.  993.  994.  995.
+  996.  997.  998.  999. 1000. 1001. 1002. 1003. 1004. 1005. 1006. 1007.
+ 1008. 1009. 1010. 1011. 1012. 1013. 1014. 1015. 1016. 1017. 1018. 1019.
+ 1020. 1021. 1022. 1023. 1024. 1025. 1026. 1027. 1028. 1029. 1030. 1031.
+ 1032. 1033. 1034. 1035. 1036. 1037. 1038. 1039. 1040. 1041. 1042. 1043.
+ 1044. 1045. 1046. 1047. 1048. 1049. 1050. 1051. 1052. 1053. 1054. 1055.
+ 1056. 1057. 1058. 1059. 1060. 1061. 1062. 1063. 1064. 1065. 1066. 1067.
+ 1068. 1069. 1070. 1071. 1072. 1073. 1074. 1075. 1076. 1077. 1078. 1079.
+ 1080. 1081. 1082. 1083. 1084. 1085. 1086. 1087. 1088. 1089. 1090. 1091.
+ 1092. 1093. 1094. 1095. 1096. 1097. 1098. 1099.]
+LAMBDA_MAX 1100
+LAMBDA_MIN 300
+LAMBDA_STEP 1.0
+LIBRADTRAN_DIR 
+LINEWIDTH 2.0
+OBS_ALTITUDE 2.66299616375123
+OBS_CAMERA_DEC_FLIP_SIGN 1
+OBS_CAMERA_RA_FLIP_SIGN 1
+OBS_CAMERA_ROTATION 0
+OBS_EPOCH J2000.0
+OBS_FULL_INSTRUMENT_TRANSMISSON multispectra_holo4_003_HD142331_AuxTel_throughput.txt
+OBS_LATITUDE -30.2446389756252
+OBS_NAME AUXTEL
+OBS_OBJECT_TYPE STAR
+OBS_SURFACE 9636
+OBS_TRANSMISSION_SYSTEMATICS 0.005
+PAPER False
+PIXDIST_BACKGROUND 140
+PIXSHIFT_PRIOR 5.0
+PIXWIDTH_BACKGROUND 40
+PIXWIDTH_BOXSIZE 20
+PIXWIDTH_SIGNAL 40
+PLOT_DIR plots
+PLOT_ROT_LABEL $\varphi_d$ [degrees]
+PLOT_XLABEL $x$ [pixels]
+PLOT_YLABEL $y$ [pixels]
+PSF_FIT_REG_PARAM 1.0
+PSF_FWHM_CLIP 2.0
+PSF_PIXEL_STEP_TRANSVERSE_FIT 10
+PSF_POLY_ORDER 2
+PSF_TYPE Moffat
+ROT_ANGLE_MAX 10.0
+ROT_ANGLE_MIN -10.0
+ROT_ORDER 5
+ROT_PREFILTER True
+SAVE False
+SED_UNIT 1.0 erg / (nm s cm2)
+SPECTRACTOR_ATMOSPHERE_SIM none
+SPECTRACTOR_BACKGROUND_SUBTRACTION True
+SPECTRACTOR_COMPUTE_ROTATION_ANGLE disperser
+SPECTRACTOR_DECONVOLUTION_FFM True
+SPECTRACTOR_DECONVOLUTION_PSF2D True
+SPECTRACTOR_DECONVOLUTION_SIGMA_CLIP 100.0
+SPECTRACTOR_FIT_TARGET_CENTROID fit
+SPECTRACTOR_FIT_TIMEOUT 7200
+SPECTRACTOR_FIT_TIMEOUT_PER_ITER 1200
+SPEC_ORDER 1
+STAR_NAMES ['22 Lib', 'WD 1327-083', 'ETA1DOR', 'spec:ETA1DOR', 'spec:MUCOL', '']
+STYLE_PARAMETERS ['VERBOSE', 'DEBUG', 'PAPER', 'LINEWIDTH', 'PLOT_DIR', 'SAVE', 'DEBUG_LOGGING', 'DISPLAY', 'PLOT_XLABEL', 'PLOT_YLABEL', 'PLOT_ROT_LABEL']
+THROUGHPUT_DIR simulation/AuxTelThroughput/
+TIME_UNIT 1.0 s
+VERBOSE True
+XWINDOW 150
+XWINDOW_ROT 50
+YWINDOW 150
+YWINDOW_ROT 50
+backend agg
+hc 1.9864458571489286e-25 J m
+mpl <module 'matplotlib' from '/sdf/group/rubin/sw/conda/envs/lsst-scipipe-13.0.0/lib/python3.13/site-packages/matplotlib/__init__.py'>
+np <module 'numpy' from '/sdf/group/rubin/sw/conda/envs/lsst-scipipe-13.0.0/lib/python3.13/site-packages/numpy/__init__.py'>
+os <module 'os' (frozen)>
+wl_dwl_unit nm2
+ASTROMETRYNET_DIR 
+BGD_ORDER 1
+CALIB_BGD_NPARAMS 4
+CALIB_BGD_ORDER 3
+CALIB_BGD_WIDTH 15
+CALIB_PEAK_WIDTH 7
+CALIB_SAVGOL_ORDER 2
+CALIB_SAVGOL_WINDOW 5
+CALLING_CODE LSST_DM
+CCD_ARCSEC2RADIANS 4.84813681109536e-06
+CCD_GAIN 1.1
+CCD_IMSIZE 2000
+CCD_MAXADU 170000
+CCD_PIXEL2ARCSEC 0.1904
+CCD_PIXEL2MM 0.02
+CCD_REBIN 2
+CONFIG_DIR ../config/
+DEBUG True
+DEBUG_LOGGING False
+DISPERSER_DIR extractor/dispersers/
+DISPLAY True
+DISTANCE2CCD 186.0
+DISTANCE2CCD_ERR 0.4
+FLAM_TO_ADURATE 4409886113167.414
+GRATING_ORDER_2OVER1 0.1
+LAMBDAS [ 300.  301.  302.  303.  304.  305.  306.  307.  308.  309.  310.  311.
+  312.  313.  314.  315.  316.  317.  318.  319.  320.  321.  322.  323.
+  324.  325.  326.  327.  328.  329.  330.  331.  332.  333.  334.  335.
+  336.  337.  338.  339.  340.  341.  342.  343.  344.  345.  346.  347.
+  348.  349.  350.  351.  352.  353.  354.  355.  356.  357.  358.  359.
+  360.  361.  362.  363.  364.  365.  366.  367.  368.  369.  370.  371.
+  372.  373.  374.  375.  376.  377.  378.  379.  380.  381.  382.  383.
+  384.  385.  386.  387.  388.  389.  390.  391.  392.  393.  394.  395.
+  396.  397.  398.  399.  400.  401.  402.  403.  404.  405.  406.  407.
+  408.  409.  410.  411.  412.  413.  414.  415.  416.  417.  418.  419.
+  420.  421.  422.  423.  424.  425.  426.  427.  428.  429.  430.  431.
+  432.  433.  434.  435.  436.  437.  438.  439.  440.  441.  442.  443.
+  444.  445.  446.  447.  448.  449.  450.  451.  452.  453.  454.  455.
+  456.  457.  458.  459.  460.  461.  462.  463.  464.  465.  466.  467.
+  468.  469.  470.  471.  472.  473.  474.  475.  476.  477.  478.  479.
+  480.  481.  482.  483.  484.  485.  486.  487.  488.  489.  490.  491.
+  492.  493.  494.  495.  496.  497.  498.  499.  500.  501.  502.  503.
+  504.  505.  506.  507.  508.  509.  510.  511.  512.  513.  514.  515.
+  516.  517.  518.  519.  520.  521.  522.  523.  524.  525.  526.  527.
+  528.  529.  530.  531.  532.  533.  534.  535.  536.  537.  538.  539.
+  540.  541.  542.  543.  544.  545.  546.  547.  548.  549.  550.  551.
+  552.  553.  554.  555.  556.  557.  558.  559.  560.  561.  562.  563.
+  564.  565.  566.  567.  568.  569.  570.  571.  572.  573.  574.  575.
+  576.  577.  578.  579.  580.  581.  582.  583.  584.  585.  586.  587.
+  588.  589.  590.  591.  592.  593.  594.  595.  596.  597.  598.  599.
+  600.  601.  602.  603.  604.  605.  606.  607.  608.  609.  610.  611.
+  612.  613.  614.  615.  616.  617.  618.  619.  620.  621.  622.  623.
+  624.  625.  626.  627.  628.  629.  630.  631.  632.  633.  634.  635.
+  636.  637.  638.  639.  640.  641.  642.  643.  644.  645.  646.  647.
+  648.  649.  650.  651.  652.  653.  654.  655.  656.  657.  658.  659.
+  660.  661.  662.  663.  664.  665.  666.  667.  668.  669.  670.  671.
+  672.  673.  674.  675.  676.  677.  678.  679.  680.  681.  682.  683.
+  684.  685.  686.  687.  688.  689.  690.  691.  692.  693.  694.  695.
+  696.  697.  698.  699.  700.  701.  702.  703.  704.  705.  706.  707.
+  708.  709.  710.  711.  712.  713.  714.  715.  716.  717.  718.  719.
+  720.  721.  722.  723.  724.  725.  726.  727.  728.  729.  730.  731.
+  732.  733.  734.  735.  736.  737.  738.  739.  740.  741.  742.  743.
+  744.  745.  746.  747.  748.  749.  750.  751.  752.  753.  754.  755.
+  756.  757.  758.  759.  760.  761.  762.  763.  764.  765.  766.  767.
+  768.  769.  770.  771.  772.  773.  774.  775.  776.  777.  778.  779.
+  780.  781.  782.  783.  784.  785.  786.  787.  788.  789.  790.  791.
+  792.  793.  794.  795.  796.  797.  798.  799.  800.  801.  802.  803.
+  804.  805.  806.  807.  808.  809.  810.  811.  812.  813.  814.  815.
+  816.  817.  818.  819.  820.  821.  822.  823.  824.  825.  826.  827.
+  828.  829.  830.  831.  832.  833.  834.  835.  836.  837.  838.  839.
+  840.  841.  842.  843.  844.  845.  846.  847.  848.  849.  850.  851.
+  852.  853.  854.  855.  856.  857.  858.  859.  860.  861.  862.  863.
+  864.  865.  866.  867.  868.  869.  870.  871.  872.  873.  874.  875.
+  876.  877.  878.  879.  880.  881.  882.  883.  884.  885.  886.  887.
+  888.  889.  890.  891.  892.  893.  894.  895.  896.  897.  898.  899.
+  900.  901.  902.  903.  904.  905.  906.  907.  908.  909.  910.  911.
+  912.  913.  914.  915.  916.  917.  918.  919.  920.  921.  922.  923.
+  924.  925.  926.  927.  928.  929.  930.  931.  932.  933.  934.  935.
+  936.  937.  938.  939.  940.  941.  942.  943.  944.  945.  946.  947.
+  948.  949.  950.  951.  952.  953.  954.  955.  956.  957.  958.  959.
+  960.  961.  962.  963.  964.  965.  966.  967.  968.  969.  970.  971.
+  972.  973.  974.  975.  976.  977.  978.  979.  980.  981.  982.  983.
+  984.  985.  986.  987.  988.  989.  990.  991.  992.  993.  994.  995.
+  996.  997.  998.  999. 1000. 1001. 1002. 1003. 1004. 1005. 1006. 1007.
+ 1008. 1009. 1010. 1011. 1012. 1013. 1014. 1015. 1016. 1017. 1018. 1019.
+ 1020. 1021. 1022. 1023. 1024. 1025. 1026. 1027. 1028. 1029. 1030. 1031.
+ 1032. 1033. 1034. 1035. 1036. 1037. 1038. 1039. 1040. 1041. 1042. 1043.
+ 1044. 1045. 1046. 1047. 1048. 1049. 1050. 1051. 1052. 1053. 1054. 1055.
+ 1056. 1057. 1058. 1059. 1060. 1061. 1062. 1063. 1064. 1065. 1066. 1067.
+ 1068. 1069. 1070. 1071. 1072. 1073. 1074. 1075. 1076. 1077. 1078. 1079.
+ 1080. 1081. 1082. 1083. 1084. 1085. 1086. 1087. 1088. 1089. 1090. 1091.
+ 1092. 1093. 1094. 1095. 1096. 1097. 1098. 1099.]
+LAMBDA_MAX 1100
+LAMBDA_MIN 300
+LAMBDA_STEP 1.0
+LIBRADTRAN_DIR 
+LINEWIDTH 2.0
+OBS_ALTITUDE 2.66299616375123
+OBS_CAMERA_DEC_FLIP_SIGN 1
+OBS_CAMERA_RA_FLIP_SIGN 1
+OBS_CAMERA_ROTATION 45.76109713358599
+OBS_EPOCH J2000.0
+OBS_FULL_INSTRUMENT_TRANSMISSON multispectra_holo4_003_HD142331_AuxTel_throughput.txt
+OBS_LATITUDE -30.2446389756252
+OBS_NAME AUXTEL
+OBS_OBJECT_TYPE STAR
+OBS_SURFACE 9636.0 cm2
+OBS_TRANSMISSION_SYSTEMATICS 0.005
+PAPER False
+PIXDIST_BACKGROUND 70
+PIXSHIFT_PRIOR 5.0
+PIXWIDTH_BACKGROUND 20
+PIXWIDTH_BOXSIZE 10
+PIXWIDTH_SIGNAL 20
+PLOT_DIR plots
+PLOT_ROT_LABEL $\varphi_d$ [degrees]
+PLOT_XLABEL $x$ [pixels]
+PLOT_YLABEL $y$ [pixels]
+PSF_FIT_REG_PARAM 1.0
+PSF_FWHM_CLIP 2.0
+PSF_PIXEL_STEP_TRANSVERSE_FIT 5
+PSF_POLY_ORDER 2
+PSF_TYPE Moffat
+ROT_ANGLE_MAX 10.0
+ROT_ANGLE_MIN -10.0
+ROT_ORDER 5
+ROT_PREFILTER True
+SAVE False
+SED_UNIT 1.0 erg / (nm s cm2)
+SPECTRACTOR_ATMOSPHERE_SIM none
+SPECTRACTOR_BACKGROUND_SUBTRACTION True
+SPECTRACTOR_COMPUTE_ROTATION_ANGLE disperser
+SPECTRACTOR_DECONVOLUTION_FFM True
+SPECTRACTOR_DECONVOLUTION_PSF2D True
+SPECTRACTOR_DECONVOLUTION_SIGMA_CLIP 100.0
+SPECTRACTOR_FIT_TARGET_CENTROID fit
+SPECTRACTOR_FIT_TIMEOUT 7200
+SPECTRACTOR_FIT_TIMEOUT_PER_ITER 1200
+SPEC_ORDER 1
+STAR_NAMES ['22 Lib', 'WD 1327-083', 'ETA1DOR', 'spec:ETA1DOR', 'spec:MUCOL', '']
+STYLE_PARAMETERS ['VERBOSE', 'DEBUG', 'PAPER', 'LINEWIDTH', 'PLOT_DIR', 'SAVE', 'DEBUG_LOGGING', 'DISPLAY', 'PLOT_XLABEL', 'PLOT_YLABEL', 'PLOT_ROT_LABEL']
+THROUGHPUT_DIR simulation/AuxTelThroughput/
+TIME_UNIT 1.0 s
+VERBOSE True
+XWINDOW 75
+XWINDOW_ROT 25
+YWINDOW 75
+YWINDOW_ROT 25
+backend agg
+hc 1.9864458571489286e-25 J m
+mpl <module 'matplotlib' from '/sdf/group/rubin/sw/conda/envs/lsst-scipipe-13.0.0/lib/python3.13/site-packages/matplotlib/__init__.py'>
+np <module 'numpy' from '/sdf/group/rubin/sw/conda/envs/lsst-scipipe-13.0.0/lib/python3.13/site-packages/numpy/__init__.py'>
+os <module 'os' (frozen)>
+wl_dwl_unit nm2
+Termination signal received for /sdf/home/m/mfl/lsst/rubintv_production/scripts/LATISS/runStep1bWorker.py:usdf_testing:0, exiting...
+
+--------------------------------------------------------------------------------
+
+LOGS:
+--------------------------------------------------------------------------------
+WARNING - Sentry DSN not found or client inactive — events will not be reported
+INFO - Creating CachingLimitedButler with cachedOnPut={'atmospecCentroid', 'icExp', 'icSrc'}, cachedOnGet={'flat', 'the_monster_20250219', 'raw', 'defects', 'dark', 'crosstalk', 'gain_correction', 'camera', 'ptc', 'linearizer', 'post_isr_image', 'bias'}, noCopyOnCache={'flat', 'astrometry_camera', 'dark', 'camera', 'defects', 'bias'}
+INFO - Pipeline running configured to consume from STEP1B_WORKER-LATISS-000
+INFO - Running pipeline for {instrument: 'LATISS', visit: 2024081300632, band: 'white', day_obs: 20240813, physical_filter: 'empty~holo4_003'}
+INFO - Waiting for None for {instrument: 'LATISS', visit: 2024081300632, band: 'white', day_obs: 20240813, physical_filter: 'empty~holo4_003'}
+INFO - Spent 0.00 seconds waiting for the None (should be ~1s per id)
+INFO - Making AllDimensionQGBuilder for step1b for expId 2024081300632 for SFM
+INFO - Processing pipeline subgraph 1 of 1 with 3 task(s).
+INFO - Iterating over data ID query results.
+INFO - Initial bipartite graph has 3 quanta, 21 dataset nodes, and 18 edges.
+INFO - Generated 1 quantum for task characterizeImage.
+INFO - Generated 1 quantum for task singleStarCentroid.
+INFO - Generated 1 quantum for task processStar.
+INFO - Fetching and attaching datastore records for all overall inputs.
+INFO - Transforming graph skeleton into PredictedQuantumGraph components.
+INFO - Graph build complete.
+INFO - Building quantum graph for {instrument: 'LATISS', visit: 2024081300632, band: 'white', day_obs: 20240813, physical_filter: 'empty~holo4_003'} for SFM took 0.771s
+INFO - Using 4 CPUs for LATISS step1b SFM
+INFO - Starting to process characterizeImage
+INFO - Preparing execution of quantum for label=characterizeImage dataId={instrument: 'LATISS', detector: 0, visit: 2024081300632, band: 'white', day_obs: 20240813, physical_filter: 'empty~holo4_003'}.
+INFO - Constructing task and executing quantum for label=characterizeImage dataId={instrument: 'LATISS', detector: 0, visit: 2024081300632, band: 'white', day_obs: 20240813, physical_filter: 'empty~holo4_003'}.
+INFO - CharacterizeImageTask initialized with 'simple' PSF.
+INFO - Setting factor for negative detections equal to that for positive detections: 1.000000
+INFO - Detected 788 positive peaks in 73 footprints and 16486 negative peaks in 8 footprints to 10.8 +ve and 10.8 -ve sigma
+INFO - Resubtracting the background after object detection
+INFO - Measuring 73 sources
+INFO - iter 1; PSF sigma=2.0001, dimensions=(21, 21); median background=58.96
+INFO - Measuring 73 sources
+INFO - Execution of task 'characterizeImage' on quantum {instrument: 'LATISS', detector: 0, visit: 2024081300632, band: 'white', day_obs: 20240813, physical_filter: 'empty~holo4_003'} took 11.240 seconds
+INFO - Starting to process singleStarCentroid
+INFO - Preparing execution of quantum for label=singleStarCentroid dataId={instrument: 'LATISS', detector: 0, visit: 2024081300632, band: 'white', day_obs: 20240813, physical_filter: 'empty~holo4_003'}.
+INFO - Constructing task and executing quantum for label=singleStarCentroid dataId={instrument: 'LATISS', detector: 0, visit: 2024081300632, band: 'white', day_obs: 20240813, physical_filter: 'empty~holo4_003'}.
+INFO - Selected 41/73 sources
+INFO - Purged 32 sources, leaving 41 good sources
+INFO - Loading reference objects from the_monster_20250219 in region bounded by [318.39058157, 318.64380948], [-22.33646535, -22.10207720] RA Dec
+INFO - Loaded 243 reference objects
+INFO - Correcting reference catalog for proper motion to <Time object: scale='tai' format='mjd' value=60536.21509660307>
+INFO - Selected 13/243 references
+ERROR - Failure fitting astrometry. MatcherFailure: No matches found: {'iterations': 1}
+WARNING - Solving failed: No matches found: {'iterations': 1}
+INFO - focusZ=0.25390442321076995 mm
+INFO - donutDiameter = 1.4105801289487219 pixels
+INFO - Setting factor for negative detections equal to that for positive detections: 1.000000
+INFO - Detected 24 positive peaks in 4 footprints to 500 +ve and 500 -ve sigma
+INFO - Measuring 4 sources
+INFO - Centroid of main star found at (1758.836547180539, 203.69805328059908) found via QuickFrameMeasurement
+INFO - Execution of task 'singleStarCentroid' on quantum {instrument: 'LATISS', detector: 0, visit: 2024081300632, band: 'white', day_obs: 20240813, physical_filter: 'empty~holo4_003'} took 0.924 seconds
+INFO - Starting to process processStar
+INFO - Preparing execution of quantum for label=processStar dataId={instrument: 'LATISS', detector: 0, visit: 2024081300632, band: 'white', day_obs: 20240813, physical_filter: 'empty~holo4_003'}.
+INFO - Constructing task and executing quantum for label=processStar dataId={instrument: 'LATISS', detector: 0, visit: 2024081300632, band: 'white', day_obs: 20240813, physical_filter: 'empty~holo4_003'}.
+INFO - Auto centroid is using FIT in Spectractor to get the target centroid
+WARNING - Supplementary parameter already existed CALLING_CODE in parameters, use overrideParameters() to override already existing keys instead.
+INFO - Starting SPECTRACTOR
+INFO - 
+	Simbad:
+ main_id         ra             dec       coo_err_maj coo_err_min ...     plx_bibcode     plx_qual plx_err_prec plx_value matched_id
+                deg             deg           mas         mas     ...                                              mas              
+--------- --------------- --------------- ----------- ----------- ... ------------------- -------- ------------ --------- ----------
+HD 202025 318.50744480963 -22.21212412749      0.1465      0.1032 ... 2020yCat.1350....0G        A            4    6.6983  HD 202025
+WARNING - 
+	Fitted read out noise seems to be different than input readout noise. Fit=0.36306598267091855 but average of self.read_out_noise is 1.0.
+INFO - 
+	Load disperser holo4_003:
+	from /sdf/home/m/mfl/lsst/Spectractor/lib/python/spectractor/extractor/dispersers/holo4_003
+INFO - 
+	Grating characteristics:
+	N = 150.00 +/- 1.00 grooves/mm
+	Average tilt of 0.2 degrees
+INFO - Pixel value at centroid = 1783.8942708333334
+INFO - Rebinning image with rebin of 2
+INFO - Parameters post-rebinning:
+INFO - Search for the target in the image...
+INFO - 
+	Model: Polynomial2D
+Inputs: ('x', 'y')
+Outputs: ('z',)
+Model set size: 1
+Degree: 1
+Parameters:
+           c0_0                c1_0                  c0_1         
+    ------------------ -------------------- ----------------------
+    3.6535977685341727 0.001516943552638095 -0.0017913904202799397
+INFO - 
+	Gradient descent terminated in 6 iterations because the relative change of cost is below ftol=2.2222222222222223e-05.
+INFO - 
+	Gradient descent terminated in 2 iterations because the relative change of cost is below ftol=9.130752373995617e-05.
+INFO - 
+	X,Y target position in pixels: 101.592,879.227
+INFO - 
+	Rotate the image with angle theta=0.20 degree from method disperser.
+INFO - Search for the target in the rotated image...
+INFO - 
+	Model: Polynomial2D
+Inputs: ('x', 'y')
+Outputs: ('z',)
+Model set size: 1
+Degree: 1
+Parameters:
+           c0_0              c1_0               c0_1       
+    ----------------- ------------------ ------------------
+    80.03743659462388 0.2588574800500481 0.7321058196457475
+INFO - 
+	Gradient descent terminated in 8 iterations because the sum of parameter shift relative to the sum of the parameters is below xtol=1e-06.
+INFO - 
+	Gradient descent terminated in 2 iterations because the relative change of cost is below ftol=0.0008680555555555555.
+INFO - 
+	X,Y target position in pixels: 104.561,885.672
+INFO - 
+	Spectrum info copied from image
+INFO - 
+	  ======================= extract_spectrum_from_image =============================
+INFO - 
+	Extracting spectrum from image: spectrum with width 2*20 pixels and background from 70 to 90 pixels
+INFO - 
+	Extract spectrogram: crop rotated image [523:1660,795:975] (size (1137, 180))
+INFO - 
+	  ======================= Fit the transverse profile =============================
+INFO - 
+	Start PSF1D transverse fit...
+WARNING - /sdf/group/rubin/sw/conda/envs/lsst-scipipe-13.0.0/lib/python3.13/site-packages/numpy/polynomial/legendre.py:207: RuntimeWarning: overflow encountered in multiply
+  c1 = polyadd(tmp, (polymulx(c1) * (2 * i - 1)) / i)
+
+WARNING - /sdf/group/rubin/sw/conda/envs/lsst-scipipe-13.0.0/lib/python3.13/site-packages/numpy/polynomial/legendre.py:206: RuntimeWarning: overflow encountered in multiply
+  c0 = polysub(c[i - 2], (c1 * (i - 1)) / i)
+
+WARNING - /sdf/group/rubin/sw/conda/envs/lsst-scipipe-13.0.0/lib/python3.13/site-packages/numpy/lib/_polynomial_impl.py:787: RuntimeWarning: invalid value encountered in multiply
+  y = y * x + pv
+
+WARNING - /sdf/group/rubin/sw/conda/envs/lsst-scipipe-13.0.0/lib/python3.13/site-packages/numpy/lib/_polynomial_impl.py:787: RuntimeWarning: invalid value encountered in add
+  y = y * x + pv
+
+INFO - 
+	  ======================= ChromaticPSF1D polynomial fit  =============================
+INFO - 
+	Start ChromaticPSF polynomial fit with mode=1D and amplitude_priors_method=noprior...
+INFO - 
+	Iteration=0:	initial cost=6.9278e+05	initial chisq_red=15.233
+INFO - 
+	Iteration=0:	final cost=5.9339e+05	final chisq_red=13.047 	computed in 1.18s
+	New parameters: [ 0.12039456  0.19258909  0.18093647  5.01878984 -0.95515418  0.51686395
+  1.85377755 -0.24065242 -0.04290069]
+INFO - 
+	Iteration=1:	final cost=5.8916e+05	final chisq_red=12.954 	computed in 1.00s
+	New parameters: [ 0.12221771  0.19199356  0.18099183  5.06028076 -0.95079521  0.57026602
+  1.87745282 -0.24122638 -0.01689353]
+INFO - 
+	Iteration=2:	final cost=5.891e+05	final chisq_red=12.953 	computed in 0.89s
+	New parameters: [ 0.12234889  0.1922439   0.18130507  5.06831819 -0.9530812   0.57863649
+  1.88131813 -0.24191079 -0.01277998]
+INFO - 
+	Iteration=3:	final cost=5.891e+05	final chisq_red=12.953 	computed in 0.89s
+	New parameters: [ 0.12239081  0.19224711  0.18134301  5.06903475 -0.95298513  0.57956338
+  1.88169519 -0.24187098 -0.0123072 ]
+INFO - 
+	Gradient descent terminated in 3 iterations because the relative change of cost is below ftol=2.198768689533861e-05.
+INFO - 
+	x_c_0: 986.4393457697356 (fixed)
+	x_c_1: 568.0000000000008 (fixed)
+	x_c_2: 1.0567611395169586e-12 (fixed)
+	y_c_0: 0.1224 +0.0003 -0.0003 bounds=[-inf  inf]
+	y_c_1: 0.1922 +0.0005 -0.0005 bounds=[-inf  inf]
+	y_c_2: 0.1813 +0.0008 -0.0008 bounds=[-inf  inf]
+	gamma_0: 5.069 +0.002 -0.002 bounds=[-inf  inf]
+	gamma_1: -0.953 +0.003 -0.003 bounds=[-inf  inf]
+	gamma_2: 0.580 +0.005 -0.005 bounds=[-inf  inf]
+	alpha_0: 1.8817 +0.0006 -0.0006 bounds=[-inf  inf]
+	alpha_1: -0.242 +0.001 -0.001 bounds=[-inf  inf]
+	alpha_2: -0.012 +0.002 -0.002 bounds=[-inf  inf]
+	saturation_0: 11333.333333333334 (fixed)
+	
+INFO - 
+	Extract spectrogram: crop raw image [519:1656,790:975] (size (1137, 185))
+INFO - 
+	  ======================= Extract the non rotated background  =============================
+INFO - 
+	Background statistics: mean=0.311 ADU/s, RMS=0.379 ADU/s.
+INFO - 
+	  ======================= first guess for lambdas  =============================
+INFO - 
+	Extract spectrogram: crop image [519:1656,790:975] (size (1137, 185))
+	New target position in spectrogram frame: [np.float64(-417.40779570910627), np.float64(89.22704842927385)]
+INFO - 
+	Start ChromaticPSF polynomial fit with mode=2D and amplitude_priors_method=psf1d...
+INFO - 
+	  ======================= ChromaticPSF2D polynomial fit  =============================
+INFO - 
+	Fit y_c parameters...
+INFO - 
+	Iteration=0:	initial cost=1.8847e+07	initial chisq_red=412.78
+INFO - 
+	Iteration=0:	final cost=1.8519e+07	final chisq_red=405.6 	computed in 2.97s
+	New parameters: [3.35749236 2.16710792 0.17550433]
+INFO - 
+	Iteration=1:	final cost=1.8488e+07	final chisq_red=404.92 	computed in 2.89s
+	New parameters: [3.42290824 2.1794362  0.17753257]
+INFO - 
+	Gradient descent terminated in 1 iterations because the relative change of cost is below ftol=0.001954461057363432.
+INFO - 
+	x_c_0: 986.4333360436733 (fixed)
+	x_c_1: 567.9965395496254 (fixed)
+	x_c_2: 6.590774807778579e-13 (fixed)
+	y_c_0: 3.4229 +0.0004 -0.0004 bounds=[-inf  inf]
+	y_c_1: 2.1794 +0.0007 -0.0007 bounds=[-inf  inf]
+	y_c_2: 0.178 +0.001 -0.001 bounds=[-inf  inf]
+	gamma_0: 5.069034747631674 (fixed)
+	gamma_1: -0.952985125491342 (fixed)
+	gamma_2: 0.5795633829701552 (fixed)
+	alpha_0: 1.8816951851503805 (fixed)
+	alpha_1: -0.24187098397653345 (fixed)
+	alpha_2: -0.012307202295869858 (fixed)
+	saturation_0: 11333.333333333334 (fixed)
+	
+INFO - 
+	Fit all ChromaticPSF parameters...
+INFO - 
+	Iteration=0:	initial cost=1.8488e+07	initial chisq_red=404.92
+INFO - 
+	Iteration=0:	final cost=2.0318e+06	final chisq_red=44.501 	computed in 2.78s
+	New parameters: [ 3.38004596  2.17065315  0.18131403  3.87646507 -1.23791583  0.08064273
+  2.00988115 -0.29374938 -0.12197269]
+INFO - 
+	Iteration=1:	final cost=7.8459e+05	final chisq_red=17.184 	computed in 2.72s
+	New parameters: [ 3.36065344  2.16824276  0.18119802  4.877153   -1.12422079  0.32101016
+  2.29099921 -0.29915368 -0.10964659]
+INFO - 
+	Iteration=2:	final cost=7.4944e+05	final chisq_red=16.414 	computed in 2.76s
+	New parameters: [ 3.37123881  2.17238267  0.18173845  5.04226543 -0.99351273  0.47151373
+  2.36480812 -0.26111867 -0.06657948]
+INFO - 
+	Iteration=3:	final cost=7.4818e+05	final chisq_red=16.387 	computed in 2.85s
+	New parameters: [ 3.37216712  2.17395156  0.18292353  5.07347336 -0.97540172  0.50502962
+  2.38038386 -0.25126731 -0.05080052]
+INFO - 
+	Iteration=4:	final cost=7.4814e+05	final chisq_red=16.386 	computed in 2.78s
+	New parameters: [ 3.37228616  2.17403794  0.183009    5.07824896 -0.97045655  0.51077639
+  2.38277858 -0.24885141 -0.04794394]
+INFO - 
+	Gradient descent terminated in 4 iterations because the relative change of cost is below ftol=0.0001954461057363432.
+INFO - 
+	x_c_0: 986.4333360436733 (fixed)
+	x_c_1: 567.9965395496254 (fixed)
+	x_c_2: 6.590774807778579e-13 (fixed)
+	y_c_0: 3.3723 +0.0003 -0.0003 bounds=[-inf  inf]
+	y_c_1: 2.1740 +0.0005 -0.0005 bounds=[-inf  inf]
+	y_c_2: 0.1830 +0.0008 -0.0008 bounds=[-inf  inf]
+	gamma_0: 5.078 +0.002 -0.002 bounds=[-inf  inf]
+	gamma_1: -0.970 +0.003 -0.003 bounds=[-inf  inf]
+	gamma_2: 0.511 +0.005 -0.005 bounds=[-inf  inf]
+	alpha_0: 2.3828 +0.0006 -0.0006 bounds=[-inf  inf]
+	alpha_1: -0.249 +0.001 -0.001 bounds=[-inf  inf]
+	alpha_2: -0.048 +0.002 -0.002 bounds=[-inf  inf]
+	saturation_0: 11333.333333333334 (fixed)
+	
+INFO - 
+	Optimal regularisation parameter: 0.20561864837144084
+	Tr(R) = N_dof = 229.86610921672772
+	N_params = 1137
+	N_data = 45658 (excluding masked pixels and outliers)
+INFO - 
+	Sigma-clipping step 0/3 (sigma=100.0)
+INFO - 
+	Iteration=0:	initial cost=7.5937e+05	initial chisq_red=16.677
+INFO - 
+	Iteration=0:	final cost=7.5934e+05	final chisq_red=16.677 	computed in 2.10s
+	New parameters: [ 3.37220602  2.17399943  0.18310501  5.07784361 -0.96723871  0.50964952
+  2.38184903 -0.24780698 -0.04847499]
+INFO - 
+	Iteration=1:	final cost=7.5934e+05	final chisq_red=16.677 	computed in 2.11s
+	New parameters: [ 3.37222701  2.1740275   0.18309977  5.07717727 -0.96731636  0.50918246
+  2.38155686 -0.24782905 -0.04867628]
+INFO - 
+	Gradient descent terminated in 1 iterations because the relative change of cost is below ftol=1.954461057363432e-05.
+INFO - 
+	x_c_0: 986.4333360436733 (fixed)
+	x_c_1: 567.9965395496254 (fixed)
+	x_c_2: 6.590774807778579e-13 (fixed)
+	y_c_0: 3.3722 +0.0003 -0.0003 bounds=[-inf  inf]
+	y_c_1: 2.1740 +0.0005 -0.0005 bounds=[-inf  inf]
+	y_c_2: 0.1831 +0.0008 -0.0008 bounds=[-inf  inf]
+	gamma_0: 5.077 +0.002 -0.002 bounds=[-inf  inf]
+	gamma_1: -0.967 +0.003 -0.003 bounds=[-inf  inf]
+	gamma_2: 0.509 +0.005 -0.005 bounds=[-inf  inf]
+	alpha_0: 2.3816 +0.0006 -0.0006 bounds=[-inf  inf]
+	alpha_1: -0.248 +0.001 -0.001 bounds=[-inf  inf]
+	alpha_2: -0.049 +0.002 -0.002 bounds=[-inf  inf]
+	saturation_0: 11333.333333333334 (fixed)
+	
+INFO - 
+	No outliers detected at first iteration: break the sigma clipping iterations.
+INFO - Calibrating order 1 spectrum...
+INFO - 
+	Order0 total shift: 1.171pix
+	D = 187.244 mm (default: DISTANCE2CCD = 186.00 +/- 0.40 mm, 3.1 sigma shift)
+INFO - 
+	Reset spectrogram mask with current parameters.
+INFO - 
+	Full forward model fitting with regularisation parameter r=0.20561864837144084.
+INFO - 
+	Start FFM with adjust_spectrogram_position_parameters.
+INFO - 
+	Iteration=0:	initial cost=2.8469e+06	initial chisq_red=57.132
+INFO - 
+	Iteration=0:	final cost=2.5921e+06	final chisq_red=52.019 	computed in 7.12s
+	New parameters: [0.26365562 0.17943667]
+INFO - 
+	Iteration=1:	final cost=2.5815e+06	final chisq_red=51.805 	computed in 7.14s
+	New parameters: [0.30859671 0.17568585]
+INFO - 
+	Gradient descent terminated in 1 iterations because the relative change of cost is below ftol=0.01.
+INFO - 
+	A1: 1.0 (fixed)
+	A2: 1.0 (fixed)
+	A3: 1.0 (fixed)
+	D_CCD [mm]: 187.24373395370245 (fixed)
+	shift_x [pix]: 1.170974741237023 (fixed)
+	shift_y [pix]: 0.3086 +0.0009 -0.0009 bounds=[-50.0, 50.0]
+	angle [deg]: 0.17569 +6e-05 -6e-05 bounds=[-90, 90]
+	B: 1.0 (fixed)
+	R: 45.76109713358599 (fixed)
+	P [hPa]: 743.15 (fixed)
+	T [Celsius]: 8.72500038146973 (fixed)
+	z: 1.02411859544185 (fixed)
+	x_c_0_1: 985.4077957091062 (fixed)
+	x_c_1_1: 568.0000000000002 (fixed)
+	x_c_2_1: 5.256584770984448e-13 (fixed)
+	y_c_0_1: 0.0 (fixed)
+	y_c_1_1: 0.0 (fixed)
+	y_c_2_1: 0.0 (fixed)
+	gamma_0_1: 5.077177266296091 (fixed)
+	gamma_1_1: -0.9673163560463247 (fixed)
+	gamma_2_1: 0.5091824567186224 (fixed)
+	alpha_0_1: 2.381556864344735 (fixed)
+	alpha_1_1: -0.24782904931916128 (fixed)
+	alpha_2_1: -0.0486762767061926 (fixed)
+	saturation_0_1: 11333.333333333336 (fixed)
+	x_c_0_2: 985.4077957091062 (fixed)
+	x_c_1_2: 568.0000000000002 (fixed)
+	x_c_2_2: 5.256584770984448e-13 (fixed)
+	y_c_0_2: 0.0 (fixed)
+	y_c_1_2: 0.0 (fixed)
+	y_c_2_2: 0.0 (fixed)
+	gamma_0_2: 5.077177266296091 (fixed)
+	gamma_1_2: -0.9673163560463247 (fixed)
+	gamma_2_2: 0.5091824567186224 (fixed)
+	alpha_0_2: 2.381556864344735 (fixed)
+	alpha_1_2: -0.24782904931916128 (fixed)
+	alpha_2_2: -0.0486762767061926 (fixed)
+	saturation_0_2: 11333.333333333336 (fixed)
+	x_c_0_3: 985.4077957091062 (fixed)
+	x_c_1_3: 568.0000000000002 (fixed)
+	x_c_2_3: 5.256584770984448e-13 (fixed)
+	y_c_0_3: 0.0 (fixed)
+	y_c_1_3: 0.0 (fixed)
+	y_c_2_3: 0.0 (fixed)
+	gamma_0_3: 5.077177266296091 (fixed)
+	gamma_1_3: -0.9673163560463247 (fixed)
+	gamma_2_3: 0.5091824567186224 (fixed)
+	alpha_0_3: 2.381556864344735 (fixed)
+	alpha_1_3: -0.24782904931916128 (fixed)
+	alpha_2_3: -0.0486762767061926 (fixed)
+	saturation_0_3: 11333.333333333336 (fixed)
+	
+INFO - 
+	Reset spectrogram mask with current parameters.
+INFO - 	Start guess:
+	A1: 1.0 (fixed=True)
+	A2: 1.0 (fixed=True)
+	A3: 1.0 (fixed=True)
+	D_CCD [mm]: 187.24373395370245 (fixed=True)
+	shift_x [pix]: 1.170974741237023 (fixed=True)
+	shift_y [pix]: 0.30859671332270583 (fixed=True)
+	angle [deg]: 0.17568584872461057 (fixed=True)
+	B: 1.0 (fixed=True)
+	R: 45.76109713358599 (fixed=True)
+	P [hPa]: 743.15 (fixed=True)
+	T [Celsius]: 8.72500038146973 (fixed=True)
+	z: 1.02411859544185 (fixed=True)
+	x_c_0_1: 985.4077957091062 (fixed=True)
+	x_c_1_1: 568.0000000000002 (fixed=True)
+	x_c_2_1: 5.256584770984448e-13 (fixed=True)
+	y_c_0_1: 0.0 (fixed=False)
+	y_c_1_1: 0.0 (fixed=False)
+	y_c_2_1: 0.0 (fixed=False)
+	gamma_0_1: 5.077177266296091 (fixed=False)
+	gamma_1_1: -0.9673163560463247 (fixed=False)
+	gamma_2_1: 0.5091824567186224 (fixed=False)
+	alpha_0_1: 2.381556864344735 (fixed=False)
+	alpha_1_1: -0.24782904931916128 (fixed=False)
+	alpha_2_1: -0.0486762767061926 (fixed=False)
+	saturation_0_1: 11333.333333333336 (fixed=True)
+	x_c_0_2: 985.4077957091062 (fixed=True)
+	x_c_1_2: 568.0000000000002 (fixed=True)
+	x_c_2_2: 5.256584770984448e-13 (fixed=True)
+	y_c_0_2: 0.0 (fixed=False)
+	y_c_1_2: 0.0 (fixed=False)
+	y_c_2_2: 0.0 (fixed=False)
+	gamma_0_2: 5.077177266296091 (fixed=False)
+	gamma_1_2: -0.9673163560463247 (fixed=False)
+	gamma_2_2: 0.5091824567186224 (fixed=False)
+	alpha_0_2: 2.381556864344735 (fixed=False)
+	alpha_1_2: -0.24782904931916128 (fixed=False)
+	alpha_2_2: -0.0486762767061926 (fixed=False)
+	saturation_0_2: 11333.333333333336 (fixed=True)
+	x_c_0_3: 985.4077957091062 (fixed=True)
+	x_c_1_3: 568.0000000000002 (fixed=True)
+	x_c_2_3: 5.256584770984448e-13 (fixed=True)
+	y_c_0_3: 0.0 (fixed=False)
+	y_c_1_3: 0.0 (fixed=False)
+	y_c_2_3: 0.0 (fixed=False)
+	gamma_0_3: 5.077177266296091 (fixed=False)
+	gamma_1_3: -0.9673163560463247 (fixed=False)
+	gamma_2_3: 0.5091824567186224 (fixed=False)
+	alpha_0_3: 2.381556864344735 (fixed=False)
+	alpha_1_3: -0.24782904931916128 (fixed=False)
+	alpha_2_3: -0.0486762767061926 (fixed=False)
+	saturation_0_3: 11333.333333333336 (fixed=True)
+INFO - 
+	Iteration=0:	initial cost=2.4918e+06	initial chisq_red=56.886
+INFO - 
+	Iteration=0:	final cost=7.2348e+05	final chisq_red=16.516 	computed in 3.52s
+	New parameters: [ 1.13972439e-01 -1.54710151e-01  1.10973963e+00  5.35116144e+00
+ -6.73392277e-01  5.71505439e-01  2.43004854e+00 -2.25094493e-01
+ -1.35128819e-01  1.62314084e+01  2.77211608e+01  1.66382804e+01
+  1.15161283e+01  1.34221909e+01  6.32210860e+00  1.09025966e+00
+ -1.54591556e+00 -1.21067563e+00 -2.48701283e+03 -3.97333630e+03
+ -1.52150511e+03 -3.90820555e+03 -6.30503739e+03 -2.47493909e+03
+ -1.24521852e+03 -2.02199705e+03 -8.05101170e+02]
+INFO - 
+	Iteration=1:	final cost=6.4314e+05	final chisq_red=14.682 	computed in 3.53s
+	New parameters: [ 3.24449403e-01  2.12651721e-01  1.42868908e+00  4.89112064e+00
+ -1.36605789e+00  2.60085870e-01  2.34682867e+00 -3.31277364e-01
+ -1.48922160e-01  1.29276339e+01  2.22002940e+01  1.28084667e+01
+  1.44343412e+01  1.79664300e+01  1.11727674e+01  8.97756247e-01
+ -2.05057474e+00 -8.46726041e-01 -1.99290569e+03 -3.19623311e+03
+ -1.23567396e+03 -3.15096302e+03 -5.14988066e+03 -2.07554675e+03
+ -2.17560803e+02 -4.34216276e+02 -2.41716506e+02]
+INFO - 
+	Iteration=2:	final cost=6.1222e+05	final chisq_red=13.976 	computed in 3.52s
+	New parameters: [ 2.50957574e-01  8.34926098e-02  1.32132140e+00  5.44839672e+00
+ -3.65917101e-01  1.01240886e+00  2.50410637e+00 -4.78932335e-02
+  6.04830970e-02  1.09680126e+01  1.85358981e+01  1.09397611e+01
+  8.08549038e+00  7.55312242e+00  3.54510641e+00  3.50516335e-01
+ -2.86210971e+00 -1.69197858e+00 -1.96554603e+03 -3.15426407e+03
+ -1.22102500e+03 -3.06221269e+03 -5.01400593e+03 -2.02843927e+03
+  7.20368377e+02  1.02097518e+03  2.78706265e+02]
+INFO - 
+	Iteration=3:	final cost=6.0807e+05	final chisq_red=13.882 	computed in 3.56s
+	New parameters: [ 3.58425236e-01  2.75354131e-01  1.47761445e+00  5.06045800e+00
+ -1.06340738e+00  5.09496375e-01  2.38964086e+00 -2.53851096e-01
+ -8.08279981e-02  1.18393562e+01  2.03275579e+01  1.16527780e+01
+  1.46423560e+01  1.85870511e+01  1.10735890e+01  2.06578843e+00
+  6.96988073e-03  2.30004961e-01 -2.08258355e+03 -3.33917823e+03
+ -1.28961199e+03 -2.87036909e+03 -4.71939404e+03 -1.92562695e+03
+  1.33716692e+03  1.97780764e+03  6.20846169e+02]
+INFO - 
+	Gradient descent terminated in 3 iterations because the relative change of cost is below ftol=0.01.
+INFO - 
+	A1: 1.0 (fixed)
+	A2: 1.0 (fixed)
+	A3: 1.0 (fixed)
+	D_CCD [mm]: 187.24373395370245 (fixed)
+	shift_x [pix]: 1.170974741237023 (fixed)
+	shift_y [pix]: 0.30859671332270583 (fixed)
+	angle [deg]: 0.17568584872461057 (fixed)
+	B: 1.0 (fixed)
+	R: 45.76109713358599 (fixed)
+	P [hPa]: 743.15 (fixed)
+	T [Celsius]: 8.72500038146973 (fixed)
+	z: 1.02411859544185 (fixed)
+	x_c_0_1: 985.4077957091062 (fixed)
+	x_c_1_1: 568.0000000000002 (fixed)
+	x_c_2_1: 5.256584770984448e-13 (fixed)
+	y_c_0_1: 0.358 +0.002 -0.002 bounds=[-inf  inf]
+	y_c_1_1: 0.275 +0.003 -0.003 bounds=[-inf  inf]
+	y_c_2_1: 1.478 +0.003 -0.003 bounds=[-inf  inf]
+	gamma_0_1: 5.060 +0.007 -0.007 bounds=[-inf  inf]
+	gamma_1_1: -1.06 +0.01 -0.01 bounds=[-inf  inf]
+	gamma_2_1: 0.51 +0.01 -0.01 bounds=[-inf  inf]
+	alpha_0_1: 2.390 +0.003 -0.003 bounds=[-inf  inf]
+	alpha_1_1: -0.254 +0.006 -0.006 bounds=[-inf  inf]
+	alpha_2_1: -0.081 +0.006 -0.006 bounds=[-inf  inf]
+	saturation_0_1: 11333.333333333336 (fixed)
+	x_c_0_2: 985.4077957091062 (fixed)
+	x_c_1_2: 568.0000000000002 (fixed)
+	x_c_2_2: 5.256584770984448e-13 (fixed)
+	y_c_0_2: 11.84 +0.06 -0.06 bounds=[-inf  inf]
+	y_c_1_2: 20.3 +0.1 -0.1 bounds=[-inf  inf]
+	y_c_2_2: 11.65 +0.06 -0.06 bounds=[-inf  inf]
+	gamma_0_2: 14.6 +0.2 -0.2 bounds=[-inf  inf]
+	gamma_1_2: 18.6 +0.4 -0.4 bounds=[-inf  inf]
+	gamma_2_2: 11.1 +0.2 -0.2 bounds=[-inf  inf]
+	alpha_0_2: 2.07 +0.07 -0.07 bounds=[-inf  inf]
+	alpha_1_2: 0.0 +0.1 -0.1 bounds=[-inf  inf]
+	alpha_2_2: 0.23 +0.07 -0.07 bounds=[-inf  inf]
+	saturation_0_2: 11333.333333333336 (fixed)
+	x_c_0_3: 985.4077957091062 (fixed)
+	x_c_1_3: 568.0000000000002 (fixed)
+	x_c_2_3: 5.256584770984448e-13 (fixed)
+	y_c_0_3: -2083 +12 -12 bounds=[-inf  inf]
+	y_c_1_3: -3339 +18 -18 bounds=[-inf  inf]
+	y_c_2_3: -1290 +7 -7 bounds=[-inf  inf]
+	gamma_0_3: -2870 +22 -22 bounds=[-inf  inf]
+	gamma_1_3: -4719 +33 -33 bounds=[-inf  inf]
+	gamma_2_3: -1926 +12 -12 bounds=[-inf  inf]
+	alpha_0_3: 1337 +41 -41 bounds=[-inf  inf]
+	alpha_1_3: 1978 +63 -63 bounds=[-inf  inf]
+	alpha_2_3: 621 +22 -22 bounds=[-inf  inf]
+	saturation_0_3: 11333.333333333336 (fixed)
+	
+INFO - 
+	Mean FWHM: 5.922964830656346 pixels (weighted with spectrum amplitude)
+INFO - 
+	Start run_minimisation_sigma_clipping with sigma=100.0.
+INFO - 
+	Reset spectrogram mask with current parameters.
+INFO - 
+	Sigma-clipping step 0/3 (sigma=100.0)
+INFO - 
+	Iteration=0:	initial cost=5.9396e+05	initial chisq_red=13.49
+INFO - 
+	Iteration=0:	final cost=5.8856e+05	final chisq_red=13.368 	computed in 3.51s
+	New parameters: [ 3.07579492e-01  1.84021033e-01  1.40536722e+00  5.36569773e+00
+ -5.32854297e-01  8.63968301e-01  2.46623512e+00 -1.24290330e-01
+ -7.44987052e-03  1.12792882e+01  1.91882275e+01  1.11498743e+01
+  9.31394597e+00  9.54374468e+00  4.93898527e+00  5.52999917e-01
+ -2.60337198e+00 -1.50180810e+00 -2.12520627e+03 -3.40628059e+03
+ -1.31429611e+03 -2.78949988e+03 -4.59585784e+03 -1.88261018e+03
+  1.40410771e+03  2.08265366e+03  6.59086316e+02]
+INFO - 
+	Iteration=1:	final cost=5.8738e+05	final chisq_red=13.341 	computed in 3.47s
+	New parameters: [ 3.68077651e-01  2.91939846e-01  1.49292534e+00  5.10444453e+00
+ -1.00695222e+00  5.25445944e-01  2.38214793e+00 -2.77424001e-01
+ -1.14639921e-01  1.15763742e+01  1.98543854e+01  1.13607426e+01
+  1.36299392e+01  1.68507635e+01  9.78878414e+00  1.50374361e+00
+ -1.02053618e+00 -4.11094132e-01 -2.14046396e+03 -3.43074153e+03
+ -1.32363438e+03 -2.86231689e+03 -4.70881027e+03 -1.92291348e+03
+  1.59490337e+03  2.37885796e+03  7.65140688e+02]
+INFO - 
+	Iteration=2:	final cost=5.8599e+05	final chisq_red=13.309 	computed in 3.47s
+	New parameters: [ 3.37527918e-01  2.37393917e-01  1.44925213e+00  5.25007030e+00
+ -7.42491936e-01  6.91292492e-01  2.41177333e+00 -2.23149310e-01
+ -8.98222186e-02  1.13460678e+01  1.93582667e+01  1.11680051e+01
+  9.92399849e+00  1.04663594e+01  5.71889612e+00  4.26176637e-01
+ -2.90584587e+00 -1.57725699e+00 -2.16544108e+03 -3.47003289e+03
+ -1.33809246e+03 -2.72145498e+03 -4.49278732e+03 -1.84748912e+03
+  1.78683680e+03  2.67694299e+03  8.71974953e+02]
+INFO - 
+	Iteration=3:	final cost=5.8539e+05	final chisq_red=13.296 	computed in 3.51s
+	New parameters: [ 3.69301354e-01  2.94114225e-01  1.49499929e+00  5.09421471e+00
+ -1.02508912e+00  4.92689369e-01  2.35832161e+00 -3.20190513e-01
+ -1.56817439e-01  1.13422850e+01  1.94216734e+01  1.11190624e+01
+  1.22516401e+01  1.43821685e+01  8.35901513e+00  8.68135781e-01
+ -2.19362084e+00 -1.04598808e+00 -2.18527803e+03 -3.50169198e+03
+ -1.35008993e+03 -2.75568267e+03 -4.54674194e+03 -1.86732929e+03
+  2.00935853e+03  3.02210219e+03  9.95331111e+02]
+INFO - 
+	Iteration=4:	final cost=5.8492e+05	final chisq_red=13.285 	computed in 3.49s
+	New parameters: [ 3.53076833e-01  2.65120279e-01  1.47204726e+00  5.14842220e+00
+ -9.26179978e-01  5.44718874e-01  2.36111275e+00 -3.14615771e-01
+ -1.63553587e-01  1.11980076e+01  1.91159707e+01  1.09953903e+01
+  9.72979520e+00  9.96798665e+00  5.65565836e+00  2.77713542e-03
+ -3.73539513e+00 -1.95395697e+00 -2.20884556e+03 -3.53882498e+03
+ -1.36380637e+03 -2.66974557e+03 -4.41576904e+03 -1.82216756e+03
+  2.23117675e+03  3.36633612e+03  1.11849256e+03]
+INFO - 
+	Gradient descent terminated in 4 iterations because the relative change of cost is below ftol=0.001.
+INFO - 
+	A1: 1.0 (fixed)
+	A2: 1.0 (fixed)
+	A3: 1.0 (fixed)
+	D_CCD [mm]: 187.24373395370245 (fixed)
+	shift_x [pix]: 1.170974741237023 (fixed)
+	shift_y [pix]: 0.30859671332270583 (fixed)
+	angle [deg]: 0.17568584872461057 (fixed)
+	B: 1.0 (fixed)
+	R: 45.76109713358599 (fixed)
+	P [hPa]: 743.15 (fixed)
+	T [Celsius]: 8.72500038146973 (fixed)
+	z: 1.02411859544185 (fixed)
+	x_c_0_1: 985.4077957091062 (fixed)
+	x_c_1_1: 568.0000000000002 (fixed)
+	x_c_2_1: 5.256584770984448e-13 (fixed)
+	y_c_0_1: 0.353 +0.002 -0.002 bounds=[-inf  inf]
+	y_c_1_1: 0.265 +0.003 -0.003 bounds=[-inf  inf]
+	y_c_2_1: 1.472 +0.003 -0.003 bounds=[-inf  inf]
+	gamma_0_1: 5.148 +0.005 -0.005 bounds=[-inf  inf]
+	gamma_1_1: -0.926 +0.009 -0.009 bounds=[-inf  inf]
+	gamma_2_1: 0.54 +0.01 -0.01 bounds=[-inf  inf]
+	alpha_0_1: 2.361 +0.002 -0.002 bounds=[-inf  inf]
+	alpha_1_1: -0.315 +0.004 -0.004 bounds=[-inf  inf]
+	alpha_2_1: -0.164 +0.004 -0.004 bounds=[-inf  inf]
+	saturation_0_1: 11333.333333333336 (fixed)
+	x_c_0_2: 985.4077957091062 (fixed)
+	x_c_1_2: 568.0000000000002 (fixed)
+	x_c_2_2: 5.256584770984448e-13 (fixed)
+	y_c_0_2: 11.20 +0.06 -0.06 bounds=[-inf  inf]
+	y_c_1_2: 19.1 +0.1 -0.1 bounds=[-inf  inf]
+	y_c_2_2: 11.00 +0.06 -0.06 bounds=[-inf  inf]
+	gamma_0_2: 9.7 +0.2 -0.2 bounds=[-inf  inf]
+	gamma_1_2: 10.0 +0.4 -0.4 bounds=[-inf  inf]
+	gamma_2_2: 5.7 +0.2 -0.2 bounds=[-inf  inf]
+	alpha_0_2: 0.00 +0.09 -0.09 bounds=[-inf  inf]
+	alpha_1_2: -3.7 +0.2 -0.2 bounds=[-inf  inf]
+	alpha_2_2: -1.95 +0.09 -0.09 bounds=[-inf  inf]
+	saturation_0_2: 11333.333333333336 (fixed)
+	x_c_0_3: 985.4077957091062 (fixed)
+	x_c_1_3: 568.0000000000002 (fixed)
+	x_c_2_3: 5.256584770984448e-13 (fixed)
+	y_c_0_3: -2209 +11 -11 bounds=[-inf  inf]
+	y_c_1_3: -3539 +17 -17 bounds=[-inf  inf]
+	y_c_2_3: -1364 +6 -6 bounds=[-inf  inf]
+	gamma_0_3: -2670 +20 -20 bounds=[-inf  inf]
+	gamma_1_3: -4416 +32 -32 bounds=[-inf  inf]
+	gamma_2_3: -1822 +11 -11 bounds=[-inf  inf]
+	alpha_0_3: 2231 +37 -37 bounds=[-inf  inf]
+	alpha_1_3: 3366 +58 -58 bounds=[-inf  inf]
+	alpha_2_3: 1118 +21 -21 bounds=[-inf  inf]
+	saturation_0_3: 11333.333333333336 (fixed)
+	
+INFO - 
+	Outliers: 2 / 44029 data points (0.00%) at more than 100.0-sigma from best-fit model.
+INFO - 
+	Sigma-clipping step 1/3 (sigma=100.0)
+INFO - 
+	Iteration=0:	initial cost=5.8492e+05	initial chisq_red=13.285
+INFO - 
+	Iteration=0:	final cost=5.8456e+05	final chisq_red=13.277 	computed in 3.52s
+	New parameters: [ 3.68964535e-01  2.93476525e-01  1.49483466e+00  5.05398575e+00
+ -1.09784539e+00  4.23791833e-01  2.32531148e+00 -3.79734606e-01
+ -2.09321730e-01  1.11170536e+01  1.90028167e+01  1.08880805e+01
+  1.06245174e+01  1.14084565e+01  6.73014450e+00  3.58672508e-02
+ -3.73499240e+00 -1.86516083e+00 -2.23175783e+03 -3.57517557e+03
+ -1.37742521e+03 -2.68128073e+03 -4.43506223e+03 -1.82999573e+03
+  2.46433187e+03  3.72793399e+03  1.24768006e+03]
+INFO - 
+	Iteration=1:	final cost=5.843e+05	final chisq_red=13.271 	computed in 3.49s
+	New parameters: [ 3.59818629e-01  2.77128714e-01  1.48188029e+00  5.06493646e+00
+ -1.07804582e+00  4.26220144e-01  2.31662107e+00 -3.95327145e-01
+ -2.27523699e-01  1.09924037e+01  1.87509856e+01  1.07725603e+01
+  8.89685310e+00  8.33186797e+00  4.92076183e+00 -6.75948717e-01
+ -5.02417173e+00 -2.59326327e+00 -2.25373425e+03 -3.60982835e+03
+ -1.39025442e+03 -2.64345502e+03 -4.37865142e+03 -1.81138844e+03
+  2.68404201e+03  4.06894273e+03  1.36971293e+03]
+INFO - 
+	Gradient descent terminated in 1 iterations because the relative change of cost is below ftol=0.001.
+INFO - 
+	A1: 1.0 (fixed)
+	A2: 1.0 (fixed)
+	A3: 1.0 (fixed)
+	D_CCD [mm]: 187.24373395370245 (fixed)
+	shift_x [pix]: 1.170974741237023 (fixed)
+	shift_y [pix]: 0.30859671332270583 (fixed)
+	angle [deg]: 0.17568584872461057 (fixed)
+	B: 1.0 (fixed)
+	R: 45.76109713358599 (fixed)
+	P [hPa]: 743.15 (fixed)
+	T [Celsius]: 8.72500038146973 (fixed)
+	z: 1.02411859544185 (fixed)
+	x_c_0_1: 985.4077957091062 (fixed)
+	x_c_1_1: 568.0000000000002 (fixed)
+	x_c_2_1: 5.256584770984448e-13 (fixed)
+	y_c_0_1: 0.360 +0.002 -0.002 bounds=[-inf  inf]
+	y_c_1_1: 0.277 +0.003 -0.003 bounds=[-inf  inf]
+	y_c_2_1: 1.482 +0.003 -0.003 bounds=[-inf  inf]
+	gamma_0_1: 5.065 +0.005 -0.005 bounds=[-inf  inf]
+	gamma_1_1: -1.078 +0.009 -0.009 bounds=[-inf  inf]
+	gamma_2_1: 0.426 +0.01 -0.01 bounds=[-inf  inf]
+	alpha_0_1: 2.317 +0.002 -0.002 bounds=[-inf  inf]
+	alpha_1_1: -0.395 +0.004 -0.004 bounds=[-inf  inf]
+	alpha_2_1: -0.228 +0.004 -0.004 bounds=[-inf  inf]
+	saturation_0_1: 11333.333333333336 (fixed)
+	x_c_0_2: 985.4077957091062 (fixed)
+	x_c_1_2: 568.0000000000002 (fixed)
+	x_c_2_2: 5.256584770984448e-13 (fixed)
+	y_c_0_2: 10.99 +0.06 -0.06 bounds=[-inf  inf]
+	y_c_1_2: 18.8 +0.1 -0.1 bounds=[-inf  inf]
+	y_c_2_2: 10.77 +0.06 -0.06 bounds=[-inf  inf]
+	gamma_0_2: 8.9 +0.2 -0.2 bounds=[-inf  inf]
+	gamma_1_2: 8.3 +0.4 -0.4 bounds=[-inf  inf]
+	gamma_2_2: 4.9 +0.2 -0.2 bounds=[-inf  inf]
+	alpha_0_2: -0.68 +0.09 -0.09 bounds=[-inf  inf]
+	alpha_1_2: -5.0 +0.2 -0.2 bounds=[-inf  inf]
+	alpha_2_2: -2.59 +0.09 -0.09 bounds=[-inf  inf]
+	saturation_0_2: 11333.333333333336 (fixed)
+	x_c_0_3: 985.4077957091062 (fixed)
+	x_c_1_3: 568.0000000000002 (fixed)
+	x_c_2_3: 5.256584770984448e-13 (fixed)
+	y_c_0_3: -2254 +11 -11 bounds=[-inf  inf]
+	y_c_1_3: -3610 +17 -17 bounds=[-inf  inf]
+	y_c_2_3: -1390 +6 -6 bounds=[-inf  inf]
+	gamma_0_3: -2643 +22 -22 bounds=[-inf  inf]
+	gamma_1_3: -4379 +34 -34 bounds=[-inf  inf]
+	gamma_2_3: -1811 +12 -12 bounds=[-inf  inf]
+	alpha_0_3: 2684 +39 -39 bounds=[-inf  inf]
+	alpha_1_3: 4069 +61 -61 bounds=[-inf  inf]
+	alpha_2_3: 1370 +22 -22 bounds=[-inf  inf]
+	saturation_0_3: 11333.333333333336 (fixed)
+	
+INFO - 
+	Outliers: 2 / 44029 data points (0.00%) at more than 100.0-sigma from best-fit model.
+INFO - 
+	Sigma-clipping step 2/3 (sigma=100.0)
+INFO - 
+	Iteration=0:	initial cost=5.843e+05	initial chisq_red=13.271
+INFO - 
+	Iteration=0:	final cost=5.8406e+05	final chisq_red=13.266 	computed in 3.52s
+	New parameters: [ 3.66235674e-01  2.88581634e-01  1.49095920e+00  5.00805422e+00
+ -1.18219464e+00  3.54761382e-01  2.29249505e+00 -4.39460316e-01
+ -2.58158748e-01  1.08900117e+01  1.85780440e+01  1.06556892e+01
+  9.04951703e+00  8.49040446e+00  5.17946644e+00 -8.59177386e-01
+ -5.40001875e+00 -2.73899389e+00 -2.27314969e+03 -3.64057794e+03
+ -1.40174955e+03 -2.65484915e+03 -4.39792938e+03 -1.81933961e+03
+  2.91041993e+03  4.42021409e+03  1.49534890e+03]
+INFO - 
+	Iteration=1:	final cost=5.8388e+05	final chisq_red=13.262 	computed in 3.52s
+	New parameters: [ 3.59638427e-01  2.76797665e-01  1.48145445e+00  5.00369346e+00
+ -1.19086916e+00  3.44250952e-01  2.28178556e+00 -4.59049085e-01
+ -2.75471365e-01  1.07775633e+01  1.83571893e+01  1.05484479e+01
+  7.88790139e+00  6.38613221e+00  3.99130775e+00 -1.42031092e+00
+ -6.42907827e+00 -3.30001382e+00 -2.28908384e+03 -3.66572028e+03
+ -1.41108525e+03 -2.63153681e+03 -4.36366081e+03 -1.80838796e+03
+  3.13837095e+03  4.77409271e+03  1.62205169e+03]
+INFO - 
+	Gradient descent terminated in 1 iterations because the relative change of cost is below ftol=0.001.
+INFO - 
+	A1: 1.0 (fixed)
+	A2: 1.0 (fixed)
+	A3: 1.0 (fixed)
+	D_CCD [mm]: 187.24373395370245 (fixed)
+	shift_x [pix]: 1.170974741237023 (fixed)
+	shift_y [pix]: 0.30859671332270583 (fixed)
+	angle [deg]: 0.17568584872461057 (fixed)
+	B: 1.0 (fixed)
+	R: 45.76109713358599 (fixed)
+	P [hPa]: 743.15 (fixed)
+	T [Celsius]: 8.72500038146973 (fixed)
+	z: 1.02411859544185 (fixed)
+	x_c_0_1: 985.4077957091062 (fixed)
+	x_c_1_1: 568.0000000000002 (fixed)
+	x_c_2_1: 5.256584770984448e-13 (fixed)
+	y_c_0_1: 0.360 +0.002 -0.002 bounds=[-inf  inf]
+	y_c_1_1: 0.277 +0.003 -0.003 bounds=[-inf  inf]
+	y_c_2_1: 1.481 +0.003 -0.003 bounds=[-inf  inf]
+	gamma_0_1: 5.004 +0.005 -0.005 bounds=[-inf  inf]
+	gamma_1_1: -1.191 +0.008 -0.008 bounds=[-inf  inf]
+	gamma_2_1: 0.344 +0.009 -0.009 bounds=[-inf  inf]
+	alpha_0_1: 2.282 +0.002 -0.002 bounds=[-inf  inf]
+	alpha_1_1: -0.459 +0.003 -0.003 bounds=[-inf  inf]
+	alpha_2_1: -0.275 +0.004 -0.004 bounds=[-inf  inf]
+	saturation_0_1: 11333.333333333336 (fixed)
+	x_c_0_2: 985.4077957091062 (fixed)
+	x_c_1_2: 568.0000000000002 (fixed)
+	x_c_2_2: 5.256584770984448e-13 (fixed)
+	y_c_0_2: 10.78 +0.06 -0.06 bounds=[-inf  inf]
+	y_c_1_2: 18.4 +0.1 -0.1 bounds=[-inf  inf]
+	y_c_2_2: 10.55 +0.06 -0.06 bounds=[-inf  inf]
+	gamma_0_2: 7.9 +0.2 -0.2 bounds=[-inf  inf]
+	gamma_1_2: 6.4 +0.4 -0.4 bounds=[-inf  inf]
+	gamma_2_2: 4.0 +0.2 -0.2 bounds=[-inf  inf]
+	alpha_0_2: -1.42 +0.09 -0.09 bounds=[-inf  inf]
+	alpha_1_2: -6.4 +0.2 -0.2 bounds=[-inf  inf]
+	alpha_2_2: -3.30 +0.09 -0.09 bounds=[-inf  inf]
+	saturation_0_2: 11333.333333333336 (fixed)
+	x_c_0_3: 985.4077957091062 (fixed)
+	x_c_1_3: 568.0000000000002 (fixed)
+	x_c_2_3: 5.256584770984448e-13 (fixed)
+	y_c_0_3: -2289 +12 -12 bounds=[-inf  inf]
+	y_c_1_3: -3666 +19 -19 bounds=[-inf  inf]
+	y_c_2_3: -1411 +7 -7 bounds=[-inf  inf]
+	gamma_0_3: -2632 +21 -21 bounds=[-inf  inf]
+	gamma_1_3: -4364 +33 -33 bounds=[-inf  inf]
+	gamma_2_3: -1808 +12 -12 bounds=[-inf  inf]
+	alpha_0_3: 3138 +41 -41 bounds=[-inf  inf]
+	alpha_1_3: 4774 +64 -64 bounds=[-inf  inf]
+	alpha_2_3: 1622 +23 -23 bounds=[-inf  inf]
+	saturation_0_3: 11333.333333333336 (fixed)
+	
+INFO - 
+	Outliers: 2 / 44029 data points (0.00%) at more than 100.0-sigma from best-fit model.
+INFO - 
+	Outliers flat index list unchanged since last iteration: break the sigma clipping iterations.
+INFO - 
+	  niter = 0 : Newton: total computation time: 56.74533987045288s
+INFO - 
+	Order0 total shift: 1.017pix
+	D = 187.094 mm (default: DISTANCE2CCD = 186.00 +/- 0.40 mm, 2.7 sigma shift)
+INFO - 
+	Reset spectrogram mask with current parameters.
+INFO - 
+	Sigma-clipping step 0/3 (sigma=100.0)
+INFO - 
+	Iteration=0:	initial cost=5.8346e+05	initial chisq_red=13.247
+INFO - 
+	Iteration=0:	final cost=5.8305e+05	final chisq_red=13.238 	computed in 3.63s
+	New parameters: [ 3.56180339e-01  2.76599237e-01  1.47776288e+00  4.97383435e+00
+ -1.24594330e+00  3.07104662e-01  2.26878104e+00 -4.82852364e-01
+ -2.91867925e-01  1.06935647e+01  1.82168654e+01  1.04603109e+01
+  8.01613908e+00  6.53009896e+00  4.16708864e+00 -1.53021462e+00
+ -6.66395358e+00 -3.39467629e+00 -2.31431498e+03 -3.70541461e+03
+ -1.42569125e+03 -2.56340903e+03 -4.25969262e+03 -1.77248821e+03
+  3.53592002e+03  5.39015062e+03  1.84181330e+03]
+INFO - 
+	Iteration=1:	final cost=5.8296e+05	final chisq_red=13.236 	computed in 3.59s
+	New parameters: [ 3.51253522e-01  2.67830966e-01  1.47054155e+00  4.96956374e+00
+ -1.25407877e+00  3.01017318e-01  2.26171088e+00 -4.95886408e-01
+ -3.02078459e-01  1.05881964e+01  1.80179999e+01  1.03643809e+01
+  7.32241785e+00  5.26640171e+00  3.46320523e+00 -1.88761959e+00
+ -7.32217116e+00 -3.74984853e+00 -2.33382636e+03 -3.73619643e+03
+ -1.43708766e+03 -2.46950240e+03 -4.11552182e+03 -1.72209999e+03
+  3.95163352e+03  6.03441714e+03  2.07168785e+03]
+INFO - 
+	Gradient descent terminated in 1 iterations because the relative change of cost is below ftol=0.001.
+INFO - 
+	A1: 1.0 (fixed)
+	A2: 1.0 (fixed)
+	A3: 1.0 (fixed)
+	D_CCD [mm]: 187.09378369853752 (fixed)
+	shift_x [pix]: 1.0166186944119873 (fixed)
+	shift_y [pix]: 0.30859671332270583 (fixed)
+	angle [deg]: 0.17568584872461057 (fixed)
+	B: 1.0 (fixed)
+	R: 45.76109713358599 (fixed)
+	P [hPa]: 743.15 (fixed)
+	T [Celsius]: 8.72500038146973 (fixed)
+	z: 1.02411859544185 (fixed)
+	x_c_0_1: 985.4077957091062 (fixed)
+	x_c_1_1: 568.0000000000002 (fixed)
+	x_c_2_1: 5.256584770984448e-13 (fixed)
+	y_c_0_1: 0.351 +0.002 -0.002 bounds=[-inf  inf]
+	y_c_1_1: 0.268 +0.003 -0.003 bounds=[-inf  inf]
+	y_c_2_1: 1.471 +0.003 -0.003 bounds=[-inf  inf]
+	gamma_0_1: 4.970 +0.004 -0.004 bounds=[-inf  inf]
+	gamma_1_1: -1.254 +0.008 -0.008 bounds=[-inf  inf]
+	gamma_2_1: 0.301 +0.009 -0.009 bounds=[-inf  inf]
+	alpha_0_1: 2.262 +0.002 -0.002 bounds=[-inf  inf]
+	alpha_1_1: -0.496 +0.003 -0.003 bounds=[-inf  inf]
+	alpha_2_1: -0.302 +0.003 -0.003 bounds=[-inf  inf]
+	saturation_0_1: 11333.333333333336 (fixed)
+	x_c_0_2: 985.4077957091062 (fixed)
+	x_c_1_2: 568.0000000000002 (fixed)
+	x_c_2_2: 5.256584770984448e-13 (fixed)
+	y_c_0_2: 10.59 +0.06 -0.06 bounds=[-inf  inf]
+	y_c_1_2: 18.0 +0.1 -0.1 bounds=[-inf  inf]
+	y_c_2_2: 10.36 +0.06 -0.06 bounds=[-inf  inf]
+	gamma_0_2: 7.3 +0.2 -0.2 bounds=[-inf  inf]
+	gamma_1_2: 5.3 +0.4 -0.4 bounds=[-inf  inf]
+	gamma_2_2: 3.5 +0.2 -0.2 bounds=[-inf  inf]
+	alpha_0_2: -1.89 +0.1 -0.1 bounds=[-inf  inf]
+	alpha_1_2: -7.3 +0.2 -0.2 bounds=[-inf  inf]
+	alpha_2_2: -3.75 +0.1 -0.1 bounds=[-inf  inf]
+	saturation_0_2: 11333.333333333336 (fixed)
+	x_c_0_3: 985.4077957091062 (fixed)
+	x_c_1_3: 568.0000000000002 (fixed)
+	x_c_2_3: 5.256584770984448e-13 (fixed)
+	y_c_0_3: -2334 +13 -13 bounds=[-inf  inf]
+	y_c_1_3: -3736 +21 -21 bounds=[-inf  inf]
+	y_c_2_3: -1437 +8 -8 bounds=[-inf  inf]
+	gamma_0_3: -2470 +23 -23 bounds=[-inf  inf]
+	gamma_1_3: -4116 +35 -35 bounds=[-inf  inf]
+	gamma_2_3: -1722 +12 -12 bounds=[-inf  inf]
+	alpha_0_3: 3952 +55 -55 bounds=[-inf  inf]
+	alpha_1_3: 6034 +84 -84 bounds=[-inf  inf]
+	alpha_2_3: 2072 +30 -30 bounds=[-inf  inf]
+	saturation_0_3: 11333.333333333336 (fixed)
+	
+INFO - 
+	Outliers: 4 / 44046 data points (0.01%) at more than 100.0-sigma from best-fit model.
+INFO - 
+	Sigma-clipping step 1/3 (sigma=100.0)
+INFO - 
+	Iteration=0:	initial cost=5.8296e+05	initial chisq_red=13.236
+INFO - 
+	Iteration=0:	final cost=5.8287e+05	final chisq_red=13.234 	computed in 3.64s
+	New parameters: [ 3.50908604e-01  2.67223801e-01  1.46987664e+00  4.95006682e+00
+ -1.29064287e+00  2.79306985e-01  2.25235003e+00 -5.13324806e-01
+ -3.12863874e-01  1.05079170e+01  1.78737985e+01  1.02843102e+01
+  7.17908153e+00  4.95561268e+00  3.37156000e+00 -2.06161536e+00
+ -7.65936062e+00 -3.90246449e+00 -2.34196319e+03 -3.74905649e+03
+ -1.44187390e+03 -2.37813518e+03 -3.97488441e+03 -1.67269382e+03
+  4.34978655e+03  6.65178924e+03  2.29220544e+03]
+INFO - 
+	Iteration=1:	final cost=5.8281e+05	final chisq_red=13.233 	computed in 3.59s
+	New parameters: [ 3.47055483e-01  2.60346621e-01  1.46419299e+00  4.94477671e+00
+ -1.30107471e+00  2.73270889e-01  2.24648557e+00 -5.24227708e-01
+ -3.20663707e-01  1.04268216e+01  1.77202936e+01  1.02089078e+01
+  6.66865122e+00  4.01487057e+00  2.87096335e+00 -2.34390464e+00
+ -8.18267499e+00 -4.17640491e+00 -2.34572146e+03 -3.75500225e+03
+ -1.44409749e+03 -2.27638080e+03 -3.81816186e+03 -1.61756915e+03
+  4.74557741e+03  7.26568527e+03  2.51162309e+03]
+INFO - 
+	Gradient descent terminated in 1 iterations because the relative change of cost is below ftol=0.001.
+INFO - 
+	A1: 1.0 (fixed)
+	A2: 1.0 (fixed)
+	A3: 1.0 (fixed)
+	D_CCD [mm]: 187.09378369853752 (fixed)
+	shift_x [pix]: 1.0166186944119873 (fixed)
+	shift_y [pix]: 0.30859671332270583 (fixed)
+	angle [deg]: 0.17568584872461057 (fixed)
+	B: 1.0 (fixed)
+	R: 45.76109713358599 (fixed)
+	P [hPa]: 743.15 (fixed)
+	T [Celsius]: 8.72500038146973 (fixed)
+	z: 1.02411859544185 (fixed)
+	x_c_0_1: 985.4077957091062 (fixed)
+	x_c_1_1: 568.0000000000002 (fixed)
+	x_c_2_1: 5.256584770984448e-13 (fixed)
+	y_c_0_1: 0.347 +0.002 -0.002 bounds=[-inf  inf]
+	y_c_1_1: 0.260 +0.003 -0.003 bounds=[-inf  inf]
+	y_c_2_1: 1.464 +0.003 -0.003 bounds=[-inf  inf]
+	gamma_0_1: 4.945 +0.004 -0.004 bounds=[-inf  inf]
+	gamma_1_1: -1.301 +0.007 -0.007 bounds=[-inf  inf]
+	gamma_2_1: 0.273 +0.009 -0.009 bounds=[-inf  inf]
+	alpha_0_1: 2.246 +0.001 -0.001 bounds=[-inf  inf]
+	alpha_1_1: -0.524 +0.003 -0.003 bounds=[-inf  inf]
+	alpha_2_1: -0.321 +0.003 -0.003 bounds=[-inf  inf]
+	saturation_0_1: 11333.333333333336 (fixed)
+	x_c_0_2: 985.4077957091062 (fixed)
+	x_c_1_2: 568.0000000000002 (fixed)
+	x_c_2_2: 5.256584770984448e-13 (fixed)
+	y_c_0_2: 10.43 +0.06 -0.06 bounds=[-inf  inf]
+	y_c_1_2: 17.7 +0.1 -0.1 bounds=[-inf  inf]
+	y_c_2_2: 10.21 +0.06 -0.06 bounds=[-inf  inf]
+	gamma_0_2: 6.7 +0.2 -0.2 bounds=[-inf  inf]
+	gamma_1_2: 4.0 +0.4 -0.4 bounds=[-inf  inf]
+	gamma_2_2: 2.9 +0.2 -0.2 bounds=[-inf  inf]
+	alpha_0_2: -2.34 +0.1 -0.1 bounds=[-inf  inf]
+	alpha_1_2: -8.2 +0.2 -0.2 bounds=[-inf  inf]
+	alpha_2_2: -4.2 +0.1 -0.1 bounds=[-inf  inf]
+	saturation_0_2: 11333.333333333336 (fixed)
+	x_c_0_3: 985.4077957091062 (fixed)
+	x_c_1_3: 568.0000000000002 (fixed)
+	x_c_2_3: 5.256584770984448e-13 (fixed)
+	y_c_0_3: -2346 +13 -13 bounds=[-inf  inf]
+	y_c_1_3: -3755 +21 -21 bounds=[-inf  inf]
+	y_c_2_3: -1444 +8 -8 bounds=[-inf  inf]
+	gamma_0_3: -2276 +23 -23 bounds=[-inf  inf]
+	gamma_1_3: -3818 +36 -36 bounds=[-inf  inf]
+	gamma_2_3: -1618 +13 -13 bounds=[-inf  inf]
+	alpha_0_3: 4746 +56 -56 bounds=[-inf  inf]
+	alpha_1_3: 7266 +86 -86 bounds=[-inf  inf]
+	alpha_2_3: 2512 +31 -31 bounds=[-inf  inf]
+	saturation_0_3: 11333.333333333336 (fixed)
+	
+INFO - 
+	Outliers: 2 / 44046 data points (0.00%) at more than 100.0-sigma from best-fit model.
+INFO - 
+	Sigma-clipping step 2/3 (sigma=100.0)
+INFO - 
+	Iteration=0:	initial cost=5.8281e+05	initial chisq_red=13.233
+INFO - 
+	Iteration=0:	final cost=5.8276e+05	final chisq_red=13.231 	computed in 3.66s
+	New parameters: [ 3.45476939e-01  2.57531482e-01  1.46174911e+00  4.93230766e+00
+ -1.32463884e+00  2.60586803e-01  2.23988254e+00 -5.36550830e-01
+ -3.27927735e-01  1.03609281e+01  1.75992578e+01  1.01444197e+01
+  6.47664287e+00  3.62988161e+00  2.71766182e+00 -2.50611570e+00
+ -8.49384385e+00 -4.32164062e+00 -2.34777371e+03 -3.75826846e+03
+ -1.44533696e+03 -2.17699999e+03 -3.66505829e+03 -1.56369382e+03
+  5.14870595e+03  7.89103080e+03  2.73518310e+03]
+INFO - 
+	Iteration=1:	final cost=5.8273e+05	final chisq_red=13.231 	computed in 3.57s
+	New parameters: [ 3.42264795e-01  2.51800432e-01  1.45697518e+00  4.92703410e+00
+ -1.33500089e+00  2.55540650e-01  2.23513654e+00 -5.45423618e-01
+ -3.33695094e-01  1.02960946e+01  1.74766189e+01  1.00837157e+01
+  6.11788466e+00  2.96068098e+00  2.37365738e+00 -2.71774326e+00
+ -8.88899444e+00 -4.52402671e+00 -2.34835036e+03 -3.75919562e+03
+ -1.44570078e+03 -2.07447102e+03 -3.50706095e+03 -1.50806609e+03
+  5.55978347e+03  8.52878373e+03  2.96323677e+03]
+INFO - 
+	Gradient descent terminated in 1 iterations because the relative change of cost is below ftol=0.001.
+INFO - 
+	A1: 1.0 (fixed)
+	A2: 1.0 (fixed)
+	A3: 1.0 (fixed)
+	D_CCD [mm]: 187.09378369853752 (fixed)
+	shift_x [pix]: 1.0166186944119873 (fixed)
+	shift_y [pix]: 0.30859671332270583 (fixed)
+	angle [deg]: 0.17568584872461057 (fixed)
+	B: 1.0 (fixed)
+	R: 45.76109713358599 (fixed)
+	P [hPa]: 743.15 (fixed)
+	T [Celsius]: 8.72500038146973 (fixed)
+	z: 1.02411859544185 (fixed)
+	x_c_0_1: 985.4077957091062 (fixed)
+	x_c_1_1: 568.0000000000002 (fixed)
+	x_c_2_1: 5.256584770984448e-13 (fixed)
+	y_c_0_1: 0.342 +0.002 -0.002 bounds=[-inf  inf]
+	y_c_1_1: 0.252 +0.003 -0.003 bounds=[-inf  inf]
+	y_c_2_1: 1.457 +0.003 -0.003 bounds=[-inf  inf]
+	gamma_0_1: 4.927 +0.004 -0.004 bounds=[-inf  inf]
+	gamma_1_1: -1.335 +0.007 -0.007 bounds=[-inf  inf]
+	gamma_2_1: 0.256 +0.008 -0.008 bounds=[-inf  inf]
+	alpha_0_1: 2.235 +0.001 -0.001 bounds=[-inf  inf]
+	alpha_1_1: -0.545 +0.002 -0.002 bounds=[-inf  inf]
+	alpha_2_1: -0.334 +0.003 -0.003 bounds=[-inf  inf]
+	saturation_0_1: 11333.333333333336 (fixed)
+	x_c_0_2: 985.4077957091062 (fixed)
+	x_c_1_2: 568.0000000000002 (fixed)
+	x_c_2_2: 5.256584770984448e-13 (fixed)
+	y_c_0_2: 10.30 +0.06 -0.06 bounds=[-inf  inf]
+	y_c_1_2: 17.5 +0.1 -0.1 bounds=[-inf  inf]
+	y_c_2_2: 10.08 +0.06 -0.06 bounds=[-inf  inf]
+	gamma_0_2: 6.1 +0.2 -0.2 bounds=[-inf  inf]
+	gamma_1_2: 3.0 +0.4 -0.4 bounds=[-inf  inf]
+	gamma_2_2: 2.4 +0.2 -0.2 bounds=[-inf  inf]
+	alpha_0_2: -2.7 +0.1 -0.1 bounds=[-inf  inf]
+	alpha_1_2: -8.9 +0.2 -0.2 bounds=[-inf  inf]
+	alpha_2_2: -4.5 +0.1 -0.1 bounds=[-inf  inf]
+	saturation_0_2: 11333.333333333336 (fixed)
+	x_c_0_3: 985.4077957091062 (fixed)
+	x_c_1_3: 568.0000000000002 (fixed)
+	x_c_2_3: 5.256584770984448e-13 (fixed)
+	y_c_0_3: -2348 +13 -13 bounds=[-inf  inf]
+	y_c_1_3: -3759 +21 -21 bounds=[-inf  inf]
+	y_c_2_3: -1446 +8 -8 bounds=[-inf  inf]
+	gamma_0_3: -2074 +25 -25 bounds=[-inf  inf]
+	gamma_1_3: -3507 +38 -38 bounds=[-inf  inf]
+	gamma_2_3: -1508 +13 -13 bounds=[-inf  inf]
+	alpha_0_3: 5560 +58 -58 bounds=[-inf  inf]
+	alpha_1_3: 8529 +90 -90 bounds=[-inf  inf]
+	alpha_2_3: 2963 +32 -32 bounds=[-inf  inf]
+	saturation_0_3: 11333.333333333336 (fixed)
+	
+INFO - 
+	Outliers: 2 / 44046 data points (0.00%) at more than 100.0-sigma from best-fit model.
+INFO - 
+	Outliers flat index list unchanged since last iteration: break the sigma clipping iterations.
+INFO - 
+	  niter = 1 : Newton: total computation time: 88.79184579849243s
+INFO - 
+	Order0 total shift: -1.486pix
+	D = 187.598 mm (default: DISTANCE2CCD = 186.00 +/- 0.40 mm, 4.0 sigma shift)
+INFO - 
+    Line    Tabulated  Detected    Shift         Err         FWHM     Amplitude       SNR      Chisq   Eqwidth_mod Eqwidth_data
+                nm        nm         nm           nm                                          reduced       nm          nm     
+----------- --------- --------- ----------- ------------- --------- -------------- --------- --------- ----------- ------------
+  $Ca_{II}$   393.366 388.27853   -5.087479   0.008637536 12.028845 -5.8801087e-13 20.804152  9.133172   1.0218487    32.604042
+  $Ca_{II}$   396.847 395.11017  -1.7368399   0.015159988 5.0507536 -6.0510424e-13 21.408922  9.133172  0.44140428     8.252858
+$H\epsilon$     397.0 398.28586    1.285859   0.041985244 3.8728957 -1.0964319e-12 38.792366  9.133172  0.61313754    4.4694695
+  $H\delta$     410.2  409.9067  -0.2932863   0.027578834  7.506794  -2.225913e-12 78.754036  9.133172   2.4131012    2.6849017
+   $Fe_{I}$    430.79 423.74106  -7.0489316   0.005417704 14.116077 -1.0128475e-12 35.835106  9.133172   2.0663166   -1.6124475
+  $H\gamma$     434.0 433.72455 -0.27546334    0.01835413 6.9383416 -2.7936902e-12  98.84231  9.133172   2.7996202    -8.333911
+   $Fe_{I}$   438.355 442.37827    4.023266  0.0043571913  10.87963  -8.133024e-13  28.77509  9.133172   1.2779952  -14.3802595
+   $He_{I}$     447.1  451.2074    4.107395   0.007126892 11.085645 -6.2261497e-13 22.028463  9.133172   0.9971343   -14.127081
+   $H\beta$     486.3 485.73352  -0.5664734   0.016156653 5.4273944  -2.063244e-12 85.150375 5.6177754     1.89181   -0.5432029
+   $Mg_{I}$    517.27  516.8118 -0.45816544 1.0805334e-05  3.654461 -1.1545669e-13  4.764914 5.6177754  0.07127085    0.7080077
+  $H\alpha$     656.3  655.6858  -0.6142183   0.024229612  4.708111  -7.697731e-13 52.239906 2.2057095   1.4464451  -0.14619699
+   $O_2(B)$   687.472 687.91925  0.44724903   0.060193017 5.2395234  -3.052209e-13 20.713522 2.2057095  0.63802034    2.3556259
+      $O_2$     760.3  760.3085 0.008450962    0.04108977  4.156761  -9.499277e-13 74.671776   79.4991   2.5228584    3.1734884
+      $O_2$     763.1 764.75464    1.654611    0.06529723  3.934214 -5.7578497e-13 45.261215   79.4991   1.4469054    2.9703553
+   $O_2(Z)$   822.696  818.6936   -4.002383   0.032473825 4.1136885 -4.4229567e-13 35.506783 6.7884183   1.6584936    0.9516474
+   $O_2(Y)$   898.765 900.35596   1.5909569   0.038126778  3.446182 -2.8628394e-13  28.20566 14.460295   1.4573146     1.051852
+    $H_2 O$     935.0 938.50574   3.5057218 1.1549545e-28 13.457759 -4.1829225e-14  4.682174 23.860046   1.3273883    3.8166795
+INFO - Finished processing {instrument: 'LATISS', detector: 0, visit: 2024081300632, band: 'white', day_obs: 20240813, physical_filter: 'empty~holo4_003'}
+INFO - 
+	Image saved in /sdf/group/rubin/repo/main/LATISS/runs/quickLookTesting/841/spectractorImage/20240813/white/empty~holo4_003/2024081300632/qzm19znr443dxpnqspectractorImage_LATISS_white_empty~holo4_003_2024081300632_RXX_S00_LATISS_runs_quickLookTesting_841.tmp.fits
+INFO - 
+	Spectrum saved in /sdf/group/rubin/repo/main/LATISS/runs/quickLookTesting/841/spectractorSpectrum/20240813/white/empty~holo4_003/2024081300632/s54s0ghyg50zdgyespectractorSpectrum_LATISS_white_empty~holo4_003_2024081300632_RXX_S00_LATISS_runs_quickLookTesting_841.tmp.fits
+INFO - Execution of task 'processStar' on quantum {instrument: 'LATISS', detector: 0, visit: 2024081300632, band: 'white', day_obs: 20240813, physical_filter: 'empty~holo4_003'} took 220.691 seconds
+ERROR - No free or busy workers available for podFlavor=<PodFlavor.PSF_PLOTTER: 3>, cannot dispatch work.
+ERROR - No workers available for podFlavor=<PodFlavor.PSF_PLOTTER: 3>, dropping plotter dispatch
+INFO - Sending 2024081300632 for fwhm plotting
+ERROR - No free or busy workers available for podFlavor=<PodFlavor.FWHM_PLOTTER: 4>, cannot dispatch work.
+ERROR - No workers available for podFlavor=<PodFlavor.FWHM_PLOTTER: 4>, dropping plotter dispatch
+ERROR - No free or busy workers available for podFlavor=<PodFlavor.ZERNIKE_PREDICTED_FWHM_PLOTTER: 5>, cannot dispatch work.
+ERROR - No workers available for podFlavor=<PodFlavor.ZERNIKE_PREDICTED_FWHM_PLOTTER: 5>, dropping plotter dispatch
+
+--------------------------------------------------------------------------------

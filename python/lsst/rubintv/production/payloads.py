@@ -83,8 +83,9 @@ def getDetectorId(payload: Payload) -> int | None:
 
     Returns
     -------
-    detectorId : `int`
-        The detector ID, or None if there is no detector ID in the payload.
+    detectorId : `int` or `None`
+        The detector ID, or ``None`` if there is no detector ID in the
+        payload's dataId.
     """
     if "detector" in payload.dataId:
         return int(payload.dataId["detector"])
@@ -97,6 +98,14 @@ class Payload:
     A dataclass representing a payload.
 
     These go in minimal, but come out full, by using the butler.
+
+    Most payloads carry a real ``pipelineGraphBytes`` blob and an
+    output ``run`` collection — they describe a graph fragment for a
+    worker to execute. A small number of "command" dispatches (the
+    focal-plane mosaic plotters in particular) instead just need to
+    tell a worker which task to run on a given dataId, without any
+    graph at all. Those use the optional ``taskName`` field and leave
+    ``pipelineGraphBytes`` empty and ``run`` blank.
     """
 
     dataId: DataCoordinate
@@ -104,6 +113,7 @@ class Payload:
     run: str
     who: str
     specialMessage: str = ""
+    taskName: str | None = None
 
     @classmethod
     def from_json(
@@ -121,6 +131,7 @@ class Payload:
             run=json_dict["run"],
             who=json_dict["who"],
             specialMessage=json_dict.get("specialMessage", ""),
+            taskName=json_dict.get("taskName"),
         )
 
     def to_json(self) -> str:
@@ -129,6 +140,7 @@ class Payload:
             "run": self.run,
             "who": self.who,
             "specialMessage": self.specialMessage,
+            "taskName": self.taskName,
         }
         json_dict["dataId"] = dict(self.dataId.required)
         return json.dumps(json_dict)

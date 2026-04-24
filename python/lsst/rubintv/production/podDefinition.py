@@ -35,11 +35,13 @@ class PodType(Enum):
 
 
 class PodFlavor(Enum):
-    # all items much contain WORKER if they're not the head node
-    # all items must also provide their type via an entry in podFlavorToPodType
+    # all items must provide their type via an entry in podFlavorToPodType
     SFM_WORKER = auto()
     AOS_WORKER = auto()
     PSF_PLOTTER = auto()
+    FWHM_PLOTTER = auto()
+    ZERNIKE_PREDICTED_FWHM_PLOTTER = auto()
+    RADIAL_PLOTTER = auto()
     NIGHTLYROLLUP_WORKER = auto()
     STEP1B_WORKER = auto()
     STEP1B_AOS_WORKER = auto()
@@ -50,6 +52,13 @@ class PodFlavor(Enum):
     PERFORMANCE_MONITOR = auto()
     GUIDER_WORKER = auto()
     BACKLOG_WORKER = auto()
+    # FOCUS_SWEEP_ANALYZER and DONUT_LAUNCHER consume from OCS-pushed
+    # Redis lists rather than the standard payload-based queue, so the
+    # ``queueName`` derived from PodDetails is unused — they live in
+    # the enum purely so the consumer classes have a real PodDetails
+    # for identity, logging and operational monitoring.
+    FOCUS_SWEEP_ANALYZER = auto()
+    DONUT_LAUNCHER = auto()
 
     HEAD_NODE = auto()
 
@@ -71,6 +80,9 @@ def podFlavorToPodType(podFlavor: PodFlavor) -> PodType:
         PodFlavor.SFM_WORKER: PodType.PER_DETECTOR,
         PodFlavor.AOS_WORKER: PodType.PER_DETECTOR,
         PodFlavor.PSF_PLOTTER: PodType.PER_INSTRUMENT,
+        PodFlavor.FWHM_PLOTTER: PodType.PER_INSTRUMENT,
+        PodFlavor.ZERNIKE_PREDICTED_FWHM_PLOTTER: PodType.PER_INSTRUMENT,
+        PodFlavor.RADIAL_PLOTTER: PodType.PER_INSTRUMENT,
         PodFlavor.NIGHTLYROLLUP_WORKER: PodType.PER_INSTRUMENT,
         PodFlavor.STEP1B_WORKER: PodType.PER_INSTRUMENT,
         PodFlavor.STEP1B_AOS_WORKER: PodType.PER_INSTRUMENT,
@@ -83,6 +95,8 @@ def podFlavorToPodType(podFlavor: PodFlavor) -> PodType:
         # BACKLOG_WORKER can run any step1 workload, no detector affinity, just
         # a depth
         PodFlavor.BACKLOG_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.FOCUS_SWEEP_ANALYZER: PodType.PER_INSTRUMENT_SINGLETON,
+        PodFlavor.DONUT_LAUNCHER: PodType.PER_INSTRUMENT_SINGLETON,
     }
     return mapping[podFlavor]
 
