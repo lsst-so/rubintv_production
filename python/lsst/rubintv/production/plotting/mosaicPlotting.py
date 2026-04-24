@@ -116,7 +116,10 @@ class Plotter:
         dayObs = expRecord.day_obs
         seqNum = expRecord.seq_num
 
-        nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, expRecord.id, who="ISR"))
+        # count of detectors that produced a binned post-ISR image — this
+        # is the pipeline-agnostic figure the mosaic consumer actually
+        # cares about (every step1a pipeline contains an ISR quantum).
+        nExpected = self.redisHelper.getNumBinnedIsrProduced(self.instrument, expRecord.id)
 
         stretch = "CCS"
         displayToUse: Any = None

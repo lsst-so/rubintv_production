@@ -41,6 +41,8 @@ __all__ = [
     "WITNESS_DETECTOR_KEY",
     "TRACKING_INITIALIZED_FIELD",
     "TRACKING_PIPELINE_CONFIG_FIELD",
+    "TRACKING_MOSAIC_DISPATCHED_FIELD",
+    "TRACKING_BINNED_ISR_PREFIX",
     "getNewDataQueueName",
     "getPodRunningKey",
     "getPodBusyKey",
@@ -65,6 +67,7 @@ __all__ = [
     "getTrackingStep1aDispatchedField",
     "getTrackingStep1bDispatchedField",
     "getTrackingStep1bFinishedField",
+    "getTrackingBinnedIsrField",
 ]
 
 
@@ -85,6 +88,19 @@ TRACKING_INITIALIZED_FIELD = "_initialized"
 #: Hash field inside the per-exposure tracking hash holding the AOS
 #: pipeline name (e.g. ``"AOS_DANISH"``) for the exposure.
 TRACKING_PIPELINE_CONFIG_FIELD = "pipeline_config"
+
+#: Hash field inside the per-exposure tracking hash marking that the
+#: post-ISR focal-plane mosaic has been dispatched.
+TRACKING_MOSAIC_DISPATCHED_FIELD = "_mosaicDispatched"
+
+#: Prefix for per-detector hash fields marking that a binned post-ISR
+#: image has been produced. The full field name is
+#: ``_binnedIsr:{detector}`` (see ``getTrackingBinnedIsrField``). Tracked
+#: separately from the per-who ``{who}:finished:{det}`` fields because
+#: every pipeline contains an ISR quantum, so binned-ISR production is
+#: driven by *any* step1a pipeline finishing for a detector, not by a
+#: specific ``who``.
+TRACKING_BINNED_ISR_PREFIX = "_binnedIsr:"
 
 
 # ----------------------------------------------------------------------------
@@ -542,3 +558,24 @@ def getTrackingStep1bFinishedField(who: str) -> str:
         The tracking-hash field name.
     """
     return f"{who}:step1bFinished"
+
+
+def getTrackingBinnedIsrField(detector: int) -> str:
+    """Return the hash field marking that a binned post-ISR image has
+    been produced for ``detector``.
+
+    This field is deliberately *not* keyed by ``who``: every step1a
+    pipeline (SFM, AOS, ISR) contains an ISR quantum, so binned-ISR
+    production is pipeline-agnostic.
+
+    Parameters
+    ----------
+    detector : `int`
+        The detector number.
+
+    Returns
+    -------
+    field : `str`
+        The tracking-hash field name.
+    """
+    return f"{TRACKING_BINNED_ISR_PREFIX}{detector}"

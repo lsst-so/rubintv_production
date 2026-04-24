@@ -112,6 +112,9 @@ expire while others persist.
   - `{who}:step1aDispatched` -> "1" (gather triggered for this who)
   - `{who}:step1bDispatched` -> "1" (step1b sent to worker)
   - `{who}:step1bFinished` -> "1" (step1b worker completed)
+  - `_binnedIsr:{det}` -> "1" (binned post-ISR image produced; pipeline-
+    agnostic since every step1a pipeline contains an ISR quantum)
+  - `_mosaicDispatched` -> "1" (post-ISR focal-plane mosaic dispatched)
   - `pipeline_config` -> AOS pipeline name ("AOS_DANISH", etc.)
 - Workers write `{who}:finished:{det}` via atomic `HSET` (no races)
 - Head node writes expected detectors and dispatch flags
@@ -151,8 +154,12 @@ expire while others persist.
 {instrument}-{taskName}-FAILEDCOUNTER
 ```
 - Fields: `{dataId_json}` -> count
-- Used for per-task tracking within a pipeline (e.g. `binnedIsrCreation`)
+- Used for per-task tracking within a pipeline
 - Separate from the tracking hash — different abstraction layer
+
+Post-ISR mosaic triggering does **not** use this per-task counter any more
+— it uses the `_binnedIsr:{det}` / `_mosaicDispatched` fields on the
+per-exposure tracking hash instead (see "PostISR Mosaic" below).
 
 ### 7. Visit Summary Stats (HASH with TTL)
 
@@ -234,9 +241,9 @@ wavefront sensors (AOS), each dispatched to a dedicated worker pod.
      SADD LSSTCam-ACTIVE-EXPOSURES {expId}
      HSET LSSTCam-TRACKING-{expId} _initialized 1
      EXPIRE LSSTCam-TRACKING-{expId} 216000
-2. Write expected detectors for AOS and ISR:
-     HSET LSSTCam-TRACKING-{expId} AOS:expected "191,192,195,196,199,200,203,204"
-     HGET + merge + HSET LSSTCam-TRACKING-{expId} ISR:expected (append CWFS detectors)
+2. Write expected detectors under the actual who for this dispatch
+   ("AOS" for non-calibration, "ISR" for calibration):
+     HSET LSSTCam-TRACKING-{expId} {who}:expected "191,192,195,196,199,200,203,204"
 3. Record which AOS pipeline is active:
      HSET LSSTCam-TRACKING-{expId} pipeline_config "AOS_DANISH"
 4. For each CWFS detector:
@@ -250,13 +257,21 @@ wavefront sensors (AOS), each dispatched to a dedicated worker pod.
      HSET LSSTCam-TRACKING-{expId} _initialized 1
      EXPIRE LSSTCam-TRACKING-{expId} 216000
 2. Get enabled detectors from CameraControlConfig (up to 189)
-3. Write expected detectors for ISR (append) and SFM:
-     HGET + merge + HSET LSSTCam-TRACKING-{expId} ISR:expected (append imaging dets)
-     HSET LSSTCam-TRACKING-{expId} SFM:expected "10,12,...,188"
+3. Write expected detectors under the dispatch who (append=True so the
+   calibration case, where doAosFanout has already written "ISR:expected"
+   with the CWFS detectors, keeps those and unions in the imaging ones):
+     HGET + merge + HSET LSSTCam-TRACKING-{expId} {who}:expected
 4. For each detector, match to its dedicated worker via detector affinity:
      LPUSH SFM_WORKER-LSSTCam-001-{det} <payload JSON>
      HINCRBY _QUEUE-LENGTHS SFM_WORKER-LSSTCam-001-{det} 1
 ```
+
+`who:expected` is keyed by the pipeline actually being dispatched —
+"SFM", "AOS", or "ISR". It is **not** piggy-backed across pipelines:
+binned-ISR production is tracked independently via the pipeline-agnostic
+`_binnedIsr:{det}` fields (see "PostISR Mosaic" below), so the ISR
+expected set only carries detectors that have a real ISR-pipeline
+payload dispatched to them (calibration images).
 
 **Detector affinity**: each PER_DETECTOR worker handles exactly one detector.
 The head node finds the right worker by matching `detectorNumber` in the
@@ -275,16 +290,23 @@ won't block the gather step.
 3. On payload received, calls announceBusy():
      SET {queue}+IS_BUSY 1 EX 900
 4. Deserialize Payload, execute pipeline quanta
-5. For each completed quantum (e.g. ISR, then calibrateImage):
+5. For each completed quantum:
      HINCRBY {instrument}-{taskLabel}-FINISHEDCOUNTER {dataIdNoDetector} 1
+   Additionally, each ISR quantum (from ANY step1a pipeline) records that
+   a binned post-ISR image has been produced for its detector:
+     HSET {instrument}-TRACKING-{expId} _binnedIsr:{det} 1
 6. After all quanta done, report detector-level completion:
      HSET {instrument}-TRACKING-{expId} {who}:finished:{det} 1
 7. Back to step 1
 ```
 
-Note: step 5 uses the per-task counter (for things like `binnedIsrCreation`
-which triggers post-ISR mosaic assembly). Step 6 writes to the tracking
-hash, marking this specific detector as finished for the given pipeline.
+Note: step 5's per-task counter is written for every task label but is
+not currently consumed by the head node — the post-ISR mosaic trigger
+reads `_binnedIsr:{det}` from the tracking hash instead. The
+`_binnedIsr:{det}` field is deliberately *not* who-keyed: every step1a
+pipeline contains an ISR quantum, so the set of detectors that have
+produced a binned ISR image is pipeline-agnostic. Step 6 writes to the
+tracking hash under the specific dispatched `who`.
 
 ### Gather Trigger (Head Node)
 
@@ -323,11 +345,14 @@ on the same per-exposure tracking hash.
       - RADIAL_PLOTTER (SFM, non-LATISS)
 ```
 
-**Key subtlety**: the ISR expected detectors in the tracking hash are
-written with `append=True` by both `doAosFanout` (CWFS detectors) and
-`doDetectorFanout` (imaging detectors), because ISR runs as the first
-step of every pipeline. The SFM expected field covers only imaging
-detectors, the AOS expected field covers only CWFS detectors.
+**Key subtlety**: each `{who}:expected` field only covers detectors
+actually dispatched with that `who`. The SFM field covers only imaging
+detectors, the AOS field covers only CWFS detectors, and the ISR field
+is written only for genuine ISR-pipeline dispatches (calibration
+images). Binned-ISR production from ISR quanta running *inside* SFM/AOS
+pipelines is tracked separately via the `_binnedIsr:{det}` fields —
+deliberately pipeline-agnostic, so we don't have to fake the ISR
+expected set to make the post-ISR mosaic trigger fire.
 
 ### Post-step1b Worker-Initiated Dispatch
 
@@ -351,19 +376,35 @@ AOS step1b completion:
   INCR {instrument}-step1b-AOS-VISIT_FINISIHED_COUNTER
 ```
 
-### PostISR Mosaic (Task-Level Gather)
+### PostISR Mosaic (Pipeline-Agnostic Gather)
 
-A second gather pattern uses per-task counters instead of detector-level
-counters. This tracks the `binnedIsrCreation` task specifically:
+The post-ISR focal-plane mosaic fires when every detector that had *any*
+step1a pipeline dispatched to it (SFM, AOS, or ISR) has produced its
+binned ISR image. Because every step1a pipeline contains an ISR quantum,
+binned-ISR production is tracked per-detector on the unified tracking
+hash, with no `who` key — a single `_binnedIsr:{det}` field is set "1"
+regardless of which pipeline the ISR quantum belonged to.
 
 ```
-1. Each worker, after writing a binned ISR image:
-     HINCRBY {instrument}-binnedIsrCreation-FINISHEDCOUNTER {dataIdNoDetector} 1
+1. Each worker's ISR quantum, on success or failure:
+     HSET {instrument}-TRACKING-{expId} _binnedIsr:{det} 1
 
-2. Head node, in dispatchPostIsrMosaic():
-     HGETALL {instrument}-binnedIsrCreation-FINISHEDCOUNTER
-     For each dataId: compare count vs ISR:expected in TRACKING hash
-     If complete: enqueue to MOSAIC_WORKER, then HDEL the counter
+2. Head node, in dispatchPostIsrMosaic() (runs before the per-who
+   gather dispatches so it still sees the exposure in the active set):
+     SMEMBERS {instrument}-ACTIVE-EXPOSURES
+     For each active expId:
+       HGETALL {instrument}-TRACKING-{expId}
+       -> parse into ExposureProcessingInfo
+       If _mosaicDispatched is set: skip
+       If binnedIsrProduced >= union(expected across all whos): dispatch
+         - enqueue to MOSAIC_WORKER
+         - HSET {instrument}-TRACKING-{expId} _mosaicDispatched 1
+
+3. allGathersDispatched() (used by dispatchGatherSteps and dispatch-
+   PostIsrMosaic to decide whether to complete the exposure) will hold
+   the exposure in the active set while _binnedIsr fields exist but
+   _mosaicDispatched is unset. LATISS never writes _binnedIsr fields, so
+   the gate is a no-op there.
 ```
 
 ## Timeout Summary

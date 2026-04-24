@@ -925,12 +925,7 @@ class HeadProcessController:
             payloads[detId] = payload
 
         self.redisHelper.initExposureTracking(self.instrument, expRecord.id)
-        self.redisHelper.setExpectedDetectors(self.instrument, expRecord.id, list(detectorIds), "AOS")
-        # AOS is running ISR (for now, at least) so we need to write that we
-        # expected the detectors from that processing too.
-        self.redisHelper.setExpectedDetectors(
-            self.instrument, expRecord.id, list(detectorIds), "ISR", append=True
-        )
+        self.redisHelper.setExpectedDetectors(self.instrument, expRecord.id, list(detectorIds), who)
         self.redisHelper.setAosPipelineConfig(self.instrument, expRecord.id, self.currentAosPipeline)
 
         self._dispatchPayloads(payloads, PodFlavor.AOS_WORKER)
@@ -1004,8 +999,10 @@ class HeadProcessController:
             results = set(self.butler.registry.queryDataIds(["detector"], instrument=instrument))
             detectorIds = sorted([item["detector"] for item in results])  # type: ignore
 
-        self.redisHelper.setExpectedDetectors(instrument, expRecord.id, detectorIds, "ISR", append=True)
-        self.redisHelper.setExpectedDetectors(instrument, expRecord.id, detectorIds, who)
+        # append=True so calibration LSSTCam images (where ``doAosFanout``
+        # already wrote CWFS detectors under the same who="ISR") keep the
+        # CWFS entries rather than getting them clobbered.
+        self.redisHelper.setExpectedDetectors(instrument, expRecord.id, detectorIds, who, append=True)
 
         namedPattern = self.focalPlaneControl.currentNamedPattern if self.focalPlaneControl else None
         self.log.info(
@@ -1103,11 +1100,7 @@ class HeadProcessController:
             if "detector" in failure.dataId:
                 det = int(failure.dataId["detector"])
                 expId = getExpIdOrVisitId(failure.dataId)
-                # who=ISR is always set to expect in addition, so always
-                # remove in addition
-                pipelines = ["ISR"] if failure.who == "ISR" else ["ISR", failure.who]
-                for who in pipelines:
-                    self.redisHelper.removeExpectedDetectors(self.instrument, expId, [det], who)
+                self.redisHelper.removeExpectedDetectors(self.instrument, expId, [det], failure.who)
 
     def dispatchOneOffProcessing(self, expRecord: DimensionRecord, podFlavor: PodFlavor) -> None:
         """Send the expRecord out for processing based on current selection.
@@ -1337,52 +1330,61 @@ class HeadProcessController:
         return True  # we sent something out
 
     def dispatchPostIsrMosaic(self) -> None:
-        """Dispatch the focal plane mosaic task.
+        """Dispatch the focal plane mosaic task for any exposure whose
+        binned post-ISR images are all in.
 
-        This will be dispatched to a worker which will then gather the
-        individual CCD mosaics and make the full focal plane mosaic and upload
-        to S3. At the moment, it will only work when everything is completed.
+        Iterates the active-exposures set, checks the unified tracking
+        hash for per-detector binned-ISR completion, and dispatches the
+        mosaic once every dispatched detector (across all whos) has
+        produced its binned ISR. Marks the tracking hash so the mosaic
+        isn't re-dispatched on subsequent loop ticks, and so
+        ``allGathersDispatched`` can then allow the exposure to be
+        completed.
         """
         if self.instrument == "LATISS":
             # single chip cameras aren't plotted as binned mosaics, so this
             # happens in a one-off-processor instead for all round ease.
             return
 
-        triggeringTask = "binnedIsrCreation"
         dataProduct = "post_isr_image"
-
-        allDataIds = set(self.redisHelper.getAllDataIdsForTask(self.instrument, triggeringTask))
-
-        completeIds = []
-        for _id in allDataIds:
-            nFinished = self.redisHelper.getNumTaskFinished(self.instrument, triggeringTask, _id)
-            expOrVisitId = int(_id["exposure"]) if "exposure" in _id else int(_id["visit"])
-            nExpected = len(self.redisHelper.getExpectedDetectors(self.instrument, expOrVisitId, who="ISR"))
-            if nExpected > 0 and nFinished >= nExpected:
-                completeIds.append(_id)
-            if nFinished > nExpected:
-                msg = f"Found {nFinished=} for {triggeringTask} for {_id=}, but expected only {nExpected}"
-                self.log.warning(msg)
-
-        if not completeIds:
+        activeIds = self.redisHelper.getActiveExposures(self.instrument)
+        if not activeIds:
             return
 
-        idString = (
-            f"{len(completeIds)} images: {completeIds}" if len(completeIds) > 1 else f"expId={completeIds[0]}"
-        )
-        self.log.info(f"Dispatching complete {dataProduct} mosaic for {idString}")
+        for expId in activeIds:
+            info = self.redisHelper.getExposureProcessingInfo(self.instrument, expId)
+            if info is None or info.isMosaicDispatched():
+                continue
 
-        for dataId in completeIds:  # intExpId because mypy doesn't like reusing loop variables?!
-            payload = Payload(dataId=dataId, pipelineGraphBytes=b"", run="", who="SFM", taskName=dataProduct)
+            expectedAll = info.getAllExpectedDetectors()
+            produced = info.getBinnedIsrProduced()
+            if not expectedAll or not produced >= expectedAll:
+                continue
+
+            dataCoord = DataCoordinate.standardize(
+                instrument=self.instrument, exposure=expId, universe=self.butler.dimensions
+            )
+            payload = Payload(
+                dataId=dataCoord,
+                pipelineGraphBytes=b"",
+                run="",
+                who="SFM",
+                taskName=dataProduct,
+            )
             worker = self.redisHelper.getSingleWorker(self.instrument, PodFlavor.MOSAIC_WORKER)
             if worker is None:
                 self.log.error(f"No free workers available for {dataProduct} mosaic")
                 continue
+            self.log.info(f"Dispatching complete {dataProduct} mosaic for expId={expId}")
             self.redisHelper.enqueuePayload(payload, worker)
-            self.redisHelper.removeTaskCounter(self.instrument, triggeringTask, dataId)
+            self.redisHelper.markMosaicDispatched(self.instrument, expId)
+            info.markMosaicDispatched()
 
-            (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataId)
+            (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoord)
             self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
+
+            if info.allGathersDispatched():
+                self.redisHelper.completeExposure(self.instrument, expId)
 
     def regulateLoopSpeed(self) -> None:
         """Attempt to regulate the loop speed to the target frequency.
@@ -1458,6 +1460,18 @@ class HeadProcessController:
             # with tracking that and dispatching only if the number has gone up
             # *and* there are 2+ free workers, because it's not worth
             # re-dispatching for every single new CCD exposure which finishes.
+            # Mosaic must run before the gathers: when the last step1a
+            # completes, whichever gather runs last will try to complete
+            # the exposure (remove it from the active set). If mosaic ran
+            # after, the exposure would already be gone and the mosaic
+            # missed. Binned-ISR production happens during each worker's
+            # ISR quantum, i.e. before its step1a-finished report, so
+            # mosaic readiness always precedes gather readiness.
+            try:
+                self.dispatchPostIsrMosaic()
+            except Exception as e:
+                self.log.exception(f"Failed during dispatch of focal plane mosaics: {e}")
+
             try:
                 self.dispatchGatherSteps(who="SFM")
             except Exception as e:
@@ -1473,11 +1487,6 @@ class HeadProcessController:
                 self.dispatchGatherSteps(who="ISR")
             except Exception as e:
                 self.log.exception(f"Failed during dispatch of gather steps for ISR: {e}")
-
-            try:
-                self.dispatchPostIsrMosaic()
-            except Exception as e:
-                self.log.exception(f"Failed during dispatch of focal plane mosaics: {e}")
 
             # note the repattern comes after the fanout so that any commands
             # executed are present for the next image to follow and only then

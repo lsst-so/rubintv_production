@@ -164,11 +164,14 @@ The head node's `getPipelineConfig()` routes exposures:
    `doAosFanout()` internally for LSSTCam corner chips (8 detectors)
 6. **Guider dispatch** - for on-sky LSSTCam observations, send the
    expRecord to `GUIDER_WORKER`
-7. **Check gather readiness** - `dispatchGatherSteps()` for SFM, AOS, ISR:
-   compares finished detector count vs expected; dispatches step1b when ready
-8. **PostISR mosaic** - `dispatchPostIsrMosaic()` when ISR complete across
-   detectors (also fans out downstream one-off/plotter work from inside
-   `dispatchGatherSteps("ISR")`)
+7. **PostISR mosaic** - `dispatchPostIsrMosaic()` fires when every
+   dispatched detector has produced its binned post-ISR image. Runs
+   *before* the per-who gathers in the loop so it still sees the
+   exposure in the active set when the last step1a completes
+8. **Check gather readiness** - `dispatchGatherSteps()` for SFM, AOS,
+   ISR: compares finished detector count vs expected; dispatches step1b
+   when ready. `dispatchGatherSteps("ISR")` also fans out downstream
+   one-off/plotter work from within itself
 9. **Repattern** - LSSTCam only, apply the focal plane detector pattern if
    configured (runs after fanout so commands apply to the next image)
 10. **Regulate loop speed** - `regulateLoopSpeed()` caps the loop at 5 Hz
@@ -405,11 +408,30 @@ downstream processing via Redis:
 
 ### PostISR Mosaic Dispatch
 
-The `dispatchPostIsrMosaic()` method uses the same expected-vs-finished
-pattern but with the `binnedIsrCreation` task counter (a legacy/task-level
-counter rather than the detector-level counter). When all detectors have
-written their binned ISR images, it dispatches the `MOSAIC_WORKER` to
-assemble them into a full focal plane mosaic.
+`dispatchPostIsrMosaic()` iterates the active-exposures set and
+dispatches the `MOSAIC_WORKER` as soon as every detector dispatched
+(under *any* who) for that exposure has produced its binned post-ISR
+image. It reads the pipeline-agnostic `_binnedIsr:{det}` fields on the
+unified tracking hash and gates on the `_mosaicDispatched` flag so the
+mosaic fires exactly once per exposure.
+
+The method runs *before* the per-who `dispatchGatherSteps()` calls in
+the head-node event loop. Each step1a worker sets its detector's
+`_binnedIsr` field as soon as the ISR quantum completes (well before
+the rest of step1a finishes), so by the time the last step1a detector
+reports `{who}:finished`, every binned-ISR field is already populated.
+Running the mosaic first means it sees the exposure in the active set
+even when that last step1a completion would otherwise complete the
+exposure in the same loop iteration. `allGathersDispatched()` (used by
+the per-who gathers and the mosaic dispatch to decide whether to
+`completeExposure`) holds the exposure open while `_binnedIsr` fields
+exist but `_mosaicDispatched` is unset, so either path can be the one
+that finally completes the exposure.
+
+This replaces the old `binnedIsrCreation` per-task HINCRBY counter,
+which was incremented once per ISR quantum — and therefore overcounted
+for on-sky images, since every step1a pipeline (SFM, AOS, ISR)
+contains an ISR quantum.
 
 ## External Dependencies
 
