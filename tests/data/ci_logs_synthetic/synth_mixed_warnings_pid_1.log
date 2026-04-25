@@ -1,0 +1,16 @@
+2026-04-24 10:00:00 - lsst.synth - INFO - starting synthetic pod for warning-extraction tests
+2026-04-24 10:00:01 - lsst.synth - INFO - doing some work
+
+/sdf/home/example/pkg/foo.py:42: UserWarning: direct warning written to stderr, no logging prefix
+  result = do_something(x, y)
+
+/sdf/home/example/pkg/bar.py:88: DeprecationWarning: old_api will be removed in 1.0
+  value = old_api()
+
+2026-04-24 10:00:02 - lsst.synth - WARNING - /sdf/home/example/pkg/baz.py:10: UserWarning: first of two stacked py-warnings with no source line between
+2026-04-24 10:00:02 - lsst.synth - WARNING - /sdf/home/example/pkg/baz.py:11: UserWarning: second of two stacked py-warnings with no source line between
+
+2026-04-24 10:00:03 - lsst.synth - WARN - short-form WARN level message (not WARNING)
+2026-04-24 10:00:04 - lsst.synth - INFO - ignoring all remaining warnings for the rest of this run
+2026-04-24 10:00:05 - lsst.synth - INFO - scanning logs for the word WARNING in uppercase prose
+2026-04-24 10:00:06 - lsst.synth - INFO - finished

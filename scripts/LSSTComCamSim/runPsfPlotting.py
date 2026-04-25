@@ -21,7 +21,8 @@
 
 from lsst.daf.butler import Butler
 from lsst.rubintv.production.aos import PsfAzElPlotter
-from lsst.rubintv.production.utils import getAutomaticLocationConfig
+from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
+from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
 from lsst.summit.utils.utils import setupLogging
 
 instrument = "LSSTComCamSim"
@@ -37,13 +38,16 @@ butler = Butler.from_config(
         f"{instrument}/quickLook",
     ],
 )
-print(f"Running psf plotter launcher at {locationConfig.location}")
+podDetails = PodDetails(instrument=instrument, podFlavor=PodFlavor.PSF_PLOTTER, detectorNumber=None, depth=0)
+print(
+    f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
+    f" consuming from {podDetails.queueName}..."
+)
 
-queueName = f"{instrument}-PSFPLOTTER"
-psfPlotter = PsfAzElPlotter(  # XXX needs type annotations adding and moving to podDetails
+psfPlotter = PsfAzElPlotter(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    queueName=queueName,
+    podDetails=podDetails,
 )
 psfPlotter.run()

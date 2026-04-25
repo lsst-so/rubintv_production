@@ -69,7 +69,7 @@ def getLogsForDayObs(
     )
     response = requests.request("GET", query)
     if not response.ok:
-        logger.warning("Reponse from exposureLog REST API was not OK")
+        logger.warning("Response from exposureLog REST API was not OK")
         return None
 
     logs = response.json()

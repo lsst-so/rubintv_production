@@ -21,7 +21,7 @@
 
 from __future__ import annotations
 
-__all__ = "ClusterManager"
+__all__ = ["ClusterManager"]
 
 
 import json
@@ -41,7 +41,7 @@ from .workerSets import AosWorkerSet, SfmWorkerSet, Step1bWorkerSet
 if TYPE_CHECKING:
     from lsst.daf.butler import Butler
 
-    from .utils import LocationConfig
+    from .locationConfig import LocationConfig
 
 
 step1aMap = {
@@ -53,6 +53,47 @@ flatSetMap = {
     PodFlavor.STEP1B_AOS_WORKER: "CLUSTER_STATUS_AOS_STEP1B_SET_0",
     PodFlavor.BACKLOG_WORKER: "CLUSTER_STATUS_SPAREWORKERS_SET_0",
 }
+
+
+def _describeActiveExposuresChange(
+    previous: set[int] | None, current: set[int], instrument: str
+) -> str | None:
+    """Describe a change in the active-exposures set for logging.
+
+    Parameters
+    ----------
+    previous : `set` [`int`] or `None`
+        Previously reported active exposure IDs, or ``None`` if no prior
+        observation has been recorded. ``None`` is treated as distinct
+        from the empty set so that the first observation is always
+        reported, even when the cluster starts up idle.
+    current : `set` [`int`]
+        The current active exposure IDs.
+    instrument : `str`
+        The instrument name, included in the message.
+
+    Returns
+    -------
+    message : `str` or `None`
+        A human-readable description of the change, or ``None`` if the
+        set is unchanged from ``previous``.
+    """
+    if current == previous:
+        return None
+    currentSorted = sorted(current)
+    if previous is None:
+        return f"Active exposures for {instrument}: {currentSorted} ({len(current)} total)"
+    added = sorted(current - previous)
+    removed = sorted(previous - current)
+    parts = []
+    if added:
+        parts.append(f"added={added}")
+    if removed:
+        parts.append(f"removed={removed}")
+    return (
+        f"Active exposures for {instrument} changed ({', '.join(parts)}); "
+        f"now {currentSorted} ({len(current)} total)"
+    )
 
 
 @dataclass
@@ -132,8 +173,9 @@ class ClusterManager:
         self.redis = self.rh.redis
         self.focalPlaneControl = CameraControlConfig()
         self._lastRubinTVStates: dict[str, dict[str, Any]] = {}
+        self._lastLoggedActiveExposures: set[int] | None = None
         self._backlogAffinity: dict[int, PodDetails] = {}
-        self.log = logging.getLogger("lsst.rubintv.produciton.clusterManager")
+        self.log = logging.getLogger("lsst.rubintv.production.clusterManager")
 
     def drainWorker(self, pod: PodDetails, newQueue: str | None = None, noWarn: bool = False) -> None:
         """Drain all the work from a worker, optionally moving to a new queue.
@@ -479,7 +521,7 @@ class ClusterManager:
         SFM and AOS workers are grouped by depth and sent to depth-specific
         streams. Step1b and backlog workers are sent to flat streams. Other
         worker types with non-zero queues are sent to a general status stream
-        which is displaye in a table at the bottom of the page.
+        which is displayed in a table at the bottom of the page.
 
         Parameters
         ----------
@@ -600,11 +642,13 @@ class ClusterManager:
             Set of free backlog workers to choose from.
         Returns
         -------
-        worker: `PodDetails` or `None`
+        worker : `PodDetails` or `None`
             The selected backlog worker or ``None`` if no suitable worker is
             found.
         matches : `bool`
-            Whether a worker with the same detector number was found.
+            Whether assigning this work to ``worker`` will preserve cache
+            affinity, i.e. the worker has either previously handled this
+            detector or has not yet been used at all.
         """
         # Try to find a worker that previously handled this detector
         backlogWorker = None
@@ -636,7 +680,7 @@ class ClusterManager:
 
         return backlogWorker, False
 
-    def getRecuitableWorkers(self, status: ClusterStatus, onlyFreeWorkers: bool = True) -> set[PodDetails]:
+    def getRecruitableWorkers(self, status: ClusterStatus, onlyFreeWorkers: bool = True) -> set[PodDetails]:
         """Get pods that are currently recruitable for work.
         Recruitable pods are those that have been deselected from processing
         work, and are therefore temporarily available for other work.
@@ -678,7 +722,7 @@ class ClusterManager:
         is added to identify temporary assignments, which is then displayed on
         RubinTV.
 
-        ``inaccessibleWorkers`` are ones which the head nodes does not
+        ``inaccessibleWorkers`` are ones which the head node does not
         currently dispatch any work to, but exist for "reasons". This set could
         shrink to none (arguably it should).
 
@@ -696,7 +740,7 @@ class ClusterManager:
         """
         freeBacklogWorkers = set(status.flavorStatuses[PodFlavor.BACKLOG_WORKER].freeWorkers)
         inaccessibleWorkers = self.getInaccessiblePods(status)
-        recruitableWorkers = self.getRecuitableWorkers(status)
+        recruitableWorkers = self.getRecruitableWorkers(status)
 
         freeBacklogWorkers = freeBacklogWorkers | inaccessibleWorkers | recruitableWorkers
 
@@ -762,7 +806,7 @@ class ClusterManager:
         permanently free, as far as it's concerned.
 
         This is different from recruitable pods, which are pods that have been
-        deselected from from processing work, and are therefore temporarily
+        deselected from processing work, and are therefore temporarily
         available for other work.
 
         Note that this function needs to be kept up to date with the way things
@@ -799,6 +843,32 @@ class ClusterManager:
 
         return inaccessible
 
+    def reportActiveExposures(self, instrument: str) -> None:
+        """Log the set of currently active exposures when it changes.
+
+        Reads the shared active-exposures Redis set maintained by the
+        head node's fanout/tracking code (populated by
+        `RedisHelper.initExposureTracking` and cleared by
+        `RedisHelper.completeExposure`), diffs it against the previously
+        reported set, and emits a log line only when the set has
+        changed.
+
+        This mirrors the diff-and-publish pattern in
+        `sendStatusToRubinTV`; a Redis stream update for the RubinTV
+        frontend can later be added here alongside the log call, once
+        the logging has been observed to behave well in production.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument whose active exposures should be reported.
+        """
+        current = self.rh.getActiveExposures(instrument)
+        message = _describeActiveExposuresChange(self._lastLoggedActiveExposures, current, instrument)
+        if message is not None:
+            self.log.info(message)
+            self._lastLoggedActiveExposures = current
+
     def run(self):
         """Main loop to monitor and manage the cluster.
 
@@ -815,6 +885,7 @@ class ClusterManager:
                 self.rebalanceStep1aWorkers(status)
                 status = self.getClusterStatus()  # update now we've moved things around
                 self.sendStatusToRubinTV(status)
+                self.reportActiveExposures(status.instrument)
             except Exception as e:
                 self.log.exception(f"Error in cluster management: {e}")
             finally:

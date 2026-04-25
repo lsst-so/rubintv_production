@@ -1,0 +1,19 @@
+================================================================================
+Exit Code: timeout
+================================================================================
+
+STDOUT:
+--------------------------------------------------------------------------------
+Found WORKER_NUMBER=None in the env
+Running LSSTCam NIGHTLYROLLUP_WORKER at usdf_testing,consuming from NIGHTLYROLLUP_WORKER-LSSTCam-000...
+Termination signal received for /sdf/home/m/mfl/lsst/rubintv_production/scripts/LSSTCam/runNightlyWorker.py:usdf_testing:0, exiting...
+
+--------------------------------------------------------------------------------
+
+LOGS:
+--------------------------------------------------------------------------------
+WARNING - Sentry DSN not found or client inactive — events will not be reported
+INFO - Creating CachingLimitedButler with cachedOnPut={'aggregateAOSVisitTableRaw', 'aggregateAOSVisitTableAvg', 'donutStampsExtraVisit', 'aggregateZernikesAvg', 'donutStampsIntra', 'donutStampsExtra', 'aggregateZernikesRaw', 'donutTable', 'aggregateDonutTable', 'donutStampsIntraVisit', 'post_isr_image', 'donutStampsCwfs', 'donutStampsUnpairedVisit'}, cachedOnGet={'the_monster_20250219', 'donutQualityTable', 'donutStamps', 'raw', 'intrinsic_aberrations_temp', 'donutStampsIntra', 'donutTable', 'gain_correction', 'cti', 'ptc', 'flat', 'donutStampsExtra', 'dark', 'preliminary_visit_image', 'donutTableExtra', 'bias', 'defects', 'camera', 'zernikes', 'donutTableIntra', 'astrometry_camera', 'crosstalk', 'linearizer', 'post_isr_image', 'donutStampsCwfs'}, noCopyOnCache={'flat', 'astrometry_camera', 'dark', 'camera', 'defects', 'bias'}
+INFO - Pipeline running configured to consume from NIGHTLYROLLUP_WORKER-LSSTCam-000
+
+--------------------------------------------------------------------------------

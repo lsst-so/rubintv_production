@@ -21,7 +21,9 @@
 
 from lsst.daf.butler import Butler
 from lsst.rubintv.production.aos import FocusSweepAnalysis
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, setupSentry
+from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
+from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
+from lsst.rubintv.production.startupChecks import setupSentry
 from lsst.summit.utils.utils import setupLogging
 
 setupSentry()
@@ -47,12 +49,16 @@ butler = Butler.from_config(
 )
 print(f"Running focus sweep plotter at {locationConfig.location}")
 
-queueName = f"{instrument}-FROM-OCS_FOCUSSWEEP"
-focusSweepAnalyzer = FocusSweepAnalysis(  # XXX still needs type annotations and to move to using podDetails
+podDetails = PodDetails(
+    instrument=instrument,
+    podFlavor=PodFlavor.FOCUS_SWEEP_ANALYZER,
+    detectorNumber=None,
+    depth=None,
+)
+focusSweepAnalyzer = FocusSweepAnalysis(
     butler=butler,
     locationConfig=locationConfig,
-    queueName=queueName,
-    instrument=instrument,
+    podDetails=podDetails,
     metadataShardPath=locationConfig.lsstCamAosMetadataShardPath,
 )
 focusSweepAnalyzer.run()

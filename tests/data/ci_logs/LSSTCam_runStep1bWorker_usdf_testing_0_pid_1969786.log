@@ -1,0 +1,40 @@
+================================================================================
+Exit Code: timeout
+================================================================================
+
+STDOUT:
+--------------------------------------------------------------------------------
+Found WORKER_NUMBER=None in the env
+Running LSSTCam STEP1B_WORKER at usdf_testing,consuming from STEP1B_WORKER-LSSTCam-000...
+Termination signal received for /sdf/home/m/mfl/lsst/rubintv_production/scripts/LSSTCam/runStep1bWorker.py:usdf_testing:0, exiting...
+
+--------------------------------------------------------------------------------
+
+LOGS:
+--------------------------------------------------------------------------------
+WARNING - Sentry DSN not found or client inactive — events will not be reported
+INFO - Creating CachingLimitedButler with cachedOnPut={'aggregateAOSVisitTableRaw', 'aggregateAOSVisitTableAvg', 'donutStampsExtraVisit', 'aggregateZernikesAvg', 'donutStampsIntra', 'donutStampsExtra', 'aggregateZernikesRaw', 'donutTable', 'aggregateDonutTable', 'donutStampsIntraVisit', 'post_isr_image', 'donutStampsCwfs', 'donutStampsUnpairedVisit'}, cachedOnGet={'the_monster_20250219', 'donutQualityTable', 'donutStamps', 'raw', 'intrinsic_aberrations_temp', 'donutStampsIntra', 'donutTable', 'gain_correction', 'cti', 'ptc', 'flat', 'donutStampsExtra', 'dark', 'preliminary_visit_image', 'donutTableExtra', 'bias', 'defects', 'camera', 'zernikes', 'donutTableIntra', 'astrometry_camera', 'crosstalk', 'linearizer', 'post_isr_image', 'donutStampsCwfs'}, noCopyOnCache={'flat', 'astrometry_camera', 'dark', 'camera', 'defects', 'bias'}
+INFO - Pipeline running configured to consume from STEP1B_WORKER-LSSTCam-000
+INFO - Running pipeline for {instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Waiting for None for {instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Spent 0.00 seconds waiting for the None (should be ~1s per id)
+INFO - Making AllDimensionQGBuilder for step1b for expId 2025111500226 for SFM
+INFO - Processing pipeline subgraph 1 of 1 with 1 task(s).
+INFO - Iterating over data ID query results.
+INFO - Initial bipartite graph has 1 quanta, 25 dataset nodes, and 22 edges.
+INFO - Generated 1 quantum for task consolidateVisitSummary.
+INFO - Fetching and attaching datastore records for all overall inputs.
+INFO - Transforming graph skeleton into PredictedQuantumGraph components.
+INFO - Graph build complete.
+INFO - Building quantum graph for {instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'} for SFM took 0.396s
+INFO - Using 4 CPUs for LSSTCam step1b SFM
+INFO - Starting to process consolidateVisitSummary
+INFO - Preparing execution of quantum for label=consolidateVisitSummary dataId={instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Constructing task and executing quantum for label=consolidateVisitSummary dataId={instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Re-fit pointing is (81.8436832035, -25.8835564855), orientation=-221.30 deg (0.018 deg from the original boresight).
+INFO - Execution of task 'consolidateVisitSummary' on quantum {instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'} took 4.930 seconds
+INFO - Skipping consDB insert at usdf_testing for LSSTCam.visit1_quicklook
+INFO - Populated consDB visit row for 2025111500226
+INFO - Sending 2025111500226 for fwhm plotting
+
+--------------------------------------------------------------------------------

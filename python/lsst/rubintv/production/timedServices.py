@@ -36,15 +36,11 @@ from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
 
+from .parsers import sanitizeNans
+from .predicates import hasDayRolledOver, isFileWorldWritable, raiseIf
+from .shardIo import writeMetadataShard
+from .timing import logDuration
 from .uploaders import MultiUploader
-from .utils import (
-    hasDayRolledOver,
-    isFileWorldWritable,
-    logDuration,
-    raiseIf,
-    sanitizeNans,
-    writeMetadataShard,
-)
 
 try:
     from lsst_efd_client import EfdClient  # noqa: F401 just check we have it, but don't use it
@@ -67,7 +63,7 @@ from lsst.summit.utils.tmaUtils import (
 if TYPE_CHECKING:
     from lsst.summit.utils.tmaUtils import TMAEvent
 
-    from .utils import LocationConfig
+    from .locationConfig import LocationConfig
 
 _LOG = logging.getLogger(__name__)
 
@@ -104,7 +100,7 @@ class TimedMetadataServer:
 
     Parameters
     ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location configuration.
     metadataDirectory : `str`
         The name of the directory for which the metadata is being served. Note
@@ -121,6 +117,10 @@ class TimedMetadataServer:
         The name of the channel to serve the metadata files to.
     doRaise : `bool`
         If True, raise exceptions instead of logging them.
+    s3Uploader : `MultiUploader`, optional
+        Uploader used to push merged metadata files to S3. Defaults to a
+        freshly-constructed ``MultiUploader()``, which is what production
+        pods want. Tests can inject a stub to avoid hitting real S3.
     """
 
     # The time between searches of the metadata shard directory to merge the
@@ -135,6 +135,7 @@ class TimedMetadataServer:
         shardsDirectory: str,
         channelName: str,
         doRaise: bool = False,
+        s3Uploader: MultiUploader | None = None,
     ) -> None:
         self.locationConfig = locationConfig
         self.metadataDirectory = metadataDirectory
@@ -142,7 +143,7 @@ class TimedMetadataServer:
         self.channelName = channelName
         self.doRaise = doRaise
         self.log = _LOG.getChild(self.channelName)
-        self.s3Uploader = MultiUploader()
+        self.s3Uploader = s3Uploader if s3Uploader is not None else MultiUploader()
         self.longestGlobDuration = 0.0
 
         if not os.path.isdir(self.metadataDirectory):
@@ -285,7 +286,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
 
     Parameters
     ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location configuration.
     metadataDirectory : `str`
         The name of the directory for which the metadata is being served. Note
@@ -322,7 +323,7 @@ class TmaTelemetryChannel(TimedMetadataServer):
             locationConfig=locationConfig,
             metadataDirectory=metadataDirectory,
             shardsDirectory=shardsDirectory,
-            channelName=self.metadataChannelName,  # this is the one for mergeSharsAndUpload
+            channelName=self.metadataChannelName,  # this is the one for mergeShardsAndUpload
             doRaise=self.doRaise,
         )
 
@@ -437,14 +438,14 @@ class TmaTelemetryChannel(TimedMetadataServer):
         m1m3ICSHPMaxForces = {}
         m1m3ICSHPMeanForces = {}
 
-        md = {}  # blank out the previous md as it has already been written
+        md = {}
         try:
             m1m3IcsResult = M1M3ICSAnalysis(
                 event,
                 self.client,
                 log=self.log,
             )
-        except ValueError:  # control flow error raise when the ICS is off
+        except ValueError:  # control flow error raised when the ICS is off
             return None
         # package all the items we want into dicts
         m1m3ICSHPMaxForces = {
@@ -476,8 +477,8 @@ class TmaTelemetryChannel(TimedMetadataServer):
         md["M1M3 ICS Hardpoint Mean Forces"] = m1m3ICSHPMeanForces  # dict
 
         # must set string value in dict only after doing the max of the values
-        m1m3ICSHPMaxForces["DISPLAY_VALUE"] = "📖" if m1m3ICSHPMaxForces else ""
-        m1m3ICSHPMeanForces["DISPLAY_VALUE"] = "📖" if m1m3ICSHPMeanForces else ""
+        m1m3ICSHPMaxForces["DISPLAY_VALUE"] = "📖"
+        m1m3ICSHPMeanForces["DISPLAY_VALUE"] = "📖"
 
         rowData = {event.seqNum: md}
         writeMetadataShard(self.shardsDirectory, event.dayObs, rowData)
@@ -689,6 +690,7 @@ class AllNightAnimator:
                 if nFiles > lastAnimatedCount:
                     self.log.info(f"Creating new movie with {nFiles} frames")
                     self.animateDir(pngPath)
+                    lastAnimatedCount = nFiles
 
                 sleep(self.cadenceSeconds)
 
