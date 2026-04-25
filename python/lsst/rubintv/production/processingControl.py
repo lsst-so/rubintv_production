@@ -1420,7 +1420,11 @@ class HeadProcessController:
                 f" workload of {maxWorkTime:.2f}s in the last {len(self.workTimer._buffer)} loops"
             )
 
-        sleepPeriod = self.targetLoopDuration - lastLap
+        # workTimer excludes time spent sleeping (via pause/resume below), so
+        # lastWork is the pure work duration of this iteration and is what the
+        # sleep budget must be computed from. loopTimer is for reporting the
+        # delivered loop period and must not be used here.
+        sleepPeriod = self.targetLoopDuration - lastWork
         if sleepPeriod > 0:
             self.workTimer.pause()  # don't count the sleeping towards the loop time on work timer
             sleep(sleepPeriod)
