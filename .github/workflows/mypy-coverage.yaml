@@ -30,9 +30,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: mc
-        uses: mfisherlevine/mypy_coverage@v0.1.2
+        uses: mfisherlevine/mypy_coverage@v0.2.3
         with:
-          version: "0.1.2"
+          version: "0.2.3"
           format: github
           # Use the repo's mypy.ini directly so we pick up the same
           # exclude pattern, files=, and mypy_path= as the local mypy run.
