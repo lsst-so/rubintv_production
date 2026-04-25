@@ -661,7 +661,7 @@ class HeadProcessController:
                 self.focalPlaneControl.setRaftOn("R11")
                 self.focalPlaneControl.setRaftOn("R13")
                 self.focalPlaneControl.setRaftOn("R31")
-            if self.locationConfig.location == "usdf_testing":
+            elif self.locationConfig.location == "usdf_testing":
                 # For the CI suite - might be good to find a better way of
                 # controlling this but this is fine for gettin it working
                 self.focalPlaneControl.setWavefrontOn()
