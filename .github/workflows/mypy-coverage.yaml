@@ -1,0 +1,57 @@
+name: "mypy coverage"
+
+# Runs https://github.com/mfisherlevine/mypy_coverage on every PR and on
+# pushes to main. Currently informational only (no threshold), so it can
+# never block a merge -- the value is the inline annotations on the PR
+# diff for unannotated / partially annotated definitions.
+#
+# To gate on a coverage floor in the future, add ``threshold: 85`` (or
+# whatever) under ``with:`` and add the job's name to the required
+# status checks for ``main`` in the branch protection settings.
+
+"on":
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    name: "Annotate coverage gaps"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - id: mc
+        uses: mfisherlevine/mypy_coverage@v0.1.2
+        with:
+          version: "0.1.2"
+          format: github
+          # Use the repo's mypy.ini directly so we pick up the same
+          # exclude pattern, files=, and mypy_path= as the local mypy run.
+          config: mypy.ini
+          # Walled-off "Excluded files" section is informational; harmless
+          # in CI logs and useful for visibility into uploaders.py + the
+          # tests/ci/meta_*.py shims that mypy is configured to skip.
+          include-excluded: "true"
+      - name: "Coverage summary"
+        if: always()
+        run: |
+          {
+            echo "### mypy coverage"
+            echo
+            echo "| metric | value |"
+            echo "| --- | ---: |"
+            echo "| body-checked by mypy | ${{ steps.mc.outputs.percent-checked }}% |"
+            echo "| fully annotated      | ${{ steps.mc.outputs.percent-fully-typed }}% |"
+            echo "| unannotated defs     | ${{ steps.mc.outputs.unannotated }} |"
+            echo "| partial defs         | ${{ steps.mc.outputs.partial }} |"
+            echo "| total defs counted   | ${{ steps.mc.outputs.total }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
