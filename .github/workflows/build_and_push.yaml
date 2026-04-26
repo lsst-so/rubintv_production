@@ -161,6 +161,18 @@ jobs:
           # ``loadLSST.bash`` activates the conda env. startup.sh sources
           # loadLSST.bash itself further down -- idempotent.
           source /opt/lsst/software/stack/loadLSST.bash
+          # Disable git's "dubious ownership" check for /repos/*. In
+          # production the container runs as saluser (uid 73006), who
+          # owns /repos/*, so the check never fires. Here we run as root
+          # so actions/checkout can write the GHA workspace, and the
+          # in-image clones look "owned by someone else". The Dockerfile
+          # does ``git config --system --add safe.directory ...`` for
+          # each repo, but those entries land in /etc/gitconfig, which
+          # conda's git (active after loadLSST.bash above) does not read
+          # -- it reads $CONDA_PREFIX/etc/gitconfig. ``--global`` writes
+          # to ~/.gitconfig, which every git install honours regardless
+          # of how it was packaged.
+          git config --global --add safe.directory '*'
           # ---------------------------------------------------------------
           # Pull RA_PULL_DIRECTORIES + DEPLOY_BRANCH from phalanx, which
           # is the authoritative source of truth for how the prod pods
