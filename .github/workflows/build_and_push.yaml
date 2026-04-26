@@ -157,10 +157,18 @@ jobs:
           # in the conda env site-packages and don't depend on HOME.)
           export HOME=/home/saluser
           # Source the production entrypoint so CI uses exactly the same
-          # loadLSST + setup chain the pods use. RA_PULL_DIRECTORIES is
-          # left unset, so the optional git-fetch loop at the top is a
-          # no-op. startup.sh leaves us in /repos/rubintv_production/scripts
-          # at the end -- cd back to the PR checkout afterwards.
+          # loadLSST + setup chain the pods use. We also opt into the
+          # optional ``git fetch + checkout DEPLOY_BRANCH`` loop at the
+          # top of startup.sh for the sister repos whose pinned branch
+          # in the Dockerfile drifts behind what current rubintv_production
+          # main expects (e.g. summit_utils ships new functions that
+          # rubintv_production starts importing before the next image
+          # rebuild bumps the pin). This mirrors how the prod pods are
+          # brought up. startup.sh leaves us in
+          # /repos/rubintv_production/scripts at the end -- cd back to
+          # the PR checkout afterwards.
+          export RA_PULL_DIRECTORIES="summit_utils summit_extras"
+          export DEPLOY_BRANCH=main
           source /repos/.startup.sh
           cd "${GITHUB_WORKSPACE}"
           # Overlay this PR's rubintv_production with -j (just-this-product)
