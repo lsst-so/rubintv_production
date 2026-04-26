@@ -225,6 +225,11 @@ jobs:
           # so it wins over the version baked into the image without
           # disturbing the rest of the env.
           setup -j -r "${GITHUB_WORKSPACE}"
+          # Generate ``python/lsst/rubintv/production/version.py``. The
+          # in-image clone already has one (the Dockerfile runs scons),
+          # but our overlay is a fresh checkout so __init__.py would
+          # blow up on ``from .version import *``.
+          scons version
           # Quick sanity print so future failures don't have to re-debug
           # which interpreter / site-packages / HOME are in scope. The
           # HOME line is load-bearing: the in-image pip installs are in
