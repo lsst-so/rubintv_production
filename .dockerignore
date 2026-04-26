@@ -1,0 +1,35 @@
+# Keep the build context small so the daemon upload is fast and so that
+# noise in these paths doesn't invalidate the COPY layer (and the scons
+# rebuild that follows it) on every commit.
+
+# VCS / CI / editor metadata
+.git
+.github
+.claude
+.vscode
+.idea
+
+# OS junk
+.DS_Store
+*.swp
+
+# Python build / cache artefacts
+__pycache__
+*.pyc
+*.pyo
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.coverage
+.coverage.*
+coverage.xml
+htmlcov
+
+# scons local state (regenerated inside the image)
+.sconf_temp
+.sconsign.dblite
+config.log
+
+# Notebook checkpoints / scratch
+.ipynb_checkpoints
+Untitled*.ipynb
