@@ -128,14 +128,12 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
       # ``--user root`` is needed for actions/checkout to write into the
-      # GHA-mounted workspace. ``HOME=/home/saluser`` is needed so
-      # Python's user-site lookup finds the pip installs the Dockerfile
-      # made as saluser. Modern conda envs ship an EXTERNALLY-MANAGED
-      # marker, so PEP 668 makes ``pip install`` fall back to a
-      # ``--user`` install -- those packages (sentry-sdk, easyocr,
-      # google-cloud-storage, ...) live in /home/saluser/.local/lib/...
-      # and are otherwise invisible to a root process whose HOME is /root.
-      options: --user root -e HOME=/home/saluser
+      # GHA-mounted workspace. We can't fix HOME here -- GitHub always
+      # overrides the container's HOME to ``/github/home`` for container
+      # jobs, regardless of any ``-e HOME=...`` we pass -- so the
+      # override has to happen inside the run step instead. See the
+      # ``export HOME=/home/saluser`` line in the coverage step below.
+      options: --user root
     steps:
       - uses: actions/checkout@v4
 
@@ -146,6 +144,18 @@ jobs:
           # (eups_activate.sh) reference EUPS_PATH unguarded before it's
           # set, which is harmless normally but fatal under nounset.
           set -eo pipefail
+          # Override the GHA-injected HOME=/github/home back to saluser's
+          # real HOME *before* sourcing anything. Several Dockerfile
+          # ``pip install`` lines run as saluser with conda active; the
+          # conda env ships PEP 668's EXTERNALLY-MANAGED marker, so pip
+          # silently falls back to a ``--user`` install and lands those
+          # packages (sentry-sdk, easyocr, google-cloud-storage, ...) in
+          # /home/saluser/.local/lib/python3.13/site-packages/. Python's
+          # site.py only finds them when HOME points there. (Alternative
+          # if this becomes fragile: move the affected packages into
+          # the ``conda install`` block in the Dockerfile so they live
+          # in the conda env site-packages and don't depend on HOME.)
+          export HOME=/home/saluser
           # Source the production entrypoint so CI uses exactly the same
           # loadLSST + setup chain the pods use. RA_PULL_DIRECTORIES is
           # left unset, so the optional git-fetch loop at the top is a
