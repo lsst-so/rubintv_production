@@ -138,27 +138,21 @@ jobs:
           # (eups_activate.sh) reference EUPS_PATH unguarded before it's
           # set, which is harmless normally but fatal under nounset.
           set -eo pipefail
-          source /opt/lsst/software/stack/loadLSST.bash
-          setup lsst_distrib
-          # Mirror startup.sh: setup the in-image clones for the rest of
-          # the stack, then overlay this PR's rubintv_production with -j
-          # so it wins over the version baked into the image.
-          #
-          # NOTE: do NOT wrap ``setup -k -r ...`` in ``( ... )`` -- setup
-          # mutates env vars (PATH, EUPS_PATH, LD_LIBRARY_PATH, ...) and
-          # those mutations are lost when the subshell exits, so each
-          # iteration starts from just the ``setup lsst_distrib``
-          # baseline. ts_wep, ts_ofc etc. are not in lsst_distrib, so
-          # the next package that depends on one (donut_viz needs
-          # ts_wep) then fails with "Product ts_wep not found".
-          for repo in obs_lsst drp_pipe Spectractor atmospec \
-                     summit_utils summit_extras pipe_base daf_butler \
-                     ts_wep ts_ofc ts_config_mttcs donut_viz TARTS \
-                     rubintv_analysis_service; do
-            setup -k -r "/repos/${repo}"
-          done
-          pip install pytest pytest-cov
+          # Source the production entrypoint so CI uses exactly the same
+          # loadLSST + setup chain the pods use. RA_PULL_DIRECTORIES is
+          # left unset, so the optional git-fetch loop at the top is a
+          # no-op. startup.sh leaves us in /repos/rubintv_production/scripts
+          # at the end -- cd back to the PR checkout afterwards.
+          source /repos/.startup.sh
+          cd "${GITHUB_WORKSPACE}"
+          # Overlay this PR's rubintv_production with -j (just-this-product)
+          # so it wins over the version baked into the image without
+          # disturbing the rest of the env.
           setup -j -r "${GITHUB_WORKSPACE}"
+          # Quick sanity print so future failures don't have to re-debug
+          # which interpreter / site-packages are in scope.
+          python -c 'import sys; print("python:", sys.executable); print("sys.path[0:5]:", sys.path[:5])'
+          pip install pytest pytest-cov
           pytest \
             --cov=lsst.rubintv.production \
             --cov-report=xml \
