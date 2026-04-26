@@ -27,6 +27,9 @@ jobs:
     name: "Annotate coverage gaps"
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - id: mc
@@ -41,17 +44,36 @@ jobs:
           # in CI logs and useful for visibility into uploaders.py + the
           # tests/ci/meta_*.py shims that mypy is configured to skip.
           include-excluded: "true"
-      - name: "Coverage summary"
+      - name: "Build markdown report"
         if: always()
+        # The action above pip-installs mypy-coverage, so the CLI is on
+        # PATH for the rest of the job. Re-run it here in markdown mode
+        # to produce a body we can post as a sticky PR comment.
         run: |
           {
-            echo "### mypy coverage"
-            echo
-            echo "| metric | value |"
-            echo "| --- | ---: |"
-            echo "| body-checked by mypy | ${{ steps.mc.outputs.percent-checked }}% |"
-            echo "| fully annotated      | ${{ steps.mc.outputs.percent-fully-typed }}% |"
-            echo "| unannotated defs     | ${{ steps.mc.outputs.unannotated }} |"
-            echo "| partial defs         | ${{ steps.mc.outputs.partial }} |"
-            echo "| total defs counted   | ${{ steps.mc.outputs.total }} |"
-          } >> "$GITHUB_STEP_SUMMARY"
+            echo "<!-- mypy-coverage-report -->"
+            mypy-coverage \
+              --color never \
+              --format markdown \
+              --config mypy.ini \
+              || true
+          } > "$RUNNER_TEMP/mypy-coverage.md"
+      - name: "Coverage summary"
+        if: always()
+        run: cat "$RUNNER_TEMP/mypy-coverage.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: "Find existing PR comment"
+        if: always() && github.event_name == 'pull_request'
+        uses: peter-evans/find-comment@v4
+        id: fc
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: github-actions[bot]
+          body-includes: <!-- mypy-coverage-report -->
+      - name: "Post or update PR comment"
+        if: always() && github.event_name == 'pull_request'
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body-path: ${{ runner.temp }}/mypy-coverage.md
+          edit-mode: replace
