@@ -254,8 +254,15 @@ RUN chown -R ${UID}:${GID} /repos/rubintv_production
 
 USER saluser
 
+# The unset is best-effort: when the COPY above brings in a .git/ from
+# the CI checkout, actions/checkout has set an http.extraheader auth
+# token we want to scrub. When .git is excluded by .dockerignore, the
+# in-image .git is the one from the line-98 clone and the key is not
+# present -- ``git config --unset`` then exits 5 ("no such key"), which
+# would fail the build. Don't tighten this without also un-excluding
+# .git from .dockerignore.
 RUN git remote set-url origin https://github.com/lsst-sitcom/rubintv_production.git && \
-    git config --local --unset http."https://github.com/".extraheader
+    { git config --local --unset http."https://github.com/".extraheader || true; }
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     eups declare -r . -t saluser && \
