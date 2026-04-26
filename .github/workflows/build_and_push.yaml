@@ -134,7 +134,10 @@ jobs:
       - name: "Run pytest with coverage"
         shell: bash
         run: |
-          set -euo pipefail
+          # No ``set -u``: the LSST stack's conda activation hooks
+          # (eups_activate.sh) reference EUPS_PATH unguarded before it's
+          # set, which is harmless normally but fatal under nounset.
+          set -eo pipefail
           source /opt/lsst/software/stack/loadLSST.bash
           setup lsst_distrib
           # Mirror startup.sh: setup the in-image clones for the rest of
