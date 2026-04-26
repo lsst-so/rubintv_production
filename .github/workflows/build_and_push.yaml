@@ -143,11 +143,19 @@ jobs:
           # Mirror startup.sh: setup the in-image clones for the rest of
           # the stack, then overlay this PR's rubintv_production with -j
           # so it wins over the version baked into the image.
+          #
+          # NOTE: do NOT wrap ``setup -k -r ...`` in ``( ... )`` -- setup
+          # mutates env vars (PATH, EUPS_PATH, LD_LIBRARY_PATH, ...) and
+          # those mutations are lost when the subshell exits, so each
+          # iteration starts from just the ``setup lsst_distrib``
+          # baseline. ts_wep, ts_ofc etc. are not in lsst_distrib, so
+          # the next package that depends on one (donut_viz needs
+          # ts_wep) then fails with "Product ts_wep not found".
           for repo in obs_lsst drp_pipe Spectractor atmospec \
                      summit_utils summit_extras pipe_base daf_butler \
                      ts_wep ts_ofc ts_config_mttcs donut_viz TARTS \
                      rubintv_analysis_service; do
-            (cd "/repos/${repo}" && setup -k -r .)
+            setup -k -r "/repos/${repo}"
           done
           pip install pytest pytest-cov
           setup -j -r "${GITHUB_WORKSPACE}"
