@@ -156,19 +156,51 @@ jobs:
           # the ``conda install`` block in the Dockerfile so they live
           # in the conda env site-packages and don't depend on HOME.)
           export HOME=/home/saluser
+          # ---------------------------------------------------------------
+          # Pull RA_PULL_DIRECTORIES + DEPLOY_BRANCH from phalanx, which
+          # is the authoritative source of truth for how the prod pods
+          # are configured. Beats hardcoding a list here that drifts:
+          # without this, every time a sister repo (summit_utils,
+          # summit_extras, ...) ships a new symbol that rubintv_production
+          # starts importing, CI breaks until the Dockerfile pin catches
+          # up. With this, CI tracks whatever the prod chart says.
+          #
+          # Try phalanx at the same ticket branch first (so a multi-repo
+          # ticket can ship a phalanx values override), fall back to
+          # phalanx main.
+          # ---------------------------------------------------------------
+          PR_REF="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          PHALANX_BASE="https://raw.githubusercontent.com/lsst-sqre/phalanx"
+          VALUES_PATH="applications/rapid-analysis/values-summit.yaml"
+          curl -sfL "${PHALANX_BASE}/${PR_REF}/${VALUES_PATH}" -o /tmp/phalanx-values.yaml \
+            || curl -sfL "${PHALANX_BASE}/main/${VALUES_PATH}" -o /tmp/phalanx-values.yaml
+          # Python parser written to a file because inline ``python -c
+          # '...'`` would inherit the YAML block scalar's leading indent
+          # and trip Python's IndentationError. Heredoc inside a YAML
+          # ``run: |`` block has its common leading indent stripped by
+          # YAML, so the file ends up correctly column-aligned.
+          cat > /tmp/parse-phalanx.py <<'PY'
+          import yaml
+          with open("/tmp/phalanx-values.yaml") as f:
+              env = (yaml.safe_load(f) or {}).get("env", {})
+          print(f"export RA_PULL_DIRECTORIES={env.get('RA_PULL_DIRECTORIES', '')!r}")
+          print(f"export DEPLOY_BRANCH={env.get('DEPLOY_BRANCH', 'main')!r}")
+          PY
+          eval "$(python /tmp/parse-phalanx.py)"
+          # If this PR is on a tickets/* branch, override DEPLOY_BRANCH
+          # to that ticket name so sister repos with a matching ticket
+          # branch get used. startup.sh's existing fallback ("if
+          # ``git checkout $DEPLOY_BRANCH`` fails, use current branch
+          # and reset to origin") handles repos that don't have it.
+          if [[ "${PR_REF}" == tickets/* ]]; then
+            export DEPLOY_BRANCH="${PR_REF}"
+          fi
+          echo "Using DEPLOY_BRANCH=${DEPLOY_BRANCH}"
+          echo "Using RA_PULL_DIRECTORIES=${RA_PULL_DIRECTORIES}"
           # Source the production entrypoint so CI uses exactly the same
-          # loadLSST + setup chain the pods use. We also opt into the
-          # optional ``git fetch + checkout DEPLOY_BRANCH`` loop at the
-          # top of startup.sh for the sister repos whose pinned branch
-          # in the Dockerfile drifts behind what current rubintv_production
-          # main expects (e.g. summit_utils ships new functions that
-          # rubintv_production starts importing before the next image
-          # rebuild bumps the pin). This mirrors how the prod pods are
-          # brought up. startup.sh leaves us in
+          # loadLSST + setup chain the pods use. startup.sh leaves us in
           # /repos/rubintv_production/scripts at the end -- cd back to
           # the PR checkout afterwards.
-          export RA_PULL_DIRECTORIES="summit_utils summit_extras"
-          export DEPLOY_BRANCH=main
           source /repos/.startup.sh
           cd "${GITHUB_WORKSPACE}"
           # Overlay this PR's rubintv_production with -j (just-this-product)
