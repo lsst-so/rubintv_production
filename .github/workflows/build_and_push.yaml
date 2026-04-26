@@ -127,7 +127,15 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-      options: --user root
+      # ``--user root`` is needed for actions/checkout to write into the
+      # GHA-mounted workspace. ``HOME=/home/saluser`` is needed so
+      # Python's user-site lookup finds the pip installs the Dockerfile
+      # made as saluser. Modern conda envs ship an EXTERNALLY-MANAGED
+      # marker, so PEP 668 makes ``pip install`` fall back to a
+      # ``--user`` install -- those packages (sentry-sdk, easyocr,
+      # google-cloud-storage, ...) live in /home/saluser/.local/lib/...
+      # and are otherwise invisible to a root process whose HOME is /root.
+      options: --user root -e HOME=/home/saluser
     steps:
       - uses: actions/checkout@v4
 
@@ -150,8 +158,18 @@ jobs:
           # disturbing the rest of the env.
           setup -j -r "${GITHUB_WORKSPACE}"
           # Quick sanity print so future failures don't have to re-debug
-          # which interpreter / site-packages are in scope.
-          python -c 'import sys; print("python:", sys.executable); print("sys.path[0:5]:", sys.path[:5])'
+          # which interpreter / site-packages / HOME are in scope. The
+          # HOME line is load-bearing: the in-image pip installs are in
+          # saluser's user-site, and Python only finds them when HOME is
+          # /home/saluser (see container.options above).
+          python -c '
+          import os, site, sys
+          print("python:        ", sys.executable)
+          print("HOME:          ", os.environ.get("HOME"))
+          print("user-site:     ", site.getusersitepackages())
+          print("user-site live:", os.path.isdir(site.getusersitepackages()))
+          print("ENABLE_USER_SITE:", site.ENABLE_USER_SITE)
+          '
           pip install pytest pytest-cov
           pytest \
             --cov=lsst.rubintv.production \
