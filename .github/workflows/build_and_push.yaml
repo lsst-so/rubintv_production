@@ -156,12 +156,6 @@ jobs:
           # the ``conda install`` block in the Dockerfile so they live
           # in the conda env site-packages and don't depend on HOME.)
           export HOME=/home/saluser
-          # Tell summit_utils.getSite() (and anything else that branches
-          # on RAPID_ANALYSIS_LOCATION) that we're under GitHub Actions.
-          # Tests that need a real site (butler, S3 uploader, etc.) skip
-          # themselves on ``gha`` -- see ``getSite() in ("gha", "local")``
-          # guards in tests/test_pipelines.py and tests/test_metadataService.py.
-          export RAPID_ANALYSIS_LOCATION=gha
           # Get conda's python on PATH up front so we can parse the
           # phalanx YAML below; the image has no system python before
           # ``loadLSST.bash`` activates the conda env. startup.sh sources
@@ -186,26 +180,21 @@ jobs:
           # without this, every time a sister repo (summit_utils,
           # summit_extras, ...) ships a new symbol that rubintv_production
           # starts importing, CI breaks until the Dockerfile pin catches
-          # up. With this, CI tracks whatever the prod chart says.
+          # up. With this, CI tracks whatever the chart says.
           #
-          # Try phalanx at the same ticket branch first (so a multi-repo
-          # ticket can ship a phalanx values override pinning sister-repo
-          # branches), fall back to phalanx main.
-          #
-          # We deliberately do NOT override DEPLOY_BRANCH to this PR's
-          # ticket name in CI: startup.sh's per-repo fallback when the
-          # named branch doesn't exist is "use current branch", which
-          # for the in-image clones is the Dockerfile-pinned tag (e.g.
-          # w_2026_13) -- the very stale snapshot we are trying to move
-          # off of. Multi-repo tickets should ship a phalanx values
-          # override on a matching ticket branch in lsst-sqre/phalanx
-          # instead; the curl below picks it up automatically.
+          # We always pull values-summit.yaml from a fixed phalanx branch
+          # (``deploy-bts``) rather than chasing per-PR ticket branches.
+          # That branch's ``DEPLOY_BRANCH`` value (also ``deploy-bts``)
+          # is then what startup.sh's pull loop looks for in each sister
+          # repo: developers working on cross-repo changes are expected
+          # to push a matching ``deploy-bts`` branch in every affected
+          # repo. Repos without one fall through to whatever
+          # ``checkout_repo.sh`` originally checked out in the image,
+          # via startup.sh's existing per-repo fallback.
           # ---------------------------------------------------------------
-          PR_REF="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
           PHALANX_BASE="https://raw.githubusercontent.com/lsst-sqre/phalanx"
           VALUES_PATH="applications/rapid-analysis/values-summit.yaml"
-          curl -sfL "${PHALANX_BASE}/${PR_REF}/${VALUES_PATH}" -o /tmp/phalanx-values.yaml \
-            || curl -sfL "${PHALANX_BASE}/main/${VALUES_PATH}" -o /tmp/phalanx-values.yaml
+          curl -sfL "${PHALANX_BASE}/deploy-bts/${VALUES_PATH}" -o /tmp/phalanx-values.yaml
           # Python parser written to a file because inline ``python -c
           # '...'`` would inherit the YAML block scalar's leading indent
           # and trip Python's IndentationError. Heredoc inside a YAML
