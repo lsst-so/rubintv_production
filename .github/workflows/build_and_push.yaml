@@ -193,7 +193,7 @@ jobs:
           # via startup.sh's existing per-repo fallback.
           # ---------------------------------------------------------------
           PHALANX_BASE="https://raw.githubusercontent.com/lsst-sqre/phalanx"
-          VALUES_PATH="applications/rapid-analysis/values-summit.yaml"
+          VALUES_PATH="applications/rapid-analysis/values-base.yaml"
           curl -sfL "${PHALANX_BASE}/deploy-bts/${VALUES_PATH}" -o /tmp/phalanx-values.yaml
           # Python parser written to a file because inline ``python -c
           # '...'`` would inherit the YAML block scalar's leading indent
