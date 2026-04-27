@@ -5,6 +5,15 @@ name: "Build and Push"
     branches:
       - main
   push:
+    # Tag pushes build the official tagged release image (existing
+    # behaviour). Pushes to ``main`` were added so each merge produces a
+    # coverage upload that Codecov can use as the BASE for future PR
+    # comparisons -- without this, the PR comment is stuck on the
+    # "welcome" message because there is no main report to diff against.
+    # Branch-protection enforces PR-only merges into main, so this fires
+    # once per merge, not once per commit.
+    branches:
+      - main
     tags:
       - "*"
   workflow_dispatch:
