@@ -89,6 +89,14 @@ EXPECTED_AOS_NON_FAM_PIPELINES = [
 # TODO: still need to add step1b tests for all the other pipelines
 
 
+@unittest.skipIf(
+    getSite() in ("gha", "local"),
+    # These tests need a real butler repo and a populated LocationConfig,
+    # neither of which exists on a developer laptop (``local``) or under
+    # GitHub Actions (``gha``). Skip cleanly so test runs there are
+    # actionable rather than uniformly red.
+    f"butler-bound pipeline tests are not supported on site={getSite()!r}",
+)
 class TestPipelineGeneration(lsst.utils.tests.TestCase):
     def _makeMinimalButler(self) -> Butler:
         butler = Butler.from_config(

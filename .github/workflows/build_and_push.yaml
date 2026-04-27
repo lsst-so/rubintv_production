@@ -156,6 +156,12 @@ jobs:
           # the ``conda install`` block in the Dockerfile so they live
           # in the conda env site-packages and don't depend on HOME.)
           export HOME=/home/saluser
+          # Tell summit_utils.getSite() (and anything else that branches
+          # on RAPID_ANALYSIS_LOCATION) that we're under GitHub Actions.
+          # Tests that need a real site (butler, S3 uploader, etc.) skip
+          # themselves on ``gha`` -- see ``getSite() in ("gha", "local")``
+          # guards in tests/test_pipelines.py and tests/test_metadataService.py.
+          export RAPID_ANALYSIS_LOCATION=gha
           # Get conda's python on PATH up front so we can parse the
           # phalanx YAML below; the image has no system python before
           # ``loadLSST.bash`` activates the conda env. startup.sh sources

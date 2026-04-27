@@ -31,8 +31,17 @@ import numpy as np
 import lsst.utils.tests
 from lsst.rubintv.production.timedServices import TimedMetadataServer
 from lsst.rubintv.production.utils import writeMetadataShard
+from lsst.summit.utils.utils import getSite
 
 
+@unittest.skipIf(
+    getSite() in ("gha", "local"),
+    # TimedMetadataServer's __init__ constructs a MultiUploader, which
+    # calls getSite() and dispatches via match -- ``gha`` / ``local``
+    # have no S3 bucket and would raise ``Unknown site`` before the
+    # test gets a chance to swap in a NoopUploader. Skip cleanly.
+    f"uploader-bound metadata-server tests are not supported on site={getSite()!r}",
+)
 class TimedMetadataServerTestCase(lsst.utils.tests.TestCase):
     """Tests for the TimedMetadataServer shard merging and sanitization."""
 

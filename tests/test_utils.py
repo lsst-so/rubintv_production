@@ -57,8 +57,11 @@ class RubinTVUtilsTestCase(lsst.utils.tests.TestCase):
     def test_getSite(self) -> None:
         site = getSite()
         self.assertNotEqual(site.lower(), "unknown")
+        # ``local`` is the developer-laptop fallback; ``gha`` is the
+        # GitHub Actions value set by build_and_push.yaml.
         self.assertIn(
-            site.lower(), ["tucson", "summit", "base", "staff-rsp", "rubin-devl", "jenkins", "usdf-k8s"]
+            site.lower(),
+            ["tucson", "summit", "base", "staff-rsp", "rubin-devl", "jenkins", "usdf-k8s", "gha", "local"],
         )
 
 
