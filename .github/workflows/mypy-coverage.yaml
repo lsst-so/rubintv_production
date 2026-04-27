@@ -40,40 +40,34 @@ jobs:
           # Use the repo's mypy.ini directly so we pick up the same
           # exclude pattern, files=, and mypy_path= as the local mypy run.
           config: mypy.ini
-          # Walled-off "Excluded files" section is informational; harmless
-          # in CI logs and useful for visibility into uploaders.py + the
-          # tests/ci/meta_*.py shims that mypy is configured to skip.
-          include-excluded: "true"
+          # Drop the walled-off "Excluded files" section: it's noise in
+          # the PR comment and reviewers don't act on it.
+          include-excluded: "false"
       - name: "Build markdown report"
         if: always()
         # The action above pip-installs mypy-coverage, so the CLI is on
         # PATH for the rest of the job. Re-run it here in markdown mode
         # to produce a body we can post as a sticky PR comment.
         run: |
-          {
-            echo "<!-- mypy-coverage-report -->"
-            mypy-coverage \
-              --color never \
-              --format markdown \
-              --config mypy.ini \
-              || true
-          } > "$RUNNER_TEMP/mypy-coverage.md"
+          mypy-coverage \
+            --color never \
+            --format markdown \
+            --no-include-excluded \
+            --config mypy.ini \
+            > "$RUNNER_TEMP/mypy-coverage.md" \
+            || true
       - name: "Coverage summary"
         if: always()
         run: cat "$RUNNER_TEMP/mypy-coverage.md" >> "$GITHUB_STEP_SUMMARY"
-      - name: "Find existing PR comment"
+      - name: "Post sticky PR comment (recreated each run)"
+        # ``recreate: true`` deletes the previous comment and posts a
+        # fresh one each run, so the new comment gets a current
+        # timestamp and the PR conversation always renders it at the
+        # bottom (after every commit) instead of stranded at the top
+        # where it first appeared.
         if: always() && github.event_name == 'pull_request'
-        uses: peter-evans/find-comment@v4
-        id: fc
+        uses: marocchino/sticky-pull-request-comment@v2
         with:
-          issue-number: ${{ github.event.pull_request.number }}
-          comment-author: github-actions[bot]
-          body-includes: <!-- mypy-coverage-report -->
-      - name: "Post or update PR comment"
-        if: always() && github.event_name == 'pull_request'
-        uses: peter-evans/create-or-update-comment@v5
-        with:
-          comment-id: ${{ steps.fc.outputs.comment-id }}
-          issue-number: ${{ github.event.pull_request.number }}
-          body-path: ${{ runner.temp }}/mypy-coverage.md
-          edit-mode: replace
+          header: mypy-coverage-report
+          recreate: true
+          path: ${{ runner.temp }}/mypy-coverage.md

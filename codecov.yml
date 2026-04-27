@@ -11,6 +11,10 @@ coverage:
 comment:
   layout: "reach, diff, flags, files"
   require_changes: false
+  # Delete and re-create the comment on every push instead of editing
+  # in place, so the timestamp updates and the PR conversation always
+  # renders the report at the bottom (after every commit).
+  behavior: new
 
 ignore:
   - "tests/**"
