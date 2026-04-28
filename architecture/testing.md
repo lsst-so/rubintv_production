@@ -1,5 +1,29 @@
 # Testing Guide
 
+## Terminology
+
+This repo has two layers of testing that the on-disk naming
+unfortunately conflates with conventional CI:
+
+- **Unit tests** — `pytest tests/test_*.py` and `mypy`. Run on every
+  Python change, on any machine with the LSST stack sourced. This is
+  the routine validation gate. Nothing automated runs them; manual
+  invocation is required and the `rapid-analysis-testing` skill is
+  the checklist.
+- **Integration suite** — `tests/ci/test_rapid_analysis.py`. Spins up
+  a real Redis server, runs the distributed pipeline scripts as
+  subprocesses against a real Butler. Requires a SLAC dev node; run
+  manually as part of pre-deployment validation.
+
+There is **no automated CI in the conventional sense** for this repo.
+`.github/workflows/build_and_push.yaml` only builds and publishes the
+Docker image. Despite that, the integration suite is named "CI" on
+disk (`tests/ci/`, `RA_CI_*` env vars, `runningCI()` predicate, etc.)
+— that's a misnomer kept for now to avoid churn. See
+[claudePlans/backlog.md](../claudePlans/backlog.md). Whenever this
+doc says "integration suite", that's the thing that lives in
+`tests/ci/`.
+
 ## Type Checking (mypy)
 
 `mypy` is the type checker for this repo. Neither pre-commit nor CI runs it
@@ -63,12 +87,18 @@ Run with pytest. Some tests require a live Butler connection (only available on
 - **No Redis mocking in unit tests**: Redis-dependent code is tested in the
   CI suite instead
 
-## CI Integration Suite (`tests/ci/`)
+## Integration Suite (`tests/ci/`)
 
-The CI suite is a custom test framework (not pytest) that spins up a real Redis
-server and runs actual processing scripts as subprocesses. It validates the
-full distributed system and pipelines end-to-end, including all work
-distribution, payload handling, and S3 uploads (mocked).
+> **Naming reminder:** the on-disk directory is `tests/ci/` and many
+> related artefacts use "CI" in their names, but this is the
+> *integration suite*, **not** conventional CI. Nothing about it runs
+> in GitHub Actions or k8s. The name is kept on disk for now to avoid
+> churn — see [the rename backlog item](../claudePlans/backlog.md).
+
+The integration suite is a custom test framework (not pytest) that spins up
+a real Redis server and runs actual processing scripts as subprocesses. It
+validates the full distributed system and pipelines end-to-end, including
+all work distribution, payload handling, and S3 uploads (mocked).
 
 ### Entry Point
 
