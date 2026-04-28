@@ -108,7 +108,11 @@ jobs:
             id=$(jq -r '.id' <<<"$line")
             created=$(jq -r '.created_at' <<<"$line")
             created_epoch=$(date -u -d "$created" +%s)
-            mapfile -t tags < <(jq -r '.tags[]?' <<<"$line")
+            # mapfile is bash 4+; the GHA runner has it but the local
+            # dry-run companion script runs on macOS bash 3.2. Keep
+            # both in sync with a portable read loop.
+            tags=()
+            while IFS= read -r t; do tags+=("$t"); done < <(jq -r '.tags[]?' <<<"$line")
 
             if [ "${#tags[@]}" -eq 0 ]; then
               if [ "$created_epoch" -lt "$untagged_cutoff" ]; then
@@ -135,6 +139,14 @@ jobs:
               # positives just keep something we could've pruned.
               if [[ "$t" =~ ^v?[0-9]+(\.[0-9]+){1,2}([.+-][A-Za-z0-9.+-]+)?$ ]]; then
                 keep=1; keep_reason="release tag '$t'"; keep_bucket="release"; break
+              fi
+              # LSST stack weekly tags: ``w_YYYY_WW`` and variants like
+              # ``w_2025_41_ts_ofc``. Deliberately requires the ``w_``
+              # prefix at the start of the tag so ticket branches like
+              # ``tickets-DM-50534-w48`` (which embed ``-w48`` mid-tag)
+              # are NOT protected.
+              if [[ "$t" =~ ^w_[0-9]{4}_[0-9]{2}(_.+)?$ ]]; then
+                keep=1; keep_reason="weekly tag '$t'"; keep_bucket="release"; break
               fi
             done
 
