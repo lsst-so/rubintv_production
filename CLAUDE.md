@@ -55,6 +55,41 @@ What this means in practice for refactors:
   name in place for one release" are all anti-patterns in this codebase —
   there are no downstream releases.
 
+## Terminology — "tests", "CI", and what runs when
+
+Two different things in this repo are sometimes both called "tests",
+and the on-disk naming conflates them with conventional CI in a way
+that has actively caused confusion. Get these straight:
+
+- **Unit tests** = `pytest tests/test_*.py` and `mypy`. They run on
+  any machine with the LSST stack sourced (including the user's Mac).
+  These are the routine validation gate: **every Python change**
+  under `python/lsst/rubintv/production/`, `scripts/`, or `tests/`
+  must pass them before being declared done. Nothing automated runs
+  them — manual `mypy` + `pytest` is the gate.
+- **Integration suite** = `tests/ci/test_rapid_analysis.py`. This
+  spins up a real Redis server and runs the distributed pipeline
+  scripts as subprocesses against real Butler data. It requires a
+  SLAC dev node and is run manually as part of pre-deployment
+  validation. **It does not run in GitHub Actions or k8s.**
+
+There is **no automated CI in the conventional sense**. The only
+GitHub Action is `build_and_push.yaml`, which builds the Docker image
+and nothing more — "CI is green" tells you the image built, not that
+anything was validated. Pre-commit runs trailing-whitespace,
+check-yaml, isort, black, and flake8 — no mypy, no pytest.
+
+Despite that, on disk the integration suite is named "CI" everywhere:
+the directory is `tests/ci/`, the env vars are `RA_CI_*` /
+`RAPID_ANALYSIS_CI`, the predicate is `runningCI()`. **This is a
+misnomer**, retained for now to avoid churn (see
+[claudePlans/backlog.md](claudePlans/backlog.md) for the rename
+ticket). When you read "CI" in this repo, translate it to
+"integration suite" mentally and you will not be misled.
+
+The `rapid-analysis-testing` skill is the canonical guide to running
+the unit tests; `architecture/testing.md` covers both.
+
 ## Architecture Documentation
 
 Detailed architecture docs live in `architecture/`:
@@ -64,8 +99,8 @@ Detailed architecture docs live in `architecture/`:
   the gather mechanism, and how exposures flow through the system
 - [Redis Coordination](architecture/redis-coordination.md) - how Redis is used
   for work distribution, pod health, task tracking, and control signals
-- [Testing Guide](architecture/testing.md) - unit tests, CI integration suite,
-  and how to run them
+- [Testing Guide](architecture/testing.md) - unit tests, the integration suite
+  (the thing in `tests/ci/`), and how to run them
 
 These docs must stay in sync with the code; the `rubintv-architecture-sync`
 skill describes when and how to update them alongside a code change.
@@ -114,9 +149,9 @@ config/                            # Per-environment YAML configs
   config_summit.yaml               # Production (summit)
   config_usdf.yaml                 # US Data Facility (SLAC)
 
-tests/                             # Unit tests
-tests/ci/                          # CI integration suite
-  test_rapid_analysis.py           # Main CI orchestrator
+tests/                             # Unit tests (pytest + mypy gate)
+tests/ci/                          # Integration suite (misleadingly named "ci")
+  test_rapid_analysis.py           # Main integration-suite orchestrator
   drip_feed_data.py                # Feeds test exposures into Redis
 ```
 
@@ -156,16 +191,17 @@ Examples of changes that should always ship with tests:
 
 When tests are genuinely hard (the change is deep inside an event loop,
 requires a live Butler/Redis, or is a plumbing change whose only
-observable effect is end-to-end in the CI integration suite), it is
+observable effect is end-to-end in the integration suite), it is
 fine to skip them — but state in the commit message *why* the change
 isn't unit-tested, so a reviewer doesn't have to guess whether it was
 an oversight or a deliberate call.
 
-The reminder: nothing in pre-commit or CI forces this — the
-`rapid-analysis-testing` skill is the checklist for validating what
-you *did* write, but it won't tell you that you *should* have written
-a test in the first place. That judgement is on you at the moment of
-editing the code, and must be made explicit in the commit message.
+The reminder: nothing in pre-commit or in any automated workflow
+forces this — the `rapid-analysis-testing` skill is the checklist for
+validating what you *did* write, but it won't tell you that you
+*should* have written a test in the first place. That judgement is on
+you at the moment of editing the code, and must be made explicit in
+the commit message.
 
 ## Skills
 
@@ -177,6 +213,7 @@ when their triggering context matches:
 - **rapid-analysis-code-style** — naming, formatting, type annotation, and
   docstring conventions when writing or editing Python here.
 - **rapid-analysis-testing** — the manual validation loop (mypy + pytest)
-  to run after editing Python, since neither pre-commit nor CI runs them.
+  to run after editing Python, since neither pre-commit nor any
+  automated workflow runs them.
 - **rapid-analysis-architecture-sync** — keeping `architecture/*.md` in
   step with code changes that touch the system's shape.
