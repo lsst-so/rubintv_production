@@ -140,6 +140,17 @@ The YAML config supports `${VAR}` substitution in any string value because
 `locationConfig._loadConfigFile` runs `os.path.expandvars` recursively
 over the loaded YAML before returning it.
 
+`LocationConfig.__post_init__` then touches every `cached_property` on
+the class so that every `_checkDir` / `_checkFile` runs at construction
+time. This is the eager-fail contract: if any path declared in the YAML
+cannot be created or read, `LocationConfig(...)` raises - construction
+*never* succeeds with a half-validated object. The intent is that the
+error message points at the misconfigured location rather than at
+whichever pod first happens to access the bad path. Touching every
+property is safe because the CI suite's `check_yaml_files` step
+enforces that every `config_<location>.yaml` has the same set of keys -
+a missing key is a real bug and propagates as a `KeyError`.
+
 ### Entry Point
 
 ```bash

@@ -65,13 +65,26 @@ class LocationConfig:
     log: logging.Logger = logging.getLogger("lsst.rubintv.production.locationConfig.LocationConfig")
 
     def __post_init__(self) -> None:
-        # Touch the _config after init to make sure the config file can be
-        # read.
-        # Any essential items can be touched here, but note they must all
-        # exist in all the different locations, otherwise it will fail in some
-        # locations and not others, so add things with caution.
-        self._config
-        self.plotPath
+        # Eagerly validate every path declared in the YAML by touching every
+        # cached_property on the class, so that each one runs its
+        # _checkDir / _checkFile at construction time instead of when some
+        # unrelated pod happens to read the path for the first time.
+        # Failing fast here means the error message points at the
+        # misconfigured location rather than at whichever pod first hit the
+        # bad path.
+        #
+        # Touching every property is safe because the CI suite's
+        # check_yaml_files step (in tests/ci/test_rapid_analysis.py)
+        # enforces that every config_<location>.yaml has the same set of
+        # keys. If a property's YAML key is missing, that's a real bug -
+        # let the KeyError propagate.
+        self._config  # touch first so YAML load errors surface before anything else
+        cls = type(self)
+        for name in dir(cls):
+            if name == "_config":
+                continue
+            if isinstance(getattr(cls, name, None), cached_property):
+                getattr(self, name)
 
     def _checkDir(self, dirName: str, createIfMissing: bool = True) -> None:
         """Check that a directory exists, optionally creating if it does not.
@@ -147,24 +160,6 @@ class LocationConfig:
         return self._config["auxtelButlerPath"]
 
     @cached_property
-    def ts8ButlerPath(self):
-        file = self._config["ts8ButlerPath"]
-        self._checkFile(file)
-        return file
-
-    @cached_property
-    def botButlerPath(self):
-        file = self._config["botButlerPath"]
-        self._checkFile(file)
-        return file
-
-    @cached_property
-    def metadataPath(self):
-        directory = self._config["metadataPath"]
-        self._checkDir(directory)
-        return directory
-
-    @cached_property
     def auxTelMetadataPath(self):
         directory = self._config["auxTelMetadataPath"]
         self._checkDir(directory)
@@ -173,18 +168,6 @@ class LocationConfig:
     @cached_property
     def auxTelMetadataShardPath(self):
         directory = self._config["auxTelMetadataShardPath"]
-        self._checkDir(directory)
-        return directory
-
-    @cached_property
-    def ts8MetadataPath(self):
-        directory = self._config["ts8MetadataPath"]
-        self._checkDir(directory)
-        return directory
-
-    @cached_property
-    def ts8MetadataShardPath(self):
-        directory = self._config["ts8MetadataShardPath"]
         self._checkDir(directory)
         return directory
 
@@ -353,18 +336,6 @@ class LocationConfig:
     @cached_property
     def guiderShardsDirectory(self) -> str:
         directory = self._config["guiderShardsDirectory"]
-        self._checkDir(directory)
-        return directory
-
-    @cached_property
-    def botMetadataPath(self) -> str:
-        directory = self._config["botMetadataPath"]
-        self._checkDir(directory)
-        return directory
-
-    @cached_property
-    def botMetadataShardPath(self) -> str:
-        directory = self._config["botMetadataShardPath"]
         self._checkDir(directory)
         return directory
 
