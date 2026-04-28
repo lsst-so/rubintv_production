@@ -470,6 +470,17 @@ def getAutomaticLocationConfig() -> LocationConfig:
     return LocationConfig(location.lower())
 
 
+def _expandEnvVars(node):
+    """Recursively expand ``${VAR}`` / ``$VAR`` references in YAML strings."""
+    if isinstance(node, str):
+        return os.path.expandvars(node)
+    if isinstance(node, dict):
+        return {k: _expandEnvVars(v) for k, v in node.items()}
+    if isinstance(node, list):
+        return [_expandEnvVars(v) for v in node]
+    return node
+
+
 def _loadConfigFile(site: str) -> dict[str, str]:
     """Get the site configuration, given a site name.
 
@@ -481,10 +492,11 @@ def _loadConfigFile(site: str) -> dict[str, str]:
     Returns
     -------
     config : `dict`
-        The configuration, as a dict.
+        The configuration, as a dict, with ``${VAR}`` style references in
+        string values expanded against the current environment.
     """
     packageDir = getPackageDir("rubintv_production")
     configFile = os.path.join(packageDir, "config", f"config_{site}.yaml")
     with open(configFile, "rb") as f:
         config = yaml.safe_load(f)
-    return config
+    return _expandEnvVars(config)

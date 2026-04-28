@@ -100,18 +100,77 @@ a real Redis server and runs actual processing scripts as subprocesses. It
 validates the full distributed system and pipelines end-to-end, including
 all work distribution, payload handling, and S3 uploads (mocked).
 
+### Per-user setup (one-time)
+
+The CI suite is designed to be runnable by anyone, not just the original
+author. Two scripts in `tests/ci/` handle the per-user setup:
+
+- **`tests/ci/preinstall_ci_deps.sh`** — installs CI dependencies that are
+  not in rubinenv (`sentry-sdk`, `redis` python client, `batoid`, `danish`,
+  `timm`, `peft`, `google-cloud-storage`, `lsst-efd-client`,
+  `pytorch_lightning`) via `pip install --user`, plus builds the
+  `redis-server` binary from source into `${HOME}/local/bin`. Run once per
+  user; idempotent on re-run. Mirrors the production Dockerfile's
+  conda+pip lists, minus `rubin-libradtran` (conda-only; only matters for
+  the LATISS spectral pipeline).
+- **`tests/ci/setup_ci_env.sh`** — exports the per-user environment
+  variables the suite needs and prepends `${HOME}/local/bin` to `PATH` so
+  the source-built redis-server is found. Edit the values at the top of
+  the file for your account, then `source` it in any shell session before
+  running CI.
+
+The required env vars (listed in `_REQUIRED_USER_ENV_VARS` at the top of
+both `tests/ci/test_rapid_analysis.py` and `tests/createUnitTestCollections.py`):
+
+| Env var | Purpose |
+|---|---|
+| `RA_CI_DATA_ROOT` | Root for plots, sidecar metadata, shards, AOS data, dimension universe file. Substituted as `${RA_CI_DATA_ROOT}` in `config/config_usdf_testing.yaml`. |
+| `RA_CI_STAR_TRACKER_DATA_PATH` | Star-tracker raw data root. |
+| `RA_CI_ASTROMETRY_NET_REF_CAT_PATH` | astrometry.net reference-catalogue base. |
+| `TARTS_DATA_DIR` | TARTS pipeline data dir (read by the AOS worker). |
+| `AI_DONUT_DATA_DIR` | AI-donut model data dir. |
+| `RA_CI_REDIS_PORT` | Port for the CI's private redis-server (default 6111; bump if a colleague is using it on the same node). |
+
+Both scripts (`test_rapid_analysis.py` and `createUnitTestCollections.py`)
+hard-fail at startup if any of these are unset, with a message pointing
+the user at `setup_ci_env.sh`. There are **no** hard-coded user paths
+left in either script.
+
+The YAML config supports `${VAR}` substitution in any string value because
+`locationConfig._loadConfigFile` runs `os.path.expandvars` recursively
+over the loaded YAML before returning it.
+
 ### Entry Point
 
 ```bash
+source tests/ci/setup_ci_env.sh           # required, per shell session
 python tests/ci/test_rapid_analysis.py -l <label_name>
 ```
+
+### Concurrent-run isolation
+
+The CI suite is *partially* safe to run concurrently with another user on
+the same dev node:
+
+- **S3 scratch is per-user** — `config/config_usdf_testing.yaml` sets
+  `scratchPath: rapidAnalysisScratchCi-${USER}`, so `getBasePath` resolves
+  to a user-specific S3 prefix.
+- **Redis is per-user** — port comes from `RA_CI_REDIS_PORT`, and
+  `RedisManager.is_redis_running` uses `pgrep -u $USER` so a colleague's
+  redis on the same node doesn't trip the "already running" guard.
+- **Butler output chains are NOT per-user** — `outputChains` in the YAML
+  (`LSSTCam/runs/quickLookTesting`, etc.) are still shared. Concurrent
+  runs that hit step1b will fight over these collections. Coordinate with
+  collaborators if you both need to run at the same time.
 
 ### Architecture
 
 The CI suite has its own mini-framework:
 
-- **`TestConfig`** - centralized config (timeouts, Redis port, test scripts)
-- **`RedisManager`** - starts/stops a local Redis server on port 6111
+- **`TestConfig`** - centralized config (timeouts, redis port from
+  `RA_CI_REDIS_PORT`, test scripts)
+- **`RedisManager`** - starts/stops a local Redis server on the user's
+  configured port; `is_redis_running` is scoped to `$USER`
 - **`LogManager`** - creates timestamped log directories under `ci_logs/`
 - **`ProcessManager`** - launches test scripts as `multiprocessing.Process`
 - **`ResultCollector`** - aggregates pass/fail results
@@ -156,7 +215,8 @@ Post-processing and visualization:
 
 ### Redis in CI
 
-- Real Redis server started on `127.0.0.1:6111` with password `redis_password`
+- Real Redis server started on `127.0.0.1:${RA_CI_REDIS_PORT}` with password
+  `redis_password`
 - `FLUSHALL` between test phases for isolation
 - All S3 uploaders are mocked via `MockUploader` (tracks uploads without I/O)
 
@@ -178,6 +238,8 @@ Features:
 ### Test Collection Setup
 
 `tests/createUnitTestCollections.py` builds Butler collections for CI:
+- Requires the same `RA_CI_*` / `TARTS_DATA_DIR` / `AI_DONUT_DATA_DIR`
+  env vars as the main suite — `source tests/ci/setup_ci_env.sh` first.
 - Sets `RAPID_ANALYSIS_LOCATION=usdf_testing`
 - Runs pipelines in parallel via `ThreadPoolExecutor`
 - Creates collections for: FAM, AOS, SFM, calibration pipelines

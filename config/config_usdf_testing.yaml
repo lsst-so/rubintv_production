@@ -1,72 +1,73 @@
 bucketName: rubintv_data
 
 # Required items:
-dimensionUniverseFile: /sdf/home/m/mfl/u/rubintv/butlerDimensionUniverse.json
+dimensionUniverseFile: ${RA_CI_DATA_ROOT}/butlerDimensionUniverse.json
 
 # Summit items:
-nightReportPath:     /sdf/home/m/mfl/u/rubintv/nightReportData
+nightReportPath:     ${RA_CI_DATA_ROOT}/nightReportData
 
 # AuxTel
 auxtelButlerPath: /repo/main
-auxTelMetadataPath: /sdf/home/m/mfl/u/rubintv/sidecar_metadata
-auxTelMetadataShardPath: /sdf/home/m/mfl/u/rubintv/sidecar_metadata/shards
+auxTelMetadataPath: ${RA_CI_DATA_ROOT}/sidecar_metadata
+auxTelMetadataShardPath: ${RA_CI_DATA_ROOT}/sidecar_metadata/shards
 
 # all sky
-allSkyRootDataPath: /sdf/home/m/mfl/u/rubintv/allsky/raw
-allSkyOutputPath: /sdf/home/m/mfl/u/rubintv/allsky
+allSkyRootDataPath: ${RA_CI_DATA_ROOT}/allsky/raw
+allSkyOutputPath: ${RA_CI_DATA_ROOT}/allsky
 
 # animation
-moviePngPath: /sdf/home/m/mfl/u/rubintv/auxTel_animation
+moviePngPath: ${RA_CI_DATA_ROOT}/auxTel_animation
 
 # Star Trackers paths:
 # The path at which to find the data on disk. Does not include the
 # GenericCamera/101/ or GenericCamera/102/ part, just the base directory.
-starTrackerDataPath: /sdf/home/m/mfl/u/starTracker
-starTrackerOutputPath: /sdf/home/m/mfl/u/rubintv/starTracker/output
-starTrackerMetadataPath: /sdf/home/m/mfl/u/rubintv/starTracker/sidecar_metadata
-starTrackerMetadataShardPath: /sdf/home/m/mfl/u/rubintv/starTracker/sidecar_metadata/shards
+starTrackerDataPath: ${RA_CI_STAR_TRACKER_DATA_PATH}
+starTrackerOutputPath: ${RA_CI_DATA_ROOT}/starTracker/output
+starTrackerMetadataPath: ${RA_CI_DATA_ROOT}/starTracker/sidecar_metadata
+starTrackerMetadataShardPath: ${RA_CI_DATA_ROOT}/starTracker/sidecar_metadata/shards
 
 
 # The path to the astrometry.net reference catalogs. Do not include
 # the /4100 or /4200, just the base directory.
-astrometryNetRefCatPath: /sdf/home/m/mfl/u/astrometry_net
+astrometryNetRefCatPath: ${RA_CI_ASTROMETRY_NET_REF_CAT_PATH}
 
 # ComCam configuration:
 comCamButlerPath: /repo/main
 # comCamButlerPath: /sdf/data/rubin/repo/aos_imsim/raw/comcam_sensitivity_matrix/repo
 binning: 8
 # # paths for serving TS8 metadata at SLAC
-comCamMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTComCam/sidecar_metadata
-comCamMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCam/sidecar_metadata/shards
+comCamMetadataPath: ${RA_CI_DATA_ROOT}/LSSTComCam/sidecar_metadata
+comCamMetadataShardPath: ${RA_CI_DATA_ROOT}/LSSTComCam/sidecar_metadata/shards
 
-comCamSimMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSim/sidecar_metadata
-comCamSimMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSim/sidecar_metadata/shards
+comCamSimMetadataPath: ${RA_CI_DATA_ROOT}/LSSTComCamSim/sidecar_metadata
+comCamSimMetadataShardPath: ${RA_CI_DATA_ROOT}/LSSTComCamSim/sidecar_metadata/shards
 
-comCamSimAosMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSimAos/sidecar_metadata
-comCamSimAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamSimAos/sidecar_metadata/shards
+comCamSimAosMetadataPath: ${RA_CI_DATA_ROOT}/LSSTComCamSimAos/sidecar_metadata
+comCamSimAosMetadataShardPath: ${RA_CI_DATA_ROOT}/LSSTComCamSimAos/sidecar_metadata/shards
 
-comCamAosMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamAos/sidecar_metadata
-comCamAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTComCamAos/sidecar_metadata/shards
+comCamAosMetadataPath: ${RA_CI_DATA_ROOT}/LSSTComCamAos/sidecar_metadata
+comCamAosMetadataShardPath: ${RA_CI_DATA_ROOT}/LSSTComCamAos/sidecar_metadata/shards
 
-raPerformanceDirectory: /sdf/home/m/mfl/u/rubintv/raPerformance/sidecar_metadata
-raPerformanceShardsDirectory: /sdf/home/m/mfl/u/rubintv/raPerformance/sidecar_metadata/shards
+raPerformanceDirectory: ${RA_CI_DATA_ROOT}/raPerformance/sidecar_metadata
+raPerformanceShardsDirectory: ${RA_CI_DATA_ROOT}/raPerformance/sidecar_metadata/shards
 
-guiderDirectory: /sdf/home/m/mfl/u/rubintv/LSSTCam/guiders/sidecar_metadata
-guiderShardsDirectory: /sdf/home/m/mfl/u/rubintv/LSSTCam/guiders/sidecar_metadata/shards
+guiderDirectory: ${RA_CI_DATA_ROOT}/LSSTCam/guiders/sidecar_metadata
+guiderShardsDirectory: ${RA_CI_DATA_ROOT}/LSSTCam/guiders/sidecar_metadata/shards
 
-lsstCamMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata
-lsstCamMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata/shards
-lsstCamAosMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTCamAos/sidecar_metadata/shards
-lsstCamAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTCamAos/sidecar_metadata/shards
+lsstCamMetadataPath: ${RA_CI_DATA_ROOT}/LSSTCam/sidecar_metadata
+lsstCamMetadataShardPath: ${RA_CI_DATA_ROOT}/LSSTCam/sidecar_metadata/shards
+lsstCamAosMetadataPath: ${RA_CI_DATA_ROOT}/LSSTCamAos/sidecar_metadata/shards
+lsstCamAosMetadataShardPath: ${RA_CI_DATA_ROOT}/LSSTCamAos/sidecar_metadata/shards
 lsstCamButlerPath: main
 
 # Not prefixed with ComCam because were currently just pretending that ComCam is TS8
-scratchPath : rapidAnalysisScratchCi
-plotPath: /sdf/home/m/mfl/u/rubintv/plots
+# Per-user suffix so concurrent CI runs by different users don't clobber one another.
+scratchPath : rapidAnalysisScratchCi-${USER}
+plotPath: ${RA_CI_DATA_ROOT}/plots
 
 # TMA config:
-tmaMetadataPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata
-tmaMetadataShardPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata/shards
+tmaMetadataPath: ${RA_CI_DATA_ROOT}/tma/sidecar_metadata
+tmaMetadataShardPath: ${RA_CI_DATA_ROOT}/tma/sidecar_metadata/shards
 
 consDBURL: "http://consdb-pq.consdb:8080/consdb"
 
@@ -81,7 +82,7 @@ aosLSSTCamWcsDanishBin2PipelineFile: $DONUT_VIZ_DIR/pipelines/production/lsstCam
 aosLSSTCamFullArrayModePipelineFileDanish: $DONUT_VIZ_DIR/pipelines/production/lsstCamScienceSensorRapidAnalysisPipeline_Danish.yaml
 aosLSSTCamFullArrayModePipelineFileTie: $DONUT_VIZ_DIR/pipelines/production/lsstCamScienceSensorRapidAnalysisPipeline_TIE.yaml
 
-aosDataDir: /sdf/home/m/mfl/u/rubintv/aos_data
+aosDataDir: ${RA_CI_DATA_ROOT}/aos_data
 
 sfmPipelineFile:
   LATISS: $ATMOSPEC_DIR/pipelines/processStar.yaml

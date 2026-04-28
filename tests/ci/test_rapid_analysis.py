@@ -125,6 +125,27 @@ class MockUploader:
         return self.__str__()
 
 
+_REQUIRED_USER_ENV_VARS = (
+    "RA_CI_DATA_ROOT",
+    "RA_CI_STAR_TRACKER_DATA_PATH",
+    "RA_CI_ASTROMETRY_NET_REF_CAT_PATH",
+    "TARTS_DATA_DIR",
+    "AI_DONUT_DATA_DIR",
+    "RA_CI_REDIS_PORT",
+)
+
+
+def _require_user_env_vars() -> None:
+    """Verify the per-user CI env vars are set, else raise with guidance."""
+    missing = [v for v in _REQUIRED_USER_ENV_VARS if not os.environ.get(v)]
+    if missing:
+        raise RuntimeError(
+            "The following per-user CI environment variables are not set: "
+            f"{missing}. Source tests/ci/setup_ci_env.sh (after editing it "
+            "for your user) before running the CI suite."
+        )
+
+
 def setup_mock_uploaders():
     """Set up mock uploaders for testing."""
     # Patch uploader creation functions
@@ -164,9 +185,10 @@ class TestConfig:
 
         self.debug = False
 
-        # Redis settings
+        # Redis settings - port is per-user to avoid collisions on shared
+        # dev nodes; set in tests/ci/setup_ci_env.sh.
         self.redis_host = "127.0.0.1"
-        self.redis_port = "6111"
+        self.redis_port = os.environ["RA_CI_REDIS_PORT"]
         self.redis_password = "redis_password"
         self.redis_init_wait_time = 3
         self.capture_redis_output = True
@@ -448,11 +470,18 @@ class RedisManager:
         self.redis_process = None
 
     def is_redis_running(self) -> bool:
-        """Check if redis-server is already running."""
+        """Check if this user already has a redis-server running.
+
+        Scoped to ``$USER`` so we don't trip over redis-servers spawned by
+        colleagues sharing the same dev node.
+        """
         try:
-            # Run pgrep to find redis-server processes
-            result = subprocess.run(["pgrep", "-f", "redis-server"], capture_output=True, text=True)
-            # Get process IDs if any
+            # -u $USER limits the search to the current user's processes
+            result = subprocess.run(
+                ["pgrep", "-u", os.environ["USER"], "-f", "redis-server"],
+                capture_output=True,
+                text=True,
+            )
             redis_pids = result.stdout.strip().split("\n") if result.stdout.strip() else []
             return bool(redis_pids and redis_pids[0])
         except Exception as e:
@@ -1373,8 +1402,6 @@ class TestRunner:
         os.environ["RAPID_ANALYSIS_LOCATION"] = "usdf_testing"
         os.environ["RAPID_ANALYSIS_CI"] = "true"
         os.environ["RAPID_ANALYSIS_DO_RAISE"] = "True"
-        os.environ["TARTS_DATA_DIR"] = "/sdf/home/m/mfl/temp/TARTS"
-        os.environ["AI_DONUT_DATA_DIR"] = "/sdf/home/m/mfl/u/rubintv/aos_data/AI_DONUT"
         os.environ["LIMITS_CPU"] = "4"  # this should roughly match the lsstcamAosWorkerSet LIMITS_CPU value
 
         # Verify environment settings
@@ -1558,6 +1585,8 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+
+    _require_user_env_vars()
 
     runner = TestRunner(run_label=args.label)
     runner.run()
