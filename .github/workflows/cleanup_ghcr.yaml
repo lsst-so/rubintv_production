@@ -1,0 +1,220 @@
+name: "Cleanup GHCR"
+
+# Routinely prune old container images and buildcache layers from GHCR.
+#
+# Why this exists:
+#   build_and_push.yaml pushes one image tag per branch (collapsing
+#   ``/`` to ``-``) plus a paired ``buildcache-<tag>`` registry-cache
+#   layer, so every PR ever opened leaves two long-lived artefacts
+#   behind. Storage is "free" but the package version list and the
+#   buildcache namespace become unwieldy fast, and stale buildcache
+#   layers for dead branches just waste GHCR storage that GitHub will
+#   eventually start charging the org for.
+#
+#   Originally we hoped to push the registry-cache support upstream
+#   into ``lsst-sqre/build-and-push-to-ghcr`` so this cleanup concern
+#   became theirs too, but they declined (they're moving toward a
+#   different workflow and don't want to own the deletion side). So
+#   the cleanup lives here.
+#
+# Safety model -- WHAT WE KEEP, in priority order:
+#   1. ``main``, ``buildcache-main``, ``latest`` -- always.
+#   2. Any tag that looks like a semver release (``1.2.3``, ``v1.2``,
+#      ``1.2.3-rc1`` ...). Released images are referenced by
+#      deployments and by anyone pinning a specific version.
+#   3. Any tag corresponding to a branch that still exists on
+#      ``origin``, plus its paired ``buildcache-<tag>``. An open PR's
+#      head branch counts; so does a long-lived feature branch.
+#   4. Anything pushed within the last ``RECENT_DAYS`` (default 14).
+#      Protects active iteration on a PR even if the branch listing
+#      call were somehow incomplete.
+#
+# WHAT WE DELETE:
+#   * Tagged versions older than ``RECENT_DAYS`` whose tags are all
+#     branch-style (i.e. fail every keep rule above) and whose source
+#     branch is gone from ``origin``.
+#   * Untagged manifests older than ``UNTAGGED_DAYS`` (default 30).
+#     These are orphaned layers left behind when a tag was overwritten
+#     by a newer build.
+#
+# Operational notes:
+#   * Runs weekly + on demand. ``dry_run: true`` (default for manual
+#     runs) prints the plan without deleting -- use this to sanity
+#     check after editing the rules.
+#   * The cron run defaults to ``dry_run: false``; if a future change
+#     ever looks risky, flip the cron's input back to true and
+#     re-enable after a few weekly dry runs look sane.
+#   * Aborts if the branch list comes back empty -- that almost
+#     certainly means a transient API failure, and proceeding would
+#     nuke every non-release tag.
+
+"on":
+  schedule:
+    # Sunday 03:00 UTC. Off-hours, doesn't collide with the weekly
+    # stack rebuild (which fires off ``w_latest`` on Saturday).
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List proposed deletions without actually deleting"
+        required: false
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: cleanup-ghcr
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: "Prune stale GHCR versions"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      OWNER: ${{ github.repository_owner }}
+      REPO: ${{ github.event.repository.name }}
+      PACKAGE: ${{ github.event.repository.name }}
+      # Scheduled runs always actually delete; manual runs default to
+      # dry-run unless the operator explicitly flips the input.
+      DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || (inputs.dry_run || 'true') }}
+      RECENT_DAYS: "14"
+      UNTAGGED_DAYS: "30"
+    steps:
+      - name: "List live branches on origin"
+        run: |
+          set -euo pipefail
+          gh api "/repos/${OWNER}/${REPO}/branches" \
+            --paginate --jq '.[].name' > /tmp/live-branches.txt
+          n=$(wc -l < /tmp/live-branches.txt | tr -d ' ')
+          echo "Found ${n} live branches."
+          # Sanity check: an empty list almost always means the API
+          # call silently failed (auth, rate limit, ...). Bail before
+          # we end up treating every tag as deletable.
+          if [ "$n" -eq 0 ]; then
+            echo "::error::Branch listing came back empty -- aborting to avoid mass deletion."
+            exit 1
+          fi
+
+      - name: "Build keep-set"
+        run: |
+          set -euo pipefail
+          # The tag-derivation in build_and_push.yaml collapses ``/``
+          # to ``-`` (e.g. ``tickets/DM-12345`` -> ``tickets-DM-12345``)
+          # so we have to mirror that here. For each live branch we
+          # protect both the image tag and the paired buildcache tag.
+          {
+            echo "main"
+            echo "buildcache-main"
+            echo "latest"
+            while read -r b; do
+              tag="${b//\//-}"
+              echo "$tag"
+              echo "buildcache-${tag}"
+            done < /tmp/live-branches.txt
+          } | sort -u > /tmp/keep-tags.txt
+          echo "Keep-set size: $(wc -l < /tmp/keep-tags.txt)"
+
+      - name: "Fetch package versions and plan deletions"
+        run: |
+          set -euo pipefail
+
+          # lsst-so is a GitHub org, so use the org packages endpoint.
+          # (The user-packages endpoint returns 404 for org-owned
+          # packages even with a valid token.)
+          API="/orgs/${OWNER}/packages/container/${PACKAGE}/versions"
+
+          tagged_cutoff=$(date -u -d "${RECENT_DAYS} days ago" +%s)
+          untagged_cutoff=$(date -u -d "${UNTAGGED_DAYS} days ago" +%s)
+          echo "Tagged cutoff:   $(date -u -d @${tagged_cutoff} -Iseconds) (${RECENT_DAYS}d)"
+          echo "Untagged cutoff: $(date -u -d @${untagged_cutoff} -Iseconds) (${UNTAGGED_DAYS}d)"
+
+          gh api "${API}" --paginate \
+            --jq '.[] | {id, created_at, tags: (.metadata.container.tags // [])}' \
+            > /tmp/versions.jsonl
+
+          total=$(wc -l < /tmp/versions.jsonl | tr -d ' ')
+          echo "Found ${total} package versions."
+
+          : > /tmp/to-delete.txt
+
+          while IFS= read -r line; do
+            id=$(jq -r '.id' <<<"$line")
+            created=$(jq -r '.created_at' <<<"$line")
+            created_epoch=$(date -u -d "$created" +%s)
+            mapfile -t tags < <(jq -r '.tags[]?' <<<"$line")
+
+            if [ "${#tags[@]}" -eq 0 ]; then
+              if [ "$created_epoch" -lt "$untagged_cutoff" ]; then
+                echo "DELETE untagged  ${id}  (created ${created})"
+                echo "$id" >> /tmp/to-delete.txt
+              else
+                echo "KEEP   untagged  ${id}  (recent: ${created})"
+              fi
+              continue
+            fi
+
+            keep=0
+            keep_reason=""
+            for t in "${tags[@]}"; do
+              if grep -qxF "$t" /tmp/keep-tags.txt; then
+                keep=1; keep_reason="live tag '$t'"; break
+              fi
+              # Semver-ish: ``1.2``, ``1.2.3``, ``v1.2.3``, ``1.2.3-rc1``,
+              # ``1.2.3+build.5``. Deliberately permissive -- false
+              # positives just mean we keep something we could've
+              # pruned, which is the safe direction.
+              if [[ "$t" =~ ^v?[0-9]+(\.[0-9]+){1,2}([.+-][A-Za-z0-9.+-]+)?$ ]]; then
+                keep=1; keep_reason="release tag '$t'"; break
+              fi
+            done
+
+            if [ "$keep" -eq 1 ]; then
+              echo "KEEP   tagged    ${id}  [${tags[*]}]  -- ${keep_reason}"
+              continue
+            fi
+
+            if [ "$created_epoch" -lt "$tagged_cutoff" ]; then
+              echo "DELETE stale     ${id}  [${tags[*]}]  (created ${created})"
+              echo "$id" >> /tmp/to-delete.txt
+            else
+              echo "KEEP   recent    ${id}  [${tags[*]}]  (created ${created})"
+            fi
+          done < /tmp/versions.jsonl
+
+          n=$(wc -l < /tmp/to-delete.txt | tr -d ' ')
+          echo "Planned deletions: ${n}"
+
+      - name: "Execute deletions"
+        run: |
+          set -euo pipefail
+          n=$(wc -l < /tmp/to-delete.txt | tr -d ' ')
+          if [ "$n" -eq 0 ]; then
+            echo "Nothing to delete."
+            exit 0
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "DRY RUN -- would delete ${n} versions:"
+            cat /tmp/to-delete.txt
+            exit 0
+          fi
+          # Hard ceiling: if a logic bug ever proposes a huge wipe,
+          # require a manual run with the input flipped to confirm.
+          # 200 covers a worst-case backlog (years of branches) while
+          # still catching "delete everything" mistakes.
+          if [ "$n" -gt 200 ] && [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "::error::Refusing to delete ${n} versions from a scheduled run (limit 200)."
+            echo "::error::Re-run manually with dry_run=false to override."
+            exit 1
+          fi
+          while read -r id; do
+            echo "Deleting ${id}..."
+            gh api -X DELETE \
+              "/orgs/${OWNER}/packages/container/${PACKAGE}/versions/${id}"
+          done < /tmp/to-delete.txt
+          echo "Deleted ${n} versions."
