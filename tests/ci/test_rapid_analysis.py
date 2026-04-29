@@ -2038,6 +2038,8 @@ def main() -> None:
     """Main entry point for the test suite."""
     import argparse
 
+    from lsst.summit.utils.utils import getSite
+
     parser = argparse.ArgumentParser(
         description="Run the RubinTV rapid analysis CI test suite",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -2064,6 +2066,12 @@ def main() -> None:
         sys.exit(0 if check_package_versions() else 1)
 
     _require_user_env_vars()
+
+    if getSite() != "rubin-devl":
+        raise RuntimeError(
+            "This integration test suite is designed to run on the USDF dev nodes, only. If you think it can"
+            " and should be run elsewhere, talk to the developers and widen this check."
+        )
 
     runner = TestRunner(run_label=args.label)
     runner.run()
