@@ -24,7 +24,12 @@ from __future__ import annotations
 import unittest
 
 import lsst.utils.tests
-from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor, PodType
+from lsst.rubintv.production.podDefinition import (
+    PodDetails,
+    PodFlavor,
+    PodType,
+    podFlavorToPodType,
+)
 
 
 class PodDefinitionTestCase(lsst.utils.tests.TestCase):
@@ -160,6 +165,63 @@ class PodDefinitionTestCase(lsst.utils.tests.TestCase):
         self.assertLess(len(newName), len(queueName))  # just check we actually removed something
         with self.assertRaises(ValueError):
             PodDetails.fromQueueName(newName)
+
+
+class PodFlavorToPodTypeTestCase(lsst.utils.tests.TestCase):
+    """Pin every PodFlavor to its expected PodType.
+
+    The lookup in `podFlavorToPodType` is exhaustive by intent — adding a
+    new PodFlavor without registering its PodType raises a KeyError at
+    runtime. This pins both that exhaustiveness and the actual mapping.
+    """
+
+    EXPECTED: dict[PodFlavor, PodType] = {
+        PodFlavor.HEAD_NODE: PodType.PER_INSTRUMENT_SINGLETON,
+        PodFlavor.SFM_WORKER: PodType.PER_DETECTOR,
+        PodFlavor.AOS_WORKER: PodType.PER_DETECTOR,
+        PodFlavor.PSF_PLOTTER: PodType.PER_INSTRUMENT,
+        PodFlavor.FWHM_PLOTTER: PodType.PER_INSTRUMENT,
+        PodFlavor.ZERNIKE_PREDICTED_FWHM_PLOTTER: PodType.PER_INSTRUMENT,
+        PodFlavor.RADIAL_PLOTTER: PodType.PER_INSTRUMENT,
+        PodFlavor.NIGHTLYROLLUP_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.STEP1B_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.STEP1B_AOS_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.MOSAIC_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.ONE_OFF_EXPRECORD_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.ONE_OFF_POSTISR_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.ONE_OFF_VISITIMAGE_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.PERFORMANCE_MONITOR: PodType.PER_INSTRUMENT_SINGLETON,
+        PodFlavor.GUIDER_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.BACKLOG_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.FOCUS_SWEEP_ANALYZER: PodType.PER_INSTRUMENT_SINGLETON,
+        PodFlavor.DONUT_LAUNCHER: PodType.PER_INSTRUMENT_SINGLETON,
+    }
+
+    def test_everyPodFlavorMapsToExpectedPodType(self) -> None:
+        for flavor, expectedType in self.EXPECTED.items():
+            with self.subTest(flavor=flavor):
+                self.assertEqual(podFlavorToPodType(flavor), expectedType)
+
+    def test_mappingCoversEveryPodFlavor(self) -> None:
+        # If a new PodFlavor is added, this test fails until the EXPECTED
+        # table is updated — which forces a deliberate decision about
+        # which PodType the new flavor belongs to.
+        self.assertEqual(set(self.EXPECTED.keys()), set(PodFlavor))
+
+    def test_unknownFlavorRaises(self) -> None:
+        # Defensive: passing something that isn't a real PodFlavor falls
+        # through the dict lookup and raises KeyError.
+        with self.assertRaises(KeyError):
+            podFlavorToPodType("HEAD_NODE")  # type: ignore[arg-type]
+
+
+class PodFlavorValuesTestCase(lsst.utils.tests.TestCase):
+
+    def test_noDashesInFlavorNames(self) -> None:
+        # validate_values is invoked at import time; this confirms that
+        # the underlying check is sensitive to the property it claims.
+        for flavor in PodFlavor:
+            self.assertNotIn("-", flavor.name)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

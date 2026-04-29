@@ -21,12 +21,23 @@
 
 import json
 import unittest
+from typing import cast
 
 from utils import getSampleExpRecord  # type: ignore[import]
 
 import lsst.daf.butler as dafButler
 import lsst.utils.tests
-from lsst.rubintv.production.payloads import Payload
+from lsst.daf.butler import DataCoordinate
+from lsst.pipe.base import PipelineGraph
+from lsst.rubintv.production.payloads import (
+    RESTART_SIGNAL,
+    Payload,
+    RestartPayload,
+    getDetectorId,
+    isRestartPayload,
+    pipelineGraphFromBytes,
+    pipelineGraphToBytes,
+)
 from lsst.summit.utils.utils import getSite
 
 NO_BUTLER = True
@@ -212,6 +223,125 @@ class TestPayload(unittest.TestCase):
         legacyJson = json.dumps(legacyDict)
         payload = Payload.from_json(legacyJson, self.butler)  # type: ignore[arg-type]
         self.assertIsNone(payload.taskName)
+
+
+class TestPipelineGraphRoundTrip(unittest.TestCase):
+    """``pipelineGraphToBytes`` / ``pipelineGraphFromBytes`` are the
+    Payload wire format for the pipeline graph. Byte-stability across
+    a round-trip is the property workers rely on when forwarding a
+    payload onwards (e.g. step1a → step1b), so a serialisation
+    regression would surface as silent payload corruption."""
+
+    def test_emptyPipelineGraphRoundTrip(self) -> None:
+        # A bare PipelineGraph still serialises and deserialises cleanly,
+        # which is the contract every wire-format consumer relies on.
+        graph = PipelineGraph()
+        data = pipelineGraphToBytes(graph)
+        self.assertIsInstance(data, bytes)
+        self.assertGreater(len(data), 0)
+
+        recovered = pipelineGraphFromBytes(data)
+        self.assertIsInstance(recovered, PipelineGraph)
+
+    def test_roundTripIsByteStable(self) -> None:
+        graph = PipelineGraph()
+        data1 = pipelineGraphToBytes(graph)
+        recovered = pipelineGraphFromBytes(data1)
+        data2 = pipelineGraphToBytes(recovered)
+        self.assertEqual(data1, data2)
+
+
+class TestIsRestartPayload(unittest.TestCase):
+    """``isRestartPayload`` runs on every payload pulled off a Redis
+    queue. It must return True for both the typed ``RestartPayload``
+    and for a post-JSON ``Payload`` whose run-or-who matches
+    ``RESTART_SIGNAL`` (the type-information is gone after
+    deserialisation). A regression here means a restart signal is
+    treated as a regular payload — the pod doesn't restart."""
+
+    def setUp(self) -> None:
+        self.expRecord = getSampleExpRecord()
+
+    def test_restartPayloadDetected(self) -> None:
+        self.assertTrue(isRestartPayload(RestartPayload()))
+
+    def test_normalPayloadIsNotRestart(self) -> None:
+        payload = Payload(
+            dataId=self.expRecord.dataId,
+            run="some-run",
+            pipelineGraphBytes=b"",
+            who="SFM",
+        )
+        self.assertFalse(isRestartPayload(payload))
+
+    def test_runFieldRestartSignalIsRestart(self) -> None:
+        # The function is documented to inspect the run/who fields after
+        # JSON round-trip, when the type-information of RestartPayload is
+        # gone. Build that shape directly.
+        payload = Payload(
+            dataId=self.expRecord.dataId,
+            run=RESTART_SIGNAL,
+            pipelineGraphBytes=b"",
+            who="not-the-restart-signal",
+        )
+        self.assertTrue(isRestartPayload(payload))
+
+    def test_whoFieldRestartSignalIsRestart(self) -> None:
+        payload = Payload(
+            dataId=self.expRecord.dataId,
+            run="some-run",
+            pipelineGraphBytes=b"",
+            who=RESTART_SIGNAL,
+        )
+        self.assertTrue(isRestartPayload(payload))
+
+
+class TestGetDetectorId(unittest.TestCase):
+    """``getDetectorId`` is called by worker code routing payloads to
+    per-detector queues. The contract: ``None`` when the dataId has
+    no detector key (exposure-level work), ``int`` when present.
+    The string-to-int coercion matters because some upstream paths
+    stringify detector numbers; switching to a string return would
+    break ``%d``-style formatting at call sites."""
+
+    def _makePayload(self, dataId: object) -> Payload:
+        # Payload type-hints dataId as DataCoordinate but does no runtime
+        # validation; getDetectorId only uses ``in`` and ``[]`` on the
+        # dataId, both of which a plain dict supports. Casting keeps the
+        # type checker happy.
+        return Payload(
+            dataId=cast(DataCoordinate, dataId),
+            run="r",
+            pipelineGraphBytes=b"",
+            who="SFM",
+        )
+
+    def test_returnsNoneWhenNoDetectorInDataId(self) -> None:
+        payload = self._makePayload({"instrument": "LSSTCam", "exposure": 1234})
+        self.assertIsNone(getDetectorId(payload))
+
+    def test_returnsIntWhenDetectorPresent(self) -> None:
+        payload = self._makePayload({"instrument": "LSSTCam", "detector": 94})
+        self.assertEqual(getDetectorId(payload), 94)
+
+    def test_coercesStringDetectorToInt(self) -> None:
+        # The `int(...)` conversion is part of the contract: callers can
+        # rely on always getting an int back, even if the dataId carried
+        # a stringified detector number.
+        payload = self._makePayload({"instrument": "LSSTCam", "detector": "42"})
+        self.assertEqual(getDetectorId(payload), 42)
+
+
+class TestRestartPayloadInstance(unittest.TestCase):
+    """Pins the field values of ``RestartPayload`` so a future change
+    to the constructor doesn't silently shift the signal value used
+    on the wire."""
+
+    def test_restartPayloadFieldsMatchSignal(self) -> None:
+        payload = RestartPayload()
+        self.assertEqual(payload.run, RESTART_SIGNAL)
+        self.assertEqual(payload.who, RESTART_SIGNAL)
+        self.assertEqual(payload.specialMessage, "RESTARTING")
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
