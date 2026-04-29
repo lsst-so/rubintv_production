@@ -95,11 +95,15 @@ class WorkerSet:
         return maxLength
 
     def minQueueLength(self, clusterStatus: ClusterStatus) -> int:
-        """Get the minimum queue length of all workers in this set."""
-        minLength = 9999999
-        for workerStatus in self.getWorkerStatuses(clusterStatus):
-            minLength = min(minLength, workerStatus.queueLength)
-        return minLength
+        """Get the minimum queue length of all workers in this set.
+
+        Returns 0 when the set has no matching workers in the cluster,
+        matching ``maxQueueLength``'s zero-on-empty convention.
+        """
+        queueLengths = [w.queueLength for w in self.getWorkerStatuses(clusterStatus)]
+        if not queueLengths:
+            return 0
+        return min(queueLengths)
 
     def getMissingPods(self, clusterStatus: ClusterStatus) -> list[PodDetails]:
         """Find pods in this set that are missing from the cluster status."""

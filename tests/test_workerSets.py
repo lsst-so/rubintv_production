@@ -258,14 +258,11 @@ class WorkerSetAggregationTestCase(lsst.utils.tests.TestCase):
         )
         self.assertEqual(self.set.minQueueLength(cluster), 2)
 
-    def test_minQueueLengthSentinelOnEmptyCluster(self) -> None:
-        # Documents the current behaviour: `minQueueLength` returns the
-        # internal sentinel (9_999_999) when there are no workers in the
-        # cluster, rather than 0 or None. This is almost certainly a bug
-        # waiting to happen — pin it so any future fix has to be deliberate
-        # and update this test at the same time.
+    def test_minQueueLengthOnEmptyCluster(self) -> None:
+        # Mirrors `maxQueueLength`'s zero-on-empty convention: when the
+        # set has no matching workers in the cluster, the answer is 0.
         cluster = _makeClusterStatus(sfmPods=[])
-        self.assertEqual(self.set.minQueueLength(cluster), 9_999_999)
+        self.assertEqual(self.set.minQueueLength(cluster), 0)
 
     def test_totalQueuedItems(self) -> None:
         cluster = _makeClusterStatus(
