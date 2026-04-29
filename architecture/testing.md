@@ -53,6 +53,12 @@ source ~/stack.sh && . ~/setup_packages.sh && pytest tests/ -q -n logical
 | `test_clusterManagement.py` | Dataclasses in `clusterManagement.py` | No |
 | `test_workerSets.py` | `WorkerSet` registry helpers | No |
 | `test_pipelines.py` | Full pipeline graph generation and validation | Yes |
+| `test_locationConfig.py` | `LocationConfig` accessors and dispatch helpers, against a fixture YAML dict | No |
+| `test_resources.py` | `getBasePath` per-site URI / endpoint selection | No |
+| `test_shardIo.py` | Shard write / read / delete helpers (uses `tmp_path`) | No |
+| `test_timedServices.py` | `deep_update` recursive dict merge | No |
+| `test_exposureProcessingInfo.py` | `ExposureProcessingInfo.fromRedisHash` parsing and predicates | No |
+| `test_redisUtils.py` | `RedisHelper` lifecycle / queueing / tracking, against `fakeredis` | No |
 
 ### Test Data
 
@@ -67,8 +73,12 @@ source ~/stack.sh && . ~/setup_packages.sh && pytest tests/ -q -n logical
 - **HTTP**: `responses` library (`@responses.activate`) for REST API mocking
 - **Butler**: conditional skip with `@unittest.skipIf(NO_BUTLER, ...)` when
   Butler is not available
-- **No Redis mocking in unit tests**: Redis-dependent code is tested in the
-  CI suite instead
+- **Redis**: `fakeredis` (`fakeredis.FakeStrictRedis()`) for in-memory Redis
+  in unit tests. Patch `lsst.rubintv.production.redisUtils.redis.Redis` with
+  a side-effect that returns a fakeredis client, then construct
+  `RedisHelper(butler=None, locationConfig=None)` — see
+  `tests/test_redisUtils.py` for the fixture pattern. The CI suite still
+  uses a real Redis server for end-to-end coverage.
 
 ## CI Integration Suite (`tests/ci/`)
 
