@@ -58,6 +58,44 @@ jobs:
           tags: |
             type=raw,value=${{ steps.tag.outputs.tag }}
 
+      - name: Resolve refs to SHAs
+        run: |
+          set -euo pipefail
+
+          set -a; source versions.env; set +a
+          echo "STACK_TAG=$STACK_TAG" >> "$GITHUB_ENV"
+
+          declare -A REPOS=(
+            [SPECTRACTOR_REF]=https://github.com/lsst/Spectractor.git
+            [ATMOSPEC_REF]=https://github.com/lsst/atmospec.git
+            [SUMMIT_UTILS_REF]=https://github.com/lsst-sitcom/summit_utils.git
+            [SUMMIT_EXTRAS_REF]=https://github.com/lsst-sitcom/summit_extras.git
+            [RUBINTV_PRODUCTION_REF]=https://github.com/lsst-sitcom/rubintv_production.git
+            [RUBINTV_ANALYSIS_SERVICE_REF]=https://github.com/lsst-ts/rubintv_analysis_service.git
+            [TS_WEP_REF]=https://github.com/lsst-ts/ts_wep.git
+            [TS_OFC_REF]=https://github.com/lsst-ts/ts_ofc.git
+            [TS_CONFIG_MTTCS_REF]=https://github.com/lsst-ts/ts_config_mttcs.git
+            [DONUT_VIZ_REF]=https://github.com/lsst-ts/donut_viz.git
+            [TARTS_REF]=https://github.com/PetchMa/TARTS.git
+            [OBS_LSST_REF]=https://github.com/lsst/obs_lsst.git
+            [DAF_BUTLER_REF]=https://github.com/lsst/daf_butler.git
+            [PIPE_BASE_REF]=https://github.com/lsst/pipe_base.git
+            [DRP_PIPE_REF]=https://github.com/lsst/drp_pipe.git
+          )
+
+          for var in "${!REPOS[@]}"; do
+            url="${REPOS[$var]}"
+            ref="${!var}"
+            sha=$(git ls-remote --exit-code "$url" "$ref" "refs/heads/$ref" "refs/tags/$ref" 2>/dev/null | head -1 | cut -f1)
+            if [ -z "$sha" ]; then
+              echo "Failed to resolve $var=$ref against $url" >&2
+              exit 1
+            fi
+            echo "Resolved $var: $ref -> $sha"
+            echo "${var}_ORIGINAL=$ref" >> "$GITHUB_ENV"
+            echo "$var=$sha" >> "$GITHUB_ENV"
+          done
+
       - name: Build and push
         id: build
         uses: docker/build-push-action@v6
@@ -67,4 +105,20 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            STACK_TAG=${{ env.STACK_TAG }}
+            SPECTRACTOR_REF=${{ env.SPECTRACTOR_REF }}
+            ATMOSPEC_REF=${{ env.ATMOSPEC_REF }}
+            SUMMIT_UTILS_REF=${{ env.SUMMIT_UTILS_REF }}
+            SUMMIT_EXTRAS_REF=${{ env.SUMMIT_EXTRAS_REF }}
+            RUBINTV_ANALYSIS_SERVICE_REF=${{ env.RUBINTV_ANALYSIS_SERVICE_REF }}
+            TS_WEP_REF=${{ env.TS_WEP_REF }}
+            TS_OFC_REF=${{ env.TS_OFC_REF }}
+            TS_CONFIG_MTTCS_REF=${{ env.TS_CONFIG_MTTCS_REF }}
+            DONUT_VIZ_REF=${{ env.DONUT_VIZ_REF }}
+            TARTS_REF=${{ env.TARTS_REF }}
+            OBS_LSST_REF=${{ env.OBS_LSST_REF }}
+            DAF_BUTLER_REF=${{ env.DAF_BUTLER_REF }}
+            PIPE_BASE_REF=${{ env.PIPE_BASE_REF }}
+            DRP_PIPE_REF=${{ env.DRP_PIPE_REF }}
 
