@@ -15,6 +15,8 @@ jobs:
     name: "Build and Push Application Container Images"
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}@${{ steps.build.outputs.digest }}
 
     steps:
       - name: Remove unnecessary files
@@ -68,3 +70,54 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+  mypy:
+    name: "Run mypy"
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Dogfood the image we just built so mypy resolves the same
+    # lsst.summit.utils / lsst.ts.wep / lsst.atmospec / etc. imports
+    # the production pods see. The lsst/rubin_workflows shared mypy
+    # workflow runs in plain CPython and can't find any of those (they
+    # are not on PyPI), so we run it inside our own container instead.
+    container:
+      image: ${{ needs.build.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Run mypy"
+        shell: bash
+        run: |
+          set -euo pipefail
+          # GHA forces HOME=/github/home for container jobs, but several
+          # in-image pip installs (sentry-sdk, easyocr, ...) live in
+          # saluser's user-site. Point HOME back at saluser so Python
+          # finds them.
+          export HOME=/home/saluser
+          source /opt/lsst/software/stack/loadLSST.bash
+          setup lsst_distrib
+          # Disable git's "dubious ownership" check for the in-image
+          # /repos/* clones, which are owned by saluser but accessed
+          # here as root.
+          git config --global --add safe.directory '*'
+          # Setup the in-image clones for the rest of the stack, then
+          # overlay this PR's rubintv_production with -j so it wins
+          # over the version baked into the image.
+          for repo in obs_lsst drp_pipe Spectractor atmospec \
+                     summit_utils summit_extras pipe_base daf_butler \
+                     ts_wep ts_ofc ts_config_mttcs donut_viz TARTS \
+                     rubintv_analysis_service; do
+            (cd "/repos/${repo}" && setup -k -r .)
+          done
+          setup -j -r "${GITHUB_WORKSPACE}"
+          # Generate version.py so __init__.py's `from .version import *`
+          # resolves -- otherwise mypy reports a missing-stub error for
+          # the package itself.
+          cd "${GITHUB_WORKSPACE}" && scons version
+          # https://github.com/python/mypy/issues/17002
+          pip install 'mypy!=1.9.0'
+          mypy
