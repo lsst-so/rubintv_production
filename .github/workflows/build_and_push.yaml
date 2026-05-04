@@ -92,7 +92,10 @@ jobs:
       - name: "Run mypy"
         shell: bash
         run: |
-          set -euo pipefail
+          # No ``set -u``: the LSST stack's conda activation hooks
+          # (eups_activate.sh) reference EUPS_PATH unguarded before it's
+          # set, which is harmless normally but fatal under nounset.
+          set -eo pipefail
           # GHA forces HOME=/github/home for container jobs, but several
           # in-image pip installs (sentry-sdk, easyocr, ...) live in
           # saluser's user-site. Point HOME back at saluser so Python
@@ -143,7 +146,8 @@ jobs:
       - name: "Run pytest with coverage"
         shell: bash
         run: |
-          set -euo pipefail
+          # See the mypy job above for why ``-u`` is dropped.
+          set -eo pipefail
           export HOME=/home/saluser
           source /opt/lsst/software/stack/loadLSST.bash
           setup lsst_distrib
