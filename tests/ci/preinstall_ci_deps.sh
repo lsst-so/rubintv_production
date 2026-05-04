@@ -23,20 +23,32 @@
 #     source ${HOME}/ra-ci-venv/bin/activate
 # and re-run this script (drop the --user flag from the pip command).
 
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+    echo "ERROR: run this script directly, do not source it" >&2
+    echo "       (sourcing would leak 'set -euo pipefail' into your shell)" >&2
+    return 1
+fi
+
 set -euo pipefail
 
 # Python deps - mirrors the conda + pip lists in the Dockerfile, minus
 # rubin-libradtran (see header) and easyocr (removed).
 PIP_PACKAGES=(
     google-cloud-storage
-    lsst-efd-client
+    # PyPI's lsst-efd-client tops out at 0.13.1, which hard-pins
+    # numpy==1.23.5 and won't build on Python 3.13. v1.0.0 on the
+    # lsst-ts repo drops the pin; install from the git tag until it
+    # ships to PyPI.
+    "git+https://github.com/lsst-ts/lsst-efd-client@v1.0.0"
     pytorch_lightning
     sentry-sdk
     redis
     batoid
-    danish==1.0.0
+    "danish>=1.0.0"
     timm
     peft
+    types-redis
+    types-requests
 )
 
 REDIS_VERSION="${REDIS_VERSION:-7.2.5}"
