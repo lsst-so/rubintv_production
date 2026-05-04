@@ -121,3 +121,52 @@ jobs:
           # https://github.com/python/mypy/issues/17002
           pip install 'mypy!=1.9.0'
           mypy
+
+  coverage:
+    name: "Run pytest with coverage"
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Same dogfooding rationale as the mypy job above: the test
+    # environment is byte-identical to what we ship, so sentry-sdk,
+    # summit_utils, summit_extras and the rest of the in-image
+    # dependencies are already present.
+    container:
+      image: ${{ needs.build.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Run pytest with coverage"
+        shell: bash
+        run: |
+          set -euo pipefail
+          export HOME=/home/saluser
+          source /opt/lsst/software/stack/loadLSST.bash
+          setup lsst_distrib
+          git config --global --add safe.directory '*'
+          for repo in obs_lsst drp_pipe Spectractor atmospec \
+                     summit_utils summit_extras pipe_base daf_butler \
+                     ts_wep ts_ofc ts_config_mttcs donut_viz TARTS \
+                     rubintv_analysis_service; do
+            (cd "/repos/${repo}" && setup -k -r .)
+          done
+          setup -j -r "${GITHUB_WORKSPACE}"
+          cd "${GITHUB_WORKSPACE}" && scons version
+          pip install pytest pytest-cov
+          pytest \
+            --cov=lsst.rubintv.production \
+            --cov-report=xml \
+            --cov-report=term \
+            tests/
+
+      - name: "Upload coverage to Codecov"
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
