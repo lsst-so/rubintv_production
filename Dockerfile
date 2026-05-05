@@ -9,22 +9,22 @@ FROM ghcr.io/lsst/scipipe:al9-${STACK_TAG}
 ENV UID=73006
 ENV GID=73006
 
-ENV obs_lsst_branch="w.2026.13"
-ENV drp_pipe_branch="w.2026.13"
-ENV daf_butler_branch="w.2026.13"
-ENV pipe_base_branch="w.2026.13"
-ENV spectractor_branch="w.2026.13"
-ENV atmospec_branch="w.2026.13"
-ENV summit_utils_branch="w.2026.13"
-ENV summit_extras_branch="w.2026.13"
-ENV ts_wep_branch="5107292b"
-ENV donut_viz_branch="18ea94d"
-# no tags for TARTS yet, so default to main if not using deployment branch
-ENV tarts_branch="main"
-ENV ts_ofc_branch="develop"
-ENV ts_config_mttcs_branch="develop"
+ARG obs_lsst_ref="w.2026.13"
+ARG drp_pipe_ref="w.2026.13"
+ARG daf_butler_ref="w.2026.13"
+ARG pipe_base_ref="w.2026.13"
+ARG spectractor_ref="w.2026.13"
+ARG atmospec_ref="w.2026.13"
+ARG summit_utils_ref="w.2026.13"
+ARG summit_extras_ref="w.2026.13"
+ARG ts_wep_ref="5107292b"
+ARG donut_viz_ref="18ea94d"
+ARG tarts_ref="fa6acd3"
+ARG ts_ofc_ref="5245ded"
+ARG ts_config_mttcs_ref="ad3ef1b"
 
-ENV USER=${USER:-saluser}
+ARG USER=saluser
+ENV USER=${USER}
 ENV WORKDIR=/opt/lsst/software/stack
 
 USER root
@@ -113,7 +113,7 @@ RUN git clone https://github.com/lsst/obs_lsst.git && \
 WORKDIR /repos/obs_lsst
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${obs_lsst_branch} && \
+    /home/saluser/.checkout_repo.sh ${obs_lsst_ref} && \
     eups declare -r . obs_lsst -t saluser && \
     setup obs_lsst -t saluser && \
     SCONSFLAGS="--no-tests" scons
@@ -121,7 +121,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
 WORKDIR /repos/daf_butler
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${daf_butler_branch} && \
+    /home/saluser/.checkout_repo.sh ${daf_butler_ref} && \
     eups declare -r . -t saluser && \
     setup daf_butler -t saluser && \
     scons version
@@ -129,7 +129,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
 WORKDIR /repos/pipe_base
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${pipe_base_branch} && \
+    /home/saluser/.checkout_repo.sh ${pipe_base_ref} && \
     eups declare -r . -t saluser && \
     setup pipe_base -t saluser && \
     scons version
@@ -137,7 +137,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
 WORKDIR /repos/drp_pipe
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${drp_pipe_branch} && \
+    /home/saluser/.checkout_repo.sh ${drp_pipe_ref} && \
     eups declare -r . drp_pipe -t saluser && \
     setup drp_pipe -t saluser && \
     scons version
@@ -146,14 +146,14 @@ WORKDIR /repos/Spectractor
 
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${spectractor_branch} && \
+    /home/saluser/.checkout_repo.sh ${spectractor_ref} && \
     eups declare -r . spectractor -t saluser
 
 WORKDIR /repos/atmospec
 
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${atmospec_branch} && \
+    /home/saluser/.checkout_repo.sh ${atmospec_ref} && \
     eups declare -r . atmospec -t saluser && \
     setup lsst_distrib && \
     setup obs_lsst -j && \
@@ -166,7 +166,7 @@ WORKDIR /repos/summit_utils
 
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${summit_utils_branch} && \
+    /home/saluser/.checkout_repo.sh ${summit_utils_ref} && \
     eups declare -r . summit_utils -t saluser && \
     setup lsst_distrib && \
     setup obs_lsst && \
@@ -178,7 +178,7 @@ WORKDIR /repos/summit_extras
 
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${summit_extras_branch} && \
+    /home/saluser/.checkout_repo.sh ${summit_extras_ref} && \
     eups declare -r . summit_extras -t saluser && \
     setup lsst_distrib && \
     setup obs_lsst && \
@@ -203,7 +203,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
 WORKDIR /repos/ts_wep
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${ts_wep_branch} && \
+    /home/saluser/.checkout_repo.sh ${ts_wep_ref} && \
     eups declare -r . ts_wep -t saluser && \
     setup ts_wep -t saluser && \
     scons version
@@ -211,7 +211,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
 WORKDIR /repos/ts_ofc
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${ts_ofc_branch} && \
+    /home/saluser/.checkout_repo.sh ${ts_ofc_ref} && \
     eups declare -r . ts_ofc ${ts_ofc} -t saluser && \
     setup ts_ofc -t saluser && \
     scons version
@@ -219,14 +219,14 @@ RUN source ${WORKDIR}/loadLSST.bash && \
 WORKDIR /repos/ts_config_mttcs
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${ts_config_mttcs_branch} && \
+    /home/saluser/.checkout_repo.sh ${ts_config_mttcs_ref} && \
     eups declare -r . ts_config_mttcs ${ts_config_mttcs} -t saluser && \
     setup ts_config_mttcs -t saluser
 
 WORKDIR /repos/donut_viz
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${donut_viz_branch} && \
+    /home/saluser/.checkout_repo.sh ${donut_viz_ref} && \
     eups declare -r . donut_viz ${donut_viz} -t saluser && \
     setup donut_viz -t saluser && \
     scons version
@@ -234,7 +234,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
 WORKDIR /repos/TARTS
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${tarts_branch} && \
+    /home/saluser/.checkout_repo.sh ${tarts_ref} && \
     eups declare -r . tarts -t saluser
 #    setup tarts -t saluser
 
