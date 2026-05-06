@@ -9,30 +9,20 @@ FROM ghcr.io/lsst/scipipe:al9-${STACK_TAG}
 ENV UID=73006
 ENV GID=73006
 
-ENV obs_lsst_branch="w.2026.13"
-ENV drp_pipe_branch="w.2026.13"
-ENV daf_butler_branch="w.2026.13"
-ENV pipe_base_branch="w.2026.13"
-ENV spectractor_branch="w.2026.13"
-ENV atmospec_branch="w.2026.13"
-ENV summit_utils_branch="w.2026.13"
-ENV summit_extras_branch="w.2026.13"
-ENV ts_wep_branch="5107292b"
-ENV donut_viz_branch="18ea94d"
-# no tags for TARTS yet, so default to main if not using deployment branch
-ENV tarts_branch="main"
-ENV ts_ofc_branch="develop"
-ENV ts_config_mttcs_branch="develop"
+ARG drp_pipe_ref="w.2026.13"
+ARG summit_utils_ref="3ae001d1e01bd65a4727e27bdbe5ee1fa0720687"
+ARG summit_extras_ref="1aae0380af9d3169653e95185283d4ff9edfe439"
+ARG ts_wep_ref="5107292b"
+ARG donut_viz_ref="18ea94d"
+ARG tarts_ref="fa6acd3"
+ARG ts_ofc_ref="5245ded"
+ARG ts_config_mttcs_ref="ad3ef1b"
 
-ENV USER=${USER:-saluser}
+ARG USER=saluser
+ENV USER=${USER}
 ENV WORKDIR=/opt/lsst/software/stack
 
 USER root
-
-# Workaround for centos
-RUN sed -i s/mirror.centos.org/vault.centos.org/g /etc/yum.repos.d/*.repo && \
-    sed -i s/^#.*baseurl=http/baseurl=http/g /etc/yum.repos.d/*.repo && \
-    sed -i s/^mirrorlist=http/#mirrorlist=http/g /etc/yum.repos.d/*.repo
 
 # Create user and group
 RUN if [ ${UID} -eq 1000 ] && [ ${GID} -eq 1000 ]; then  \
@@ -91,9 +81,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
 WORKDIR /repos
 
 # Clone all repos
-RUN git clone https://github.com/lsst/Spectractor.git && \
-    git clone https://github.com/lsst/atmospec.git && \
-    git clone https://github.com/lsst-sitcom/summit_utils.git && \
+RUN git clone https://github.com/lsst-sitcom/summit_utils.git && \
     git clone https://github.com/lsst-sitcom/summit_extras.git && \
     git clone https://github.com/lsst-sitcom/rubintv_production.git && \
     git clone https://github.com/lsst-ts/rubintv_analysis_service.git && \
@@ -101,93 +89,34 @@ RUN git clone https://github.com/lsst/Spectractor.git && \
     git clone https://github.com/lsst-ts/ts_ofc.git && \
     git clone https://github.com/lsst-ts/ts_config_mttcs.git && \
     git clone https://github.com/lsst-ts/donut_viz.git && \
-    git clone https://github.com/PetchMa/TARTS.git
-
-# TODO: (DM-43475) Resync RA images with the rest of the summit.
-RUN git clone https://github.com/lsst/obs_lsst.git && \
-    git clone https://github.com/lsst/daf_butler.git && \
-    git clone https://github.com/lsst/pipe_base.git && \
+    git clone https://github.com/PetchMa/TARTS.git && \
     git clone https://github.com/lsst/drp_pipe.git
 
-
-WORKDIR /repos/obs_lsst
-
-RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${obs_lsst_branch} && \
-    eups declare -r . -t saluser && \
-    setup obs_lsst -t saluser && \
-    SCONSFLAGS="--no-tests" scons
-
-WORKDIR /repos/daf_butler
-
-RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${daf_butler_branch} && \
-    eups declare -r . -t saluser && \
-    setup daf_butler -t saluser && \
-    scons version
-
-WORKDIR /repos/pipe_base
-
-RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${pipe_base_branch} && \
-    eups declare -r . -t saluser && \
-    setup pipe_base -t saluser && \
-    scons version
 
 WORKDIR /repos/drp_pipe
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${drp_pipe_branch} && \
-    eups declare -r . -t saluser && \
+    /home/saluser/.checkout_repo.sh ${drp_pipe_ref} && \
+    eups declare -r . drp_pipe -t saluser && \
     setup drp_pipe -t saluser && \
-    scons version
-
-WORKDIR /repos/Spectractor
-
-
-RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${spectractor_branch} && \
-    eups declare -r . -t saluser
-
-WORKDIR /repos/atmospec
-
-
-RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${atmospec_branch} && \
-    eups declare -r . -t saluser && \
-    setup lsst_distrib && \
-    setup obs_lsst -j && \
-    setup sconsUtils -j && \
-    setup spectractor -j -t saluser && \
-    setup atmospec -j -t saluser && \
-    eups list && \
     scons version
 
 WORKDIR /repos/summit_utils
 
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${summit_utils_branch} && \
-    eups declare -r . -t saluser && \
-    setup lsst_distrib && \
-    setup obs_lsst && \
-    setup atmospec -j -t saluser && \
-    setup summit_utils -j -t saluser && \
-    setup sconsUtils && \
+    /home/saluser/.checkout_repo.sh ${summit_utils_ref} && \
+    eups declare -r . summit_utils -t saluser && \
+    setup summit_utils -t saluser && \
     scons version
 
 WORKDIR /repos/summit_extras
 
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${summit_extras_branch} && \
-    eups declare -r . -t saluser && \
-    setup lsst_distrib && \
-    setup obs_lsst && \
-    setup atmospec -j -t saluser && \
-    setup summit_utils -j -t saluser && \
-    setup summit_extras -j -t saluser && \
-    setup sconsUtils && \
+    /home/saluser/.checkout_repo.sh ${summit_extras_ref} && \
+    eups declare -r . summit_extras -t saluser && \
+    setup summit_extras -t saluser && \
     scons version
 
 
@@ -195,53 +124,46 @@ WORKDIR /repos/rubintv_analysis_service
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh main && \
-    eups declare -r . -t saluser && \
-    setup atmospec -j -t saluser && \
-    setup summit_utils -j -t saluser && \
-    setup summit_extras -j -t saluser && \
-#    setup rubintv_production -j -t saluser && \
-    setup rubintv_analysis_service -j -t saluser && \
-    setup lsst_distrib && \
-    setup obs_lsst && \
-    setup sconsUtils && \
+    eups declare -r . rubintv_analysis_service -t saluser && \
+    setup rubintv_analysis_service  -t saluser && \
     scons version
 
 WORKDIR /repos/ts_wep
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${ts_wep_branch} && \
-    eups declare -r . ts_wep ${ts_wep} -t saluser && \
+    /home/saluser/.checkout_repo.sh ${ts_wep_ref} && \
+    eups declare -r . ts_wep -t saluser && \
     setup ts_wep -t saluser && \
     scons version
 
 WORKDIR /repos/ts_ofc
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${ts_ofc_branch} && \
-    eups declare -r . ts_ofc ${ts_ofc} -t saluser && \
+    /home/saluser/.checkout_repo.sh ${ts_ofc_ref} && \
+    eups declare -r . ts_ofc -t saluser && \
     setup ts_ofc -t saluser && \
     scons version
 
 WORKDIR /repos/ts_config_mttcs
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${ts_config_mttcs_branch} && \
-    eups declare -r . ts_config_mttcs ${ts_config_mttcs} -t saluser && \
+    /home/saluser/.checkout_repo.sh ${ts_config_mttcs_ref} && \
+    eups declare -r . ts_config_mttcs -t saluser && \
     setup ts_config_mttcs -t saluser
 
 WORKDIR /repos/donut_viz
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${donut_viz_branch} && \
-    eups declare -r . donut_viz ${donut_viz} -t saluser && \
+    /home/saluser/.checkout_repo.sh ${donut_viz_ref} && \
+    eups declare -r . donut_viz -t saluser && \
     setup donut_viz -t saluser && \
     scons version
 
 WORKDIR /repos/TARTS
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    /home/saluser/.checkout_repo.sh ${tarts_branch} && \
-    eups declare -r . tarts ${tarts} -t saluser && \
+    /home/saluser/.checkout_repo.sh ${tarts_ref} && \
+    eups declare -r . tarts -t saluser && \
     setup tarts -t saluser
 
 WORKDIR /repos/rubintv_production
@@ -254,20 +176,18 @@ RUN chown -R ${UID}:${GID} /repos/rubintv_production
 
 USER saluser
 
-RUN git remote set-url origin https://github.com/lsst-sitcom/rubintv_production.git && \
-    git config --local --unset http."https://github.com/".extraheader
+RUN git remote set-url origin https://github.com/lsst-sitcom/rubintv_production.git
 
 RUN source ${WORKDIR}/loadLSST.bash && \
-    eups declare -r . -t saluser && \
+    eups declare -r . rubintv_production -t saluser && \
+    setup lsst_distrib && \
     setup atmospec -j -t saluser && \
     setup daf_butler -j -t saluser && \
     setup pipe_base -j -t saluser && \
     setup summit_utils -j -t saluser && \
     setup summit_extras -j -t saluser && \
     setup rubintv_production -j -t saluser && \
-    setup lsst_distrib && \
-    setup obs_lsst && \
-    setup sconsUtils && \
+    setup obs_lsst -j -t saluser && \
     scons version
 
 
@@ -294,12 +214,7 @@ RUN chown saluser:saluser /repos/.startup.sh && \
     chmod a+w /home/saluser/.eups && \
     chmod a+rwx /tmp
 
-RUN git config --system --add safe.directory /repos/obs_lsst && \
-    git config --system --add safe.directory /repos/drp_pipe && \
-    git config --system --add safe.directory /repos/Spectractor && \
-    git config --system --add safe.directory /repos/atmospec && \
-    git config --system --add safe.directory /repos/daf_butler && \
-    git config --system --add safe.directory /repos/pipe_base && \
+RUN git config --system --add safe.directory /repos/drp_pipe && \
     git config --system --add safe.directory /repos/summit_utils && \
     git config --system --add safe.directory /repos/summit_extras && \
     git config --system --add safe.directory /repos/rubintv_production && \
@@ -315,6 +230,9 @@ ENV USER=saluser
 ENV SHELL=/bin/bash
 ENV EUPS_USERDATA=/home/saluser/.eups
 ENV MPLCONFIGDIR=/tmp
+
+# Spectractor uses numba caching.
+ENV NUMBA_CACHE_DIR=/tmp/numba_cache
 
 
 WORKDIR /repos/rubintv_production/scripts
