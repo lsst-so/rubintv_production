@@ -118,7 +118,14 @@ jobs:
           source /repos/.startup.sh
           cd /repos/rubintv_production
           # https://github.com/python/mypy/issues/17002
-          pip install 'mypy!=1.9.0'
+          # ``types-redis`` matches the local conda env where mypy is
+          # green: redis-py 7.x is self-typed with
+          # ``ResponseT = Awaitable[Any] | Any`` for commands like
+          # ``.get()``, which trips ``.decode()`` / iteration usage
+          # in the tests. The stubs override that with a synchronous
+          # ``_StrType | None`` and let the existing ``is None`` checks
+          # narrow the result properly.
+          pip install 'mypy!=1.9.0' types-redis
           mypy
 
   coverage:
