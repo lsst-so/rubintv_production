@@ -24,11 +24,6 @@ ENV WORKDIR=/opt/lsst/software/stack
 
 USER root
 
-# Workaround for centos
-RUN sed -i s/mirror.centos.org/vault.centos.org/g /etc/yum.repos.d/*.repo && \
-    sed -i s/^#.*baseurl=http/baseurl=http/g /etc/yum.repos.d/*.repo && \
-    sed -i s/^mirrorlist=http/#mirrorlist=http/g /etc/yum.repos.d/*.repo
-
 # Create user and group
 RUN if [ ${UID} -eq 1000 ] && [ ${GID} -eq 1000 ]; then  \
         echo "Renaming lsst to saluser" && \
@@ -112,10 +107,7 @@ WORKDIR /repos/summit_utils
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh ${summit_utils_ref} && \
     eups declare -r . summit_utils -t saluser && \
-    setup lsst_distrib && \
-    setup obs_lsst && \
-    setup atmospec -j -t saluser && \
-    setup summit_utils -j -t saluser && \
+    setup summit_utils -t saluser && \
     scons version
 
 WORKDIR /repos/summit_extras
@@ -124,11 +116,7 @@ WORKDIR /repos/summit_extras
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh ${summit_extras_ref} && \
     eups declare -r . summit_extras -t saluser && \
-    setup lsst_distrib && \
-    setup obs_lsst && \
-    setup atmospec -j -t saluser && \
-    setup summit_utils -j -t saluser && \
-    setup summit_extras -j -t saluser && \
+    setup summit_extras -t saluser && \
     scons version
 
 
@@ -137,11 +125,7 @@ WORKDIR /repos/rubintv_analysis_service
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh main && \
     eups declare -r . rubintv_analysis_service -t saluser && \
-    setup lsst_distrib && \
-    setup atmospec -j -t saluser && \
-    setup summit_utils -j -t saluser && \
-    setup summit_extras -j -t saluser && \
-    setup obs_lsst -j -t saluser && \
+    setup rubintv_analysis_service  -t saluser && \
     scons version
 
 WORKDIR /repos/ts_wep
@@ -156,7 +140,7 @@ WORKDIR /repos/ts_ofc
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh ${ts_ofc_ref} && \
-    eups declare -r . ts_ofc ${ts_ofc} -t saluser && \
+    eups declare -r . ts_ofc -t saluser && \
     setup ts_ofc -t saluser && \
     scons version
 
@@ -164,14 +148,14 @@ WORKDIR /repos/ts_config_mttcs
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh ${ts_config_mttcs_ref} && \
-    eups declare -r . ts_config_mttcs ${ts_config_mttcs} -t saluser && \
+    eups declare -r . ts_config_mttcs -t saluser && \
     setup ts_config_mttcs -t saluser
 
 WORKDIR /repos/donut_viz
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh ${donut_viz_ref} && \
-    eups declare -r . donut_viz ${donut_viz} -t saluser && \
+    eups declare -r . donut_viz -t saluser && \
     setup donut_viz -t saluser && \
     scons version
 
@@ -179,8 +163,8 @@ WORKDIR /repos/TARTS
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh ${tarts_ref} && \
-    eups declare -r . tarts -t saluser
-#    setup tarts -t saluser
+    eups declare -r . tarts -t saluser && \
+    setup tarts -t saluser
 
 WORKDIR /repos/rubintv_production
 
@@ -246,6 +230,9 @@ ENV USER=saluser
 ENV SHELL=/bin/bash
 ENV EUPS_USERDATA=/home/saluser/.eups
 ENV MPLCONFIGDIR=/tmp
+
+# Spectractor uses numba caching.
+ENV NUMBA_CACHE_DIR=/tmp/numba_cache
 
 
 WORKDIR /repos/rubintv_production/scripts
