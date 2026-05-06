@@ -15,6 +15,8 @@ jobs:
     name: "Build and Push Application Container Images"
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}@${{ steps.build.outputs.digest }}
 
     steps:
       - name: Remove unnecessary files
@@ -68,3 +70,108 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+  mypy:
+    name: "Run mypy"
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Dogfood the image we just built so mypy resolves the same
+    # lsst.summit.utils / lsst.ts.wep / lsst.atmospec / etc. imports
+    # the production pods see. The lsst/rubin_workflows shared mypy
+    # workflow runs in plain CPython and can't find any of those (they
+    # are not on PyPI), so we run it inside our own container instead.
+    container:
+      image: ${{ needs.build.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    steps:
+      # No ``actions/checkout`` here: the build job already COPY'd the
+      # PR sources (at ``head.sha``) to /repos/rubintv_production and
+      # ran ``scons``, so the image already contains everything we
+      # need at the right SHA. Adding a workspace checkout here would
+      # default to the synthetic merge commit on PR events, leaving us
+      # testing merge-commit code against a head.sha image -- the
+      # opposite of what we want. Run from /repos/rubintv_production.
+      - name: "Run mypy"
+        shell: bash
+        run: |
+          # No ``set -u``: the LSST stack's conda activation hooks
+          # (eups_activate.sh) reference EUPS_PATH unguarded before it's
+          # set, which is harmless normally but fatal under nounset.
+          set -eo pipefail
+          # GHA forces HOME=/github/home for container jobs, but several
+          # in-image pip installs (sentry-sdk, easyocr, ...) live in
+          # saluser's user-site. Point HOME back at saluser so Python
+          # finds them.
+          export HOME=/home/saluser
+          # Disable git's "dubious ownership" check for the in-image
+          # /repos/* clones, which are owned by saluser but accessed
+          # here as root.
+          git config --global --add safe.directory '*'
+          # Source the production entrypoint so the eups/setup chain
+          # matches exactly what the pods see -- single source of
+          # truth, kept in lockstep with prod automatically. RUN_ARG
+          # is left unset, which makes startup.sh skip its trailing
+          # ``python $RUN_ARG`` and behave as a setup-only no-op.
+          source /repos/.startup.sh
+          cd /repos/rubintv_production
+          # https://github.com/python/mypy/issues/17002
+          # ``types-redis`` matches the local conda env where mypy is
+          # green: redis-py 7.x is self-typed with
+          # ``ResponseT = Awaitable[Any] | Any`` for commands like
+          # ``.get()``, which trips ``.decode()`` / iteration usage
+          # in the tests. The stubs override that with a synchronous
+          # ``_StrType | None`` and let the existing ``is None`` checks
+          # narrow the result properly.
+          pip install 'mypy!=1.9.0' types-redis types-requests
+          # ``mypy .`` not bare ``mypy`` so the check covers ``python/``
+          # too, not just the ``scripts/, tests/`` set listed in
+          # ``mypy.ini``'s ``files=``. The ``files=`` line only kicks
+          # in when no positional argument is given; ``.`` makes the
+          # CI scope match the local skill's ``mypy .`` invocation.
+          mypy .
+
+  coverage:
+    name: "Run pytest with coverage"
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Same dogfooding rationale as the mypy job above: the test
+    # environment is byte-identical to what we ship, so sentry-sdk,
+    # summit_utils, summit_extras and the rest of the in-image
+    # dependencies are already present.
+    container:
+      image: ${{ needs.build.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    steps:
+      # See the mypy job above for why there's no ``actions/checkout``.
+      - name: "Run pytest with coverage"
+        shell: bash
+        run: |
+          # See the mypy job above for why ``-u`` is dropped.
+          set -eo pipefail
+          export HOME=/home/saluser
+          git config --global --add safe.directory '*'
+          source /repos/.startup.sh
+          cd /repos/rubintv_production
+          pip install pytest pytest-cov
+          pytest \
+            --cov=lsst.rubintv.production \
+            --cov-report=xml \
+            --cov-report=term \
+            tests/
+
+      - name: "Upload coverage to Codecov"
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          # coverage.xml lands in PWD (=/repos/rubintv_production)
+          # because we don't check out into the GHA workspace.
+          files: /repos/rubintv_production/coverage.xml
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
