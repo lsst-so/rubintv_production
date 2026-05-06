@@ -87,8 +87,13 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
       options: --user root
     steps:
-      - uses: actions/checkout@v4
-
+      # No ``actions/checkout`` here: the build job already COPY'd the
+      # PR sources (at ``head.sha``) to /repos/rubintv_production and
+      # ran ``scons``, so the image already contains everything we
+      # need at the right SHA. Adding a workspace checkout here would
+      # default to the synthetic merge commit on PR events, leaving us
+      # testing merge-commit code against a head.sha image -- the
+      # opposite of what we want. Run from /repos/rubintv_production.
       - name: "Run mypy"
         shell: bash
         run: |
@@ -101,26 +106,17 @@ jobs:
           # saluser's user-site. Point HOME back at saluser so Python
           # finds them.
           export HOME=/home/saluser
-          source /opt/lsst/software/stack/loadLSST.bash
-          setup lsst_distrib
           # Disable git's "dubious ownership" check for the in-image
           # /repos/* clones, which are owned by saluser but accessed
           # here as root.
           git config --global --add safe.directory '*'
-          # Setup the in-image clones for the rest of the stack, then
-          # overlay this PR's rubintv_production with -j so it wins
-          # over the version baked into the image.
-          for repo in obs_lsst drp_pipe Spectractor atmospec \
-                     summit_utils summit_extras pipe_base daf_butler \
-                     ts_wep ts_ofc ts_config_mttcs donut_viz TARTS \
-                     rubintv_analysis_service; do
-            (cd "/repos/${repo}" && setup -k -r .)
-          done
-          setup -j -r "${GITHUB_WORKSPACE}"
-          # Generate version.py so __init__.py's `from .version import *`
-          # resolves -- otherwise mypy reports a missing-stub error for
-          # the package itself.
-          cd "${GITHUB_WORKSPACE}" && scons version
+          # Source the production entrypoint so the eups/setup chain
+          # matches exactly what the pods see -- single source of
+          # truth, kept in lockstep with prod automatically. RUN_ARG
+          # is left unset, which makes startup.sh skip its trailing
+          # ``python $RUN_ARG`` and behave as a setup-only no-op.
+          source /repos/.startup.sh
+          cd /repos/rubintv_production
           # https://github.com/python/mypy/issues/17002
           pip install 'mypy!=1.9.0'
           mypy
@@ -141,25 +137,16 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
       options: --user root
     steps:
-      - uses: actions/checkout@v4
-
+      # See the mypy job above for why there's no ``actions/checkout``.
       - name: "Run pytest with coverage"
         shell: bash
         run: |
           # See the mypy job above for why ``-u`` is dropped.
           set -eo pipefail
           export HOME=/home/saluser
-          source /opt/lsst/software/stack/loadLSST.bash
-          setup lsst_distrib
           git config --global --add safe.directory '*'
-          for repo in obs_lsst drp_pipe Spectractor atmospec \
-                     summit_utils summit_extras pipe_base daf_butler \
-                     ts_wep ts_ofc ts_config_mttcs donut_viz TARTS \
-                     rubintv_analysis_service; do
-            (cd "/repos/${repo}" && setup -k -r .)
-          done
-          setup -j -r "${GITHUB_WORKSPACE}"
-          cd "${GITHUB_WORKSPACE}" && scons version
+          source /repos/.startup.sh
+          cd /repos/rubintv_production
           pip install pytest pytest-cov
           pytest \
             --cov=lsst.rubintv.production \
@@ -171,6 +158,8 @@ jobs:
         if: always()
         uses: codecov/codecov-action@v5
         with:
-          files: ./coverage.xml
+          # coverage.xml lands in PWD (=/repos/rubintv_production)
+          # because we don't check out into the GHA workspace.
+          files: /repos/rubintv_production/coverage.xml
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
