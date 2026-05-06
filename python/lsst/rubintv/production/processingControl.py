@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import enum
 import logging
+import re
 import sys
 import time
 from dataclasses import dataclass
@@ -731,9 +732,9 @@ class HeadProcessController:
             self.log.info(f"Started brand new collection at {newCollection}")
             return newCollection
 
-        allRunNums = [
-            int(run.removeprefix(self.outputChain + "/")) for run in allRuns if self.outputChain in run
-        ]
+        pattern = re.compile(rf"{re.escape(self.outputChain)}/(\d+)$")
+        allRunNums = [int(m.group(1)) for run in allRuns if (m := pattern.match(run))]
+
         lastRunNum = max(allRunNums) if allRunNums else 0
         latestRun = f"{self.outputChain}/{lastRunNum}"
         self.log.info(f"Latest run is {latestRun} at run number {lastRunNum}")
