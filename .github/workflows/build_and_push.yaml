@@ -125,7 +125,7 @@ jobs:
           # in the tests. The stubs override that with a synchronous
           # ``_StrType | None`` and let the existing ``is None`` checks
           # narrow the result properly.
-          pip install 'mypy!=1.9.0' types-redis
+          pip install 'mypy!=1.9.0' types-redis types-requests
           # ``mypy .`` not bare ``mypy`` so the check covers ``python/``
           # too, not just the ``scripts/, tests/`` set listed in
           # ``mypy.ini``'s ``files=``. The ``files=`` line only kicks
