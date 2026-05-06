@@ -89,6 +89,15 @@ EXPECTED_AOS_NON_FAM_PIPELINES = [
 # TODO: still need to add step1b tests for all the other pipelines
 
 
+# Pipeline generation goes through ``getAutomaticLocationConfig``,
+# which expects a real production site (TTS/BTS/SUMMIT/USDF) so it
+# can resolve butler paths, S3 endpoints, etc. ``gha`` (CI) and
+# ``local`` (dev laptop) don't satisfy that, so skip the whole
+# class on those sites instead of papering over each test.
+@unittest.skipIf(
+    getSite() in ("gha", "local"),
+    f"butler-bound pipeline tests are not supported on site={getSite()!r}",
+)
 class TestPipelineGeneration(lsst.utils.tests.TestCase):
     def _makeMinimalButler(self) -> Butler:
         butler = Butler.from_config(
