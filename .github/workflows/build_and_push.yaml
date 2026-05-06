@@ -126,7 +126,12 @@ jobs:
           # ``_StrType | None`` and let the existing ``is None`` checks
           # narrow the result properly.
           pip install 'mypy!=1.9.0' types-redis
-          mypy
+          # ``mypy .`` not bare ``mypy`` so the check covers ``python/``
+          # too, not just the ``scripts/, tests/`` set listed in
+          # ``mypy.ini``'s ``files=``. The ``files=`` line only kicks
+          # in when no positional argument is given; ``.`` makes the
+          # CI scope match the local skill's ``mypy .`` invocation.
+          mypy .
 
   coverage:
     name: "Run pytest with coverage"
