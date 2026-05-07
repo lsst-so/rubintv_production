@@ -15,6 +15,8 @@ jobs:
     name: "Build and Push Application Container Images"
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}@${{ steps.build.outputs.digest }}
 
     steps:
       - name: Remove unnecessary files
@@ -68,3 +70,92 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+  mypy:
+    name: "Run mypy"
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Dogfood the just-built image so mypy resolves summit_utils,
+    # ts_wep, atmospec, etc. -- none of which are on PyPI, so the
+    # standard lsst/rubin_workflows mypy action wouldn't find them.
+    container:
+      image: ${{ needs.build.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    steps:
+      # No ``actions/checkout``: the build job already COPY'd the PR
+      # sources (at head.sha) into /repos/rubintv_production. A
+      # workspace checkout here would default to the synthetic merge
+      # commit on PR events, leaving us testing merge-commit code
+      # against a head.sha image.
+      - name: "Run mypy"
+        shell: bash
+        run: |
+          # No ``set -u``: startup.sh references env vars that phalanx
+          # normally injects in prod (RA_PULL_DIRECTORIES, DEPLOY_BRANCH,
+          # ...); without them set, nounset trips at line 11 before
+          # anything else runs.
+          set -eo pipefail
+          # GHA forces HOME=/github/home for container jobs, but several
+          # in-image pip installs (sentry-sdk, easyocr, ...) live in
+          # /home/saluser/.local. Point HOME back so Python finds them.
+          export HOME=/home/saluser
+          # In-image /repos/* clones are owned by saluser; we run here
+          # as root, so disable the dubious-ownership check.
+          git config --global --add safe.directory '*'
+          # Source the production entrypoint so the eups/setup chain
+          # matches what the pods see -- single source of truth. RUN_ARG
+          # is unset here, which makes startup.sh skip its trailing
+          # ``python $RUN_ARG`` (guarded inside startup.sh).
+          source /repos/.startup.sh
+          cd /repos/rubintv_production
+          # https://github.com/python/mypy/issues/17002
+          # types-redis / types-requests match the local conda env (CI
+          # installs would otherwise fall back to redis-py's hybrid
+          # ``Awaitable[Any] | Any`` typing, and untyped requests).
+          pip install 'mypy!=1.9.0' types-redis types-requests
+          mypy
+
+  coverage:
+    name: "Run pytest with coverage"
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Same dogfood rationale as the mypy job above.
+    container:
+      image: ${{ needs.build.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    steps:
+      # See the mypy job above for why there's no ``actions/checkout``.
+      - name: "Run pytest with coverage"
+        shell: bash
+        run: |
+          # See the mypy job above for the no-``-u`` rationale, the
+          # HOME override, the safe.directory hack, and the
+          # source-startup.sh dogfooding.
+          set -eo pipefail
+          export HOME=/home/saluser
+          git config --global --add safe.directory '*'
+          source /repos/.startup.sh
+          cd /repos/rubintv_production
+          pip install pytest pytest-cov
+          pytest \
+            --cov=lsst.rubintv.production \
+            --cov-report=xml \
+            --cov-report=term \
+            tests/
+
+      - name: "Upload coverage to Codecov"
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          # coverage.xml lands in PWD (=/repos/rubintv_production) since
+          # we don't check out into the GHA workspace.
+          files: /repos/rubintv_production/coverage.xml
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}

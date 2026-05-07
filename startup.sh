@@ -38,4 +38,9 @@ done
 # Move back to the scripts directory
 cd "${SCRIPTS_LOCATION:-/repos/rubintv_production/scripts}"
 
-python $RUN_ARG
+# Production sets RUN_ARG to the entrypoint script the pod should
+# launch. CI sources this file solely for its eups/setup side effects
+# and leaves RUN_ARG unset, so this trailing launch is skipped there.
+if [ -n "${RUN_ARG:-}" ]; then
+  python $RUN_ARG
+fi
