@@ -117,11 +117,9 @@ jobs:
           # ``python $RUN_ARG`` (guarded inside startup.sh).
           source /repos/.startup.sh
           cd /repos/rubintv_production
-          # https://github.com/python/mypy/issues/17002
-          # types-redis / types-requests match the local conda env (CI
-          # installs would otherwise fall back to redis-py's hybrid
-          # ``Awaitable[Any] | Any`` typing, and untyped requests).
-          pip install 'mypy!=1.9.0' types-redis types-requests
+          # mypy + types-redis + types-requests are pre-installed in
+          # the image (see Dockerfile's CI dev tooling RUN block) so
+          # there's nothing to pip install here.
           mypy
 
   coverage:
@@ -149,7 +147,8 @@ jobs:
           git config --global --add safe.directory '*'
           source /repos/.startup.sh
           cd /repos/rubintv_production
-          pip install pytest pytest-cov pytest-xdist
+          # pytest + pytest-cov + pytest-xdist are pre-installed in
+          # the image (see Dockerfile's CI dev tooling RUN block).
           pytest -n auto \
             --cov=lsst.rubintv.production \
             --cov-report=xml \

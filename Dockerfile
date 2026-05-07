@@ -78,6 +78,34 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     sentry-sdk \
     && rm -rf ~/.cache/pip
 
+# CI dev tooling, kept here so build_and_push.yaml's mypy + coverage
+# jobs don't pay the install cost every run. Separate RUN from the
+# production deps above so adding/removing a CI tool only invalidates
+# this layer, not the bigger one.
+#
+# Run as root with ``--break-system-packages`` so the install lands
+# in the conda env's site-packages (and the entry points -- ``mypy``,
+# ``pytest`` -- end up in the conda env's bin/, which is on PATH
+# after ``loadLSST.bash``). As saluser, pip detects the conda env
+# isn't writeable and silently falls back to user-site (warning:
+# ``Defaulting to user installation because normal site-packages is
+# not writeable``); /home/saluser/.local/bin isn't on PATH in CI,
+# so ``mypy`` would end up ``command not found``. The production-dep
+# block above gets away with the saluser-falls-back-to-user-site
+# behaviour because those packages are only ever imported, never
+# invoked via PATH.
+USER root
+RUN source ${WORKDIR}/loadLSST.bash && \
+    pip install --break-system-packages \
+      'mypy>=1.0,<2.0,!=1.9.0' \
+      types-redis \
+      types-requests \
+      pytest \
+      pytest-cov \
+      pytest-xdist \
+    && rm -rf ~/.cache/pip
+USER saluser
+
 WORKDIR /repos
 
 # Clone all repos
