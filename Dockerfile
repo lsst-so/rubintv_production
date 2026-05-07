@@ -1,5 +1,5 @@
 
-ARG STACK_TAG="w_2026_13"
+ARG STACK_TAG="w_2026_18"
 # For USDF, UID=17951
 # For summit, UID=GID=73006?
 
@@ -9,9 +9,9 @@ FROM ghcr.io/lsst/scipipe:al9-${STACK_TAG}
 ENV UID=73006
 ENV GID=73006
 
-ARG drp_pipe_ref="w.2026.13"
-ARG summit_utils_ref="3ae001d1e01bd65a4727e27bdbe5ee1fa0720687"
-ARG summit_extras_ref="1aae0380af9d3169653e95185283d4ff9edfe439"
+ARG drp_pipe_ref="w.2026.18"
+ARG summit_utils_ref="1485dcbc10ad7637a845ee7e9a5a29d0f1da7680"
+ARG summit_extras_ref="w.2026.18"
 ARG ts_wep_ref="5107292b"
 ARG donut_viz_ref="18ea94d"
 ARG tarts_ref="fa6acd3"
@@ -77,6 +77,34 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     easyocr \
     sentry-sdk \
     && rm -rf ~/.cache/pip
+
+# CI dev tooling, kept here so build_and_push.yaml's mypy + coverage
+# jobs don't pay the install cost every run. Separate RUN from the
+# production deps above so adding/removing a CI tool only invalidates
+# this layer, not the bigger one.
+#
+# Run as root with ``--break-system-packages`` so the install lands
+# in the conda env's site-packages (and the entry points -- ``mypy``,
+# ``pytest`` -- end up in the conda env's bin/, which is on PATH
+# after ``loadLSST.bash``). As saluser, pip detects the conda env
+# isn't writeable and silently falls back to user-site (warning:
+# ``Defaulting to user installation because normal site-packages is
+# not writeable``); /home/saluser/.local/bin isn't on PATH in CI,
+# so ``mypy`` would end up ``command not found``. The production-dep
+# block above gets away with the saluser-falls-back-to-user-site
+# behaviour because those packages are only ever imported, never
+# invoked via PATH.
+USER root
+RUN source ${WORKDIR}/loadLSST.bash && \
+    pip install --break-system-packages \
+      'mypy>=1.0,<2.0,!=1.9.0' \
+      types-redis \
+      types-requests \
+      pytest \
+      pytest-cov \
+      pytest-xdist \
+    && rm -rf ~/.cache/pip
+USER saluser
 
 WORKDIR /repos
 

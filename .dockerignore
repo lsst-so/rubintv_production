@@ -1,0 +1,48 @@
+# Files kept out of the Docker build context.
+#
+# ``.git`` is the load-bearing one: it's tens of MB on a fresh clone
+# (much more after ``actions/checkout`` with ``fetch-depth: 0``),
+# changes every commit, and would otherwise invalidate the
+# ``COPY . /repos/rubintv_production`` layer on every push -- so the
+# slow ``scons`` + eups setup chain that follows would re-run even
+# when no source actually changed.
+
+# Git + CI / IDE state.
+.git
+.github
+.claude
+
+# OS / editor cruft.
+.DS_Store
+.ipynb_checkpoints
+
+# Python caches.
+__pycache__
+*.pyc
+.mypy_cache
+.pytest_cache
+
+# scons build artefacts -- the image runs ``scons`` fresh.
+.sconsign.dblite
+.sconf_temp
+config.log
+*.o
+*.os
+*.so
+*.cfgc
+*_wrap.cc
+*Lib.py
+*dump.rdb
+bin
+python/*.dist-info
+python/lsst/rubintv/production/version.py
+
+# Test outputs / coverage.
+.coverage
+.cache
+ci_logs
+tests/.tests
+pytest_session.txt
+
+# Notebooks (also gitignored).
+*.ipynb
