@@ -37,9 +37,7 @@ log.info("Starting butlerCanary")
 
 locationConfig = getAutomaticLocationConfig()
 repo = locationConfig.lsstCamButlerPath
-butler = Butler.from_config(
-    repo, collections=["LSSTCam/defaults"], instrument="LSSTCam"
-)
+butler = Butler.from_config(repo, collections=["LSSTCam/defaults"], instrument="LSSTCam")
 
 while True:
 
