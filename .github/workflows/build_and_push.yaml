@@ -149,8 +149,8 @@ jobs:
           git config --global --add safe.directory '*'
           source /repos/.startup.sh
           cd /repos/rubintv_production
-          pip install pytest pytest-cov
-          pytest \
+          pip install pytest pytest-cov pytest-xdist
+          pytest -n auto \
             --cov=lsst.rubintv.production \
             --cov-report=xml \
             --cov-report=term \
