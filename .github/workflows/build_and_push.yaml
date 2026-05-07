@@ -69,6 +69,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # GHA-managed buildx cache. Capped at 10 GB / repo (FIFO
+          # eviction), branch-scoped with base-branch fallback. The
+          # base scipipe image isn't in this cache (it's pulled
+          # separately); we only cache the layers added on top.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   mypy:
     name: "Run mypy"
