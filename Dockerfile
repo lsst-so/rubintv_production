@@ -261,6 +261,8 @@ ENV MPLCONFIGDIR=/tmp
 
 # Spectractor uses numba caching.
 ENV NUMBA_CACHE_DIR=/tmp/numba_cache
+# Hugging face cache dir for TARTS
+ENV HF_HOME=/tmp/hf_cache
 
 
 WORKDIR /repos/rubintv_production/scripts
