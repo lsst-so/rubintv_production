@@ -1,0 +1,213 @@
+================================================================================
+Exit Code: timeout
+================================================================================
+
+STDOUT:
+--------------------------------------------------------------------------------
+Running LSSTCam head node at usdf_testing...
+Termination signal received for /sdf/home/m/mfl/lsst/rubintv_production/scripts/LSSTCam/runHeadNode.py:usdf_testing, exiting...
+
+--------------------------------------------------------------------------------
+
+STDERR:
+--------------------------------------------------------------------------------
+2026-04-24 07:12:08 - tarts.NeuralActiveOpticsSys - INFO - Loading OOD detection model from /sdf/home/m/mfl/temp/TARTS/v4/ood_model.joblib...
+2026-04-24 07:12:08 - tarts.NeuralActiveOpticsSys - WARNING - OOD artifact uses legacy pickled sklearn estimator; re-run training/fit_OOD_model.py to save a precision-based artifact and avoid sklearn version warnings.
+2026-04-24 07:12:08 - tarts.NeuralActiveOpticsSys - INFO - OOD detection model loaded successfully
+2026-04-24 07:12:17 - tarts.intrinsics_corners - INFO - IntrinsicsCornersTables: loaded 48 (band, detector) tables from /sdf/home/m/mfl/lsst/TARTS/python/tarts/intrinsics_corners.parquet (25 Noll modes)
+2026-04-24 07:12:17 - tarts.NeuralActiveOpticsSys - INFO - NeuralActiveOpticsSys: LSSTCam intrinsics parquet loaded from /sdf/home/m/mfl/lsst/TARTS/python/tarts/intrinsics_corners.parquet (per-donut correction on deploy when INSTRUME is LSSTCam).
+2026-04-24 07:12:17 - tarts.NeuralActiveOpticsSys - INFO - Loaded LSSTCam focus offset table from /sdf/home/m/mfl/lsst/TARTS/python/tarts/focus_offset.yaml
+2026-04-24 07:12:17 - tarts.NeuralActiveOpticsSys - INFO - Model compilation disabled (compile_models=False)
+
+--------------------------------------------------------------------------------
+
+LOGS:
+--------------------------------------------------------------------------------
+WARNING - Sentry DSN not found or client inactive — events will not be reported
+WARNING - Forcing new run because this is running in CI
+INFO - Latest run is LSSTCam/runs/quickLookTesting/336 at run number 336
+INFO - New run being created for LSSTCam/runs/quickLookTesting
+WARNING - New run='LSSTCam/runs/quickLookTesting/337' already existed, previous init probably failed, incrementing run number automatically
+INFO - Prepping new run LSSTCam/runs/quickLookTesting/338 with 24 pipelineGraphs
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Loading OOD detection model from /sdf/home/m/mfl/temp/TARTS/v4/ood_model.joblib...
+WARNING - OOD artifact uses legacy pickled sklearn estimator; re-run training/fit_OOD_model.py to save a precision-based artifact and avoid sklearn version warnings.
+INFO - OOD detection model loaded successfully
+INFO - Loading pretrained weights from Hugging Face hub (timm/resnet101.a1h_in1k)
+INFO - [timm/resnet101.a1h_in1k] Safe alternative available for 'pytorch_model.bin' (as 'model.safetensors'). Loading weights using safetensors.
+INFO - IntrinsicsCornersTables: loaded 48 (band, detector) tables from /sdf/home/m/mfl/lsst/TARTS/python/tarts/intrinsics_corners.parquet (25 Noll modes)
+INFO - NeuralActiveOpticsSys: LSSTCam intrinsics parquet loaded from /sdf/home/m/mfl/lsst/TARTS/python/tarts/intrinsics_corners.parquet (per-donut correction on deploy when INSTRUME is LSSTCam).
+INFO - Loaded LSSTCam focus offset table from /sdf/home/m/mfl/lsst/TARTS/python/tarts/focus_offset.yaml
+INFO - Model compilation disabled (compile_models=False)
+INFO - OOD model enabled; path: /sdf/home/m/mfl/temp/TARTS/v4/ood_model.joblib
+INFO - Initialized TARTS with dataset params: $TARTS_DIR/python/tarts/dataset_params.yaml
+INFO - Running on device: cpu
+INFO - Defocal distances - intra: -1.5 mm, extra: 1.5 mm
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - New run created at LSSTCam/runs/quickLookTesting/338
+INFO - New run chained in as ['LSSTCam/runs/quickLookTesting/338', 'LSSTCam/runs/quickLookTesting/336', 'LSSTCam/runs/quickLookTesting/335', 'LSSTCam/runs/quickLookTesting/334', 'LSSTCam/runs/quickLookTesting/333', 'LSSTCam/runs/quickLookTesting/332', 'LSSTCam/runs/quickLookTesting/331', 'LSSTCam/runs/quickLookTesting/330', 'LSSTCam/runs/quickLookTesting/329', 'LSSTCam/runs/quickLookTesting/328', 'LSSTCam/runs/quickLookTesting/327', 'LSSTCam/runs/quickLookTesting/326', 'LSSTCam/runs/quickLookTesting/325', 'LSSTCam/runs/quickLookTesting/323', 'LSSTCam/runs/quickLookTesting/322', 'LSSTCam/runs/quickLookTesting/321', 'LSSTCam/runs/quickLookTesting/320', 'LSSTCam/runs/quickLookTesting/319', 'LSSTCam/runs/quickLookTesting/318', 'LSSTCam/runs/quickLookTesting/314', 'LSSTCam/runs/quickLookTesting/313', 'LSSTCam/runs/quickLookTesting/312', 'LSSTCam/runs/quickLookTesting/311', 'LSSTCam/runs/quickLookTesting/310', 'LSSTCam/runs/quickLookTesting/309', 'LSSTCam/runs/quickLookTesting/308', 'LSSTCam/runs/quickLookTesting/307', 'LSSTCam/runs/quickLookTesting/306', 'LSSTCam/runs/quickLookTesting/305', 'LSSTCam/runs/quickLookTesting/304', 'LSSTCam/runs/quickLookTesting/303', 'LSSTCam/runs/quickLookTesting/302', 'LSSTCam/runs/quickLookTesting/301', 'LSSTCam/runs/quickLookTesting/300', 'LSSTCam/runs/quickLookTesting/299', 'LSSTCam/runs/quickLookTesting/298', 'LSSTCam/runs/quickLookTesting/297', 'LSSTCam/runs/quickLookTesting/296', 'LSSTCam/runs/quickLookTesting/295', 'LSSTCam/runs/quickLookTesting/294', 'LSSTCam/runs/quickLookTesting/293', 'LSSTCam/runs/quickLookTesting/292', 'LSSTCam/runs/quickLookTesting/291', 'LSSTCam/runs/quickLookTesting/290', 'LSSTCam/runs/quickLookTesting/289', 'LSSTCam/runs/quickLookTesting/288', 'LSSTCam/runs/quickLookTesting/287', 'LSSTCam/runs/quickLookTesting/286', 'LSSTCam/runs/quickLookTesting/285', 'LSSTCam/runs/quickLookTesting/284', 'LSSTCam/runs/quickLookTesting/283', 'LSSTCam/runs/quickLookTesting/282', 'LSSTCam/runs/quickLookTesting/281', 'LSSTCam/runs/quickLookTesting/280', 'LSSTCam/runs/quickLookTesting/279', 'LSSTCam/runs/quickLookTesting/278', 'LSSTCam/runs/quickLookTesting/277', 'LSSTCam/runs/quickLookTesting/276', 'LSSTCam/runs/quickLookTesting/275', 'LSSTCam/runs/quickLookTesting/274', 'LSSTCam/runs/quickLookTesting/273', 'LSSTCam/runs/quickLookTesting/272', 'LSSTCam/runs/quickLookTesting/271', 'LSSTCam/runs/quickLookTesting/270', 'LSSTCam/runs/quickLookTesting/269', 'LSSTCam/runs/quickLookTesting/268', 'LSSTCam/runs/quickLookTesting/264', 'LSSTCam/runs/quickLookTesting/260', 'LSSTCam/runs/quickLookTesting/259', 'LSSTCam/runs/quickLookTesting/258', 'LSSTCam/runs/quickLookTesting/257', 'LSSTCam/runs/quickLookTesting/256', 'LSSTCam/runs/quickLookTesting/255', 'LSSTCam/runs/quickLookTesting/254', 'LSSTCam/runs/quickLookTesting/253', 'LSSTCam/runs/quickLookTesting/252', 'LSSTCam/runs/quickLookTesting/251', 'LSSTCam/runs/quickLookTesting/250', 'LSSTCam/runs/quickLookTesting/249', 'LSSTCam/runs/quickLookTesting/248', 'LSSTCam/runs/quickLookTesting/247', 'LSSTCam/runs/quickLookTesting/246', 'LSSTCam/runs/quickLookTesting/245', 'LSSTCam/runs/quickLookTesting/244', 'LSSTCam/runs/quickLookTesting/243', 'LSSTCam/runs/quickLookTesting/242', 'LSSTCam/runs/quickLookTesting/241', 'LSSTCam/runs/quickLookTesting/240', 'LSSTCam/runs/quickLookTesting/239', 'LSSTCam/runs/quickLookTesting/238', 'LSSTCam/runs/quickLookTesting/237', 'LSSTCam/runs/quickLookTesting/236', 'LSSTCam/runs/quickLookTesting/235', 'LSSTCam/runs/quickLookTesting/234', 'LSSTCam/runs/quickLookTesting/233', 'LSSTCam/runs/quickLookTesting/232', 'LSSTCam/runs/quickLookTesting/231', 'LSSTCam/runs/quickLookTesting/230', 'LSSTCam/runs/quickLookTesting/229', 'LSSTCam/runs/quickLookTesting/228', 'LSSTCam/runs/quickLookTesting/227', 'LSSTCam/runs/quickLookTesting/226', 'LSSTCam/runs/quickLookTesting/225', 'LSSTCam/runs/quickLookTesting/224', 'LSSTCam/runs/quickLookTesting/223', 'LSSTCam/runs/quickLookTesting/222', 'LSSTCam/runs/quickLookTesting/221', 'LSSTCam/runs/quickLookTesting/220', 'LSSTCam/runs/quickLookTesting/219', 'LSSTCam/runs/quickLookTesting/218', 'LSSTCam/runs/quickLookTesting/217', 'LSSTCam/runs/quickLookTesting/216', 'LSSTCam/runs/quickLookTesting/215', 'LSSTCam/runs/quickLookTesting/214', 'LSSTCam/runs/quickLookTesting/213', 'LSSTCam/runs/quickLookTesting/212', 'LSSTCam/runs/quickLookTesting/211', 'LSSTCam/runs/quickLookTesting/210', 'LSSTCam/runs/quickLookTesting/209', 'LSSTCam/runs/quickLookTesting/208', 'LSSTCam/runs/quickLookTesting/207', 'LSSTCam/runs/quickLookTesting/206', 'LSSTCam/runs/quickLookTesting/205', 'LSSTCam/runs/quickLookTesting/204', 'LSSTCam/runs/quickLookTesting/203', 'LSSTCam/runs/quickLookTesting/202', 'LSSTCam/runs/quickLookTesting/200', 'LSSTCam/runs/quickLookTesting/199', 'LSSTCam/runs/quickLookTesting/198', 'LSSTCam/runs/quickLookTesting/197', 'LSSTCam/runs/quickLookTesting/196', 'LSSTCam/runs/quickLookTesting/195', 'LSSTCam/runs/quickLookTesting/194', 'LSSTCam/runs/quickLookTesting/193', 'LSSTCam/runs/quickLookTesting/192', 'LSSTCam/runs/quickLookTesting/191', 'LSSTCam/runs/quickLookTesting/190', 'LSSTCam/runs/quickLookTesting/189', 'LSSTCam/runs/quickLookTesting/188', 'LSSTCam/runs/quickLookTesting/187', 'LSSTCam/runs/quickLookTesting/186', 'LSSTCam/runs/quickLookTesting/185', 'LSSTCam/runs/quickLookTesting/184', 'LSSTCam/runs/quickLookTesting/183', 'LSSTCam/runs/quickLookTesting/182', 'LSSTCam/runs/quickLookTesting/181', 'LSSTCam/runs/quickLookTesting/180', 'LSSTCam/runs/quickLookTesting/179', 'LSSTCam/runs/quickLookTesting/178', 'LSSTCam/runs/quickLookTesting/177', 'LSSTCam/runs/quickLookTesting/176', 'LSSTCam/runs/quickLookTesting/175', 'LSSTCam/runs/quickLookTesting/174', 'LSSTCam/runs/quickLookTesting/173', 'LSSTCam/runs/quickLookTesting/172', 'LSSTCam/runs/quickLookTesting/171', 'LSSTCam/runs/quickLookTesting/170', 'LSSTCam/runs/quickLookTesting/169', 'LSSTCam/runs/quickLookTesting/168', 'LSSTCam/runs/quickLookTesting/167', 'LSSTCam/runs/quickLookTesting/166', 'LSSTCam/runs/quickLookTesting/165', 'LSSTCam/runs/quickLookTesting/164', 'LSSTCam/runs/quickLookTesting/163', 'LSSTCam/runs/quickLookTesting/162', 'LSSTCam/runs/quickLookTesting/161', 'LSSTCam/runs/quickLookTesting/160', 'LSSTCam/runs/quickLookTesting/159', 'LSSTCam/runs/quickLookTesting/158', 'LSSTCam/runs/quickLookTesting/157', 'LSSTCam/runs/quickLookTesting/156', 'LSSTCam/runs/quickLookTesting/155', 'LSSTCam/runs/quickLookTesting/154', 'LSSTCam/runs/quickLookTesting/153', 'LSSTCam/runs/quickLookTesting/152', 'LSSTCam/runs/quickLookTesting/151', 'LSSTCam/runs/quickLookTesting/150', 'LSSTCam/runs/quickLookTesting/149', 'LSSTCam/runs/quickLookTesting/148', 'LSSTCam/runs/quickLookTesting/147', 'LSSTCam/runs/quickLookTesting/146', 'LSSTCam/runs/quickLookTesting/145', 'LSSTCam/runs/quickLookTesting/144', 'LSSTCam/runs/quickLookTesting/143', 'LSSTCam/runs/quickLookTesting/142', 'LSSTCam/runs/quickLookTesting/141', 'LSSTCam/runs/quickLookTesting/140', 'LSSTCam/runs/quickLookTesting/139', 'LSSTCam/runs/quickLookTesting/137', 'LSSTCam/runs/quickLookTesting/136', 'LSSTCam/runs/quickLookTesting/135', 'LSSTCam/runs/quickLookTesting/134', 'LSSTCam/runs/quickLookTesting/133', 'LSSTCam/runs/quickLookTesting/132', 'LSSTCam/runs/quickLookTesting/131', 'LSSTCam/runs/quickLookTesting/130', 'LSSTCam/runs/quickLookTesting/129', 'LSSTCam/runs/quickLookTesting/128', 'LSSTCam/runs/quickLookTesting/127', 'LSSTCam/runs/quickLookTesting/126', 'LSSTCam/runs/quickLookTesting/125', 'LSSTCam/runs/quickLookTesting/124', 'LSSTCam/runs/quickLookTesting/123', 'LSSTCam/runs/quickLookTesting/122', 'LSSTCam/runs/quickLookTesting/121', 'LSSTCam/runs/quickLookTesting/119', 'LSSTCam/runs/quickLookTesting/118', 'LSSTCam/runs/quickLookTesting/117', 'LSSTCam/runs/quickLookTesting/116', 'LSSTCam/runs/quickLookTesting/115', 'LSSTCam/runs/quickLookTesting/114', 'LSSTCam/runs/quickLookTesting/113', 'LSSTCam/runs/quickLookTesting/112', 'LSSTCam/runs/quickLookTesting/111', 'LSSTCam/runs/quickLookTesting/110', 'LSSTCam/runs/quickLookTesting/109', 'LSSTCam/runs/quickLookTesting/108', 'LSSTCam/runs/quickLookTesting/107', 'LSSTCam/runs/quickLookTesting/106', 'LSSTCam/runs/quickLookTesting/105', 'LSSTCam/runs/quickLookTesting/104', 'LSSTCam/runs/quickLookTesting/103', 'LSSTCam/runs/quickLookTesting/102', 'LSSTCam/runs/quickLookTesting/101', 'LSSTCam/runs/quickLookTesting/100', 'LSSTCam/runs/quickLookTesting/99', 'LSSTCam/runs/quickLookTesting/98', 'LSSTCam/runs/quickLookTesting/97', 'LSSTCam/runs/quickLookTesting/96', 'LSSTCam/runs/quickLookTesting/95', 'LSSTCam/runs/quickLookTesting/94', 'LSSTCam/runs/quickLookTesting/93', 'LSSTCam/runs/quickLookTesting/92', 'LSSTCam/runs/quickLookTesting/90', 'LSSTCam/runs/quickLookTesting/89', 'LSSTCam/runs/quickLookTesting/88', 'LSSTCam/runs/quickLookTesting/87', 'LSSTCam/runs/quickLookTesting/86', 'LSSTCam/runs/quickLookTesting/85', 'LSSTCam/runs/quickLookTesting/84', 'LSSTCam/runs/quickLookTesting/81', 'LSSTCam/runs/quickLookTesting/80', 'LSSTCam/runs/quickLookTesting/79', 'LSSTCam/runs/quickLookTesting/78', 'LSSTCam/runs/quickLookTesting/77', 'LSSTCam/runs/quickLookTesting/76', 'LSSTCam/runs/quickLookTesting/75', 'LSSTCam/runs/quickLookTesting/74', 'LSSTCam/runs/quickLookTesting/73', 'LSSTCam/runs/quickLookTesting/72', 'LSSTCam/runs/quickLookTesting/71', 'LSSTCam/runs/quickLookTesting/70', 'LSSTCam/runs/quickLookTesting/69', 'LSSTCam/runs/quickLookTesting/68', 'LSSTCam/runs/quickLookTesting/67', 'LSSTCam/runs/quickLookTesting/66', 'LSSTCam/runs/quickLookTesting/65', 'LSSTCam/runs/quickLookTesting/64', 'LSSTCam/runs/quickLookTesting/63', 'LSSTCam/runs/quickLookTesting/62', 'LSSTCam/runs/quickLookTesting/61', 'LSSTCam/runs/quickLookTesting/60', 'LSSTCam/runs/quickLookTesting/59', 'LSSTCam/runs/quickLookTesting/58', 'LSSTCam/runs/quickLookTesting/57', 'LSSTCam/runs/quickLookTesting/56', 'LSSTCam/runs/quickLookTesting/55', 'LSSTCam/runs/quickLookTesting/54', 'LSSTCam/runs/quickLookTesting/53', 'LSSTCam/runs/quickLookTesting/50', 'LSSTCam/runs/quickLookTesting/49', 'LSSTCam/runs/quickLookTesting/48', 'LSSTCam/runs/quickLookTesting/47', 'LSSTCam/runs/quickLookTesting/46', 'LSSTCam/runs/quickLookTesting/45', 'LSSTCam/runs/quickLookTesting/44', 'LSSTCam/runs/quickLookTesting/43', 'LSSTCam/runs/quickLookTesting/42', 'LSSTCam/runs/quickLookTesting/41', 'LSSTCam/runs/quickLookTesting/40', 'LSSTCam/runs/quickLookTesting/39', 'LSSTCam/runs/quickLookTesting/38', 'LSSTCam/runs/quickLookTesting/37', 'LSSTCam/runs/quickLookTesting/36', 'LSSTCam/runs/quickLookTesting/35', 'LSSTCam/runs/quickLookTesting/34', 'LSSTCam/runs/quickLookTesting/33', 'LSSTCam/runs/quickLookTesting/32', 'LSSTCam/runs/quickLookTesting/31', 'LSSTCam/runs/quickLookTesting/30', 'LSSTCam/runs/quickLookTesting/29', 'LSSTCam/runs/quickLookTesting/28', 'LSSTCam/runs/quickLookTesting/27', 'LSSTCam/runs/quickLookTesting/26', 'LSSTCam/runs/quickLookTesting/25', 'LSSTCam/runs/quickLookTesting/24', 'LSSTCam/runs/quickLookTesting/23', 'LSSTCam/runs/quickLookTesting/22', 'LSSTCam/runs/quickLookTesting/21', 'LSSTCam/runs/quickLookTesting/20', 'LSSTCam/runs/quickLookTesting/19', 'LSSTCam/runs/quickLookTesting/18', 'LSSTCam/runs/quickLookTesting/15', 'LSSTCam/runs/quickLookTesting/14', 'LSSTCam/runs/quickLookTesting/13', 'LSSTCam/runs/quickLookTesting/12', 'LSSTCam/runs/quickLookTesting/9', 'LSSTCam/runs/quickLookTesting/8', 'LSSTCam/runs/quickLookTesting/7', 'LSSTCam/runs/quickLookTesting/6', 'LSSTCam/runs/quickLookTesting/5', 'LSSTCam/runs/quickLookTesting/4', 'LSSTCam/runs/quickLookTesting/3', 'LSSTCam/runs/quickLookTesting/2']
+INFO - Head node ready and IS running AOS. Data will be written to LSSTCam/runs/quickLookTesting/338
+INFO - Defining visit (if needed) for 2025111500227
+INFO - Sending signal to one-off processor for LSSTCam-20251115-227+PodFlavor.ONE_OFF_EXPRECORD_WORKER
+INFO - Sending 2025111500227 to AOS_FAM_DANISH pipeline
+INFO - Sending 2025111500227 imageType='cwfs' for step1a FAM processing
+INFO - Fanning LSSTCam-20251115-227 out to 18 detectors of 18 enabled 
+INFO - Sent 18 payloads to free workers, 0 to busy workers for AOS
+INFO - Sending signal to one-off processor for LSSTCam-20251115-227+PodFlavor.GUIDER_WORKER
+INFO - Defining visit (if needed) for 2025111500436
+INFO - Preprocessing data IDs.
+INFO - No on-sky exposures found after filtering.
+INFO - Sending signal to one-off processor for LSSTCam-20251115-436+PodFlavor.ONE_OFF_EXPRECORD_WORKER
+WARNING - No free workers available for podFlavor=<PodFlavor.ONE_OFF_EXPRECORD_WORKER: 11>, sending work to busyWorker=PodDetails(LSSTCam-PodFlavor.ONE_OFF_EXPRECORD_WORKER, depth=0, detNum=None)
+INFO - Sent 8 payloads to free workers, 0 to busy workers for ISR
+INFO - Sending 2025111500436 imageType='bias' for step1a BIAS processing
+INFO - Fanning LSSTCam-20251115-436 out to 18 detectors of 18 enabled 
+INFO - Sent 0 payloads to free workers, 18 to busy workers for ISR
+INFO - Sending signal to one-off processor for LSSTCam-20251115-436+PodFlavor.GUIDER_WORKER
+WARNING - No free workers available for podFlavor=<PodFlavor.GUIDER_WORKER: 15>, sending work to busyWorker=PodDetails(LSSTCam-PodFlavor.GUIDER_WORKER, depth=0, detNum=None)
+INFO - Defining visit (if needed) for 2025111500226
+INFO - Sending signal to one-off processor for LSSTCam-20251115-226+PodFlavor.ONE_OFF_EXPRECORD_WORKER
+WARNING - No free workers available for podFlavor=<PodFlavor.ONE_OFF_EXPRECORD_WORKER: 11>, sending work to busyWorker=PodDetails(LSSTCam-PodFlavor.ONE_OFF_EXPRECORD_WORKER, depth=0, detNum=None)
+INFO - Sent 0 payloads to free workers, 8 to busy workers for AOS
+INFO - Sending 2025111500226 imageType='acq' for full step1a SFM
+INFO - Fanning LSSTCam-20251115-226 out to 18 detectors of 18 enabled 
+INFO - Sent 0 payloads to free workers, 18 to busy workers for SFM
+INFO - Sending signal to one-off processor for LSSTCam-20251115-226+PodFlavor.GUIDER_WORKER
+WARNING - No free workers available for podFlavor=<PodFlavor.GUIDER_WORKER: 15>, sending work to busyWorker=PodDetails(LSSTCam-PodFlavor.GUIDER_WORKER, depth=0, detNum=None)
+INFO - Defining visit (if needed) for 2025111500228
+INFO - Sending signal to one-off processor for LSSTCam-20251115-228+PodFlavor.ONE_OFF_EXPRECORD_WORKER
+WARNING - No free workers available for podFlavor=<PodFlavor.ONE_OFF_EXPRECORD_WORKER: 11>, sending work to busyWorker=PodDetails(LSSTCam-PodFlavor.ONE_OFF_EXPRECORD_WORKER, depth=0, detNum=None)
+INFO - Sending 2025111500228 to AOS_FAM_DANISH pipeline
+INFO - Sending 2025111500228 imageType='cwfs' for step1a FAM processing
+INFO - Fanning LSSTCam-20251115-228 out to 18 detectors of 18 enabled 
+INFO - Sent 0 payloads to free workers, 18 to busy workers for AOS
+INFO - Sending signal to one-off processor for LSSTCam-20251115-228+PodFlavor.GUIDER_WORKER
+WARNING - No free workers available for podFlavor=<PodFlavor.GUIDER_WORKER: 15>, sending work to busyWorker=PodDetails(LSSTCam-PodFlavor.GUIDER_WORKER, depth=0, detNum=None)
+INFO - Dispatching complete post_isr_image mosaic for expId=2025111500227
+INFO - Sending signal to one-off processor for LSSTCam-20251115-227+PodFlavor.ONE_OFF_POSTISR_WORKER
+INFO - Dispatching step1b for AOS_FAM_DANISH with complete inputs: {instrument: 'LSSTCam', visit: 2025111500227} to PodDetails(LSSTCam-PodFlavor.STEP1B_AOS_WORKER, depth=0, detNum=None)
+INFO - Sending signal to one-off processor for LSSTCam-20251115-227+PodFlavor.ONE_OFF_POSTISR_WORKER
+INFO - Dispatching step1b for AOS_DANISH with complete inputs: {instrument: 'LSSTCam', visit: 2025111500226} to PodDetails(LSSTCam-PodFlavor.STEP1B_AOS_WORKER, depth=0, detNum=None)
+INFO - Sending signal to one-off processor for LSSTCam-20251115-226+PodFlavor.ONE_OFF_POSTISR_WORKER
+INFO - Dispatching complete post_isr_image mosaic for expId=2025111500228
+INFO - Sending signal to one-off processor for LSSTCam-20251115-228+PodFlavor.ONE_OFF_POSTISR_WORKER
+INFO - Dispatching step1b for AOS_FAM_DANISH with complete inputs: {instrument: 'LSSTCam', visit: 2025111500228} to PodDetails(LSSTCam-PodFlavor.STEP1B_AOS_WORKER, depth=1, detNum=None)
+INFO - Sending signal to one-off processor for LSSTCam-20251115-228+PodFlavor.ONE_OFF_POSTISR_WORKER
+INFO - Dispatching complete post_isr_image mosaic for expId=2025111500226
+INFO - Sending signal to one-off processor for LSSTCam-20251115-226+PodFlavor.ONE_OFF_POSTISR_WORKER
+INFO - Dispatching step1b for SFM with complete inputs: {instrument: 'LSSTCam', visit: 2025111500226} to PodDetails(LSSTCam-PodFlavor.STEP1B_WORKER, depth=0, detNum=None)
+INFO - Sending signal to one-off processor for LSSTCam-20251115-226+PodFlavor.ONE_OFF_POSTISR_WORKER
+INFO - Dispatching the focal plane visit_image mosaic for 2025111500226
+INFO - Dispatching complete preliminary_visit_image mosaic for 2025111500226
+INFO - Sending 2025111500226 for one-off visit image processing
+INFO - Sending signal to one-off processor for LSSTCam-20251115-226+PodFlavor.ONE_OFF_VISITIMAGE_WORKER
+INFO - Sending 2025111500226 for radial plot processing
+INFO - Dispatching complete post_isr_image mosaic for expId=2025111500436
+INFO - Sending signal to one-off processor for LSSTCam-20251115-436+PodFlavor.ONE_OFF_POSTISR_WORKER
+INFO - Sending signal to one-off processor for LSSTCam-20251115-436+PodFlavor.ONE_OFF_POSTISR_WORKER
+WARNING - No free workers available for podFlavor=<PodFlavor.ONE_OFF_POSTISR_WORKER: 12>, sending work to busyWorker=PodDetails(LSSTCam-PodFlavor.ONE_OFF_POSTISR_WORKER, depth=0, detNum=None)
+
+--------------------------------------------------------------------------------

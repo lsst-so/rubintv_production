@@ -25,10 +25,10 @@ import os
 import tempfile
 from typing import TYPE_CHECKING, Any, cast
 
+import matplotlib as mpl
 import matplotlib.colors as colors
 import numpy as np
 from astropy.io import fits
-from matplotlib import cm
 from matplotlib.figure import Figure
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
@@ -41,7 +41,7 @@ from lsst.resources import ResourcePath
 from lsst.summit.utils import getQuantiles
 
 from ..resources import getBasePath, listDir
-from ..utils import logDuration, timeFunction
+from ..timing import logDuration, timeFunction
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -50,7 +50,7 @@ if TYPE_CHECKING:
 
     from lsst.afw.cameraGeom import Camera, Detector
     from lsst.daf.butler import Butler, DeferredDatasetHandle
-    from lsst.rubintv.production.utils import LocationConfig
+    from lsst.rubintv.production.locationConfig import LocationConfig
 
 _LOG = logging.getLogger(__name__)
 
@@ -152,7 +152,7 @@ def writeBinnedImage(
         The binning factor.
     dataProduct : `str`
         The data product type, e.g. 'post_isr_image'.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location configuration, used to get the base path.
 
     Notes
@@ -200,7 +200,7 @@ def readBinnedImage(
         The binning factor.
     dataProduct : `str`
         The data product type, e.g. 'post_isr_image'.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location configuration, used to get the base path.
     logger : `logging.Logger`, optional
         The logger to use.
@@ -313,7 +313,7 @@ def makeMosaic(
         The data product type, e.g. 'post_isr_image'.
     nExpected : `int`
         The number of CCDs expected in the mosaic.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location configuration, used to get the base path for the binned
         images.
     deleteFiles : `bool`
@@ -416,7 +416,7 @@ def getDetectorNamesWithDataAndPrefetch(
         The binning factor.
     dataProduct : `str`
         The data product type, e.g. 'post_isr_image'.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location configuration, used to get the base path for the binned
         images.
     tempDir : `str`
@@ -494,7 +494,7 @@ def plotFocalPlaneMosaic(
         The number of CCDs expected in the mosaic.
     stretch : `str`
         The scaling option for the plot.
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The location configuration, used to get the base path for the binned
         images.
     timeout : `float`
@@ -573,8 +573,7 @@ def renderMosaicImage(
         data = im.array
         ax = figureOrDisplay.gca()
         ax.clear()
-        # XXX why is this type ignore necessary? Can I fix this?
-        cmap = cm.gray  # type: ignore
+        cmap = mpl.colormaps["gray"]
         norm: Normalize
         match scalingOption:
             case "asinh":

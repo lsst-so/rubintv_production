@@ -109,9 +109,9 @@ USER saluser
 WORKDIR /repos
 
 # Clone all repos
-RUN git clone https://github.com/lsst-sitcom/summit_utils.git && \
-    git clone https://github.com/lsst-sitcom/summit_extras.git && \
-    git clone https://github.com/lsst-sitcom/rubintv_production.git && \
+RUN git clone https://github.com/lsst-so/summit_utils.git && \
+    git clone https://github.com/lsst-so/summit_extras.git && \
+    git clone https://github.com/lsst-so/rubintv_production.git && \
     git clone https://github.com/lsst-ts/rubintv_analysis_service.git && \
     git clone https://github.com/lsst-ts/ts_wep.git && \
     git clone https://github.com/lsst-ts/ts_ofc.git && \
@@ -204,7 +204,7 @@ RUN chown -R ${UID}:${GID} /repos/rubintv_production
 
 USER saluser
 
-RUN git remote set-url origin https://github.com/lsst-sitcom/rubintv_production.git
+RUN git remote set-url origin https://github.com/lsst-so/rubintv_production.git
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     eups declare -r . rubintv_production -t saluser && \

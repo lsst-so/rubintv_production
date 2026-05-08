@@ -30,7 +30,6 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from astropy.time import Time
-from galsim.zernike import zernikeRotMatrix
 
 from lsst.daf.butler import (
     Butler,
@@ -54,22 +53,23 @@ from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
 from lsst.summit.utils.utils import getCameraFromInstrumentName
 from lsst.ts.ofc import OFCData
 
+from .aosRecipes import computeAosResidualFwhm, computeRotatedZernikesForConsDB
 from .baseChannels import BaseButlerChannel
-from .consdbUtils import ConsDBPopulator
-from .payloads import pipelineGraphFromBytes
-from .plotting.mosaicing import writeBinnedImage
-from .processingControl import buildPipelines
-from .redisUtils import RedisHelper
-from .utils import (
+from .butlerQueries import (
     getCurrentOutputRun,
     getEquivalentDataId,
-    getExpIdOrVisitId,
     getExpRecordFromId,
-    getShardPath,
-    logDuration,
-    raiseIf,
-    writeMetadataShard,
 )
+from .consdbUtils import ConsDBPopulator
+from .payloads import Payload, pipelineGraphFromBytes
+from .plotting.mosaicing import writeBinnedImage
+from .podDefinition import PodFlavor
+from .predicates import raiseIf
+from .processingControl import buildPipelines
+from .redisUtils import RedisHelper
+from .shardIo import getShardPath, writeMetadataShard
+from .timing import logDuration
+from .utils import getExpIdOrVisitId
 
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
@@ -78,9 +78,8 @@ if TYPE_CHECKING:
     from lsst.pipe.base.graph.quantumNode import QuantumNode
     from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilder
 
-    from .payloads import Payload
+    from .locationConfig import LocationConfig
     from .podDefinition import PodDetails
-    from .utils import LocationConfig
 
 
 __all__ = [
@@ -134,7 +133,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
     Parameters
     ----------
-    locationConfig : `lsst.rubintv.production.utils.LocationConfig`
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
     butler : `lsst.daf.butler.Butler`
         The butler to use.
@@ -164,22 +163,15 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         *,
         doRaise=False,
     ):
+        # pipeline running pods don't upload directly, so deliberately do
+        # not create an s3Uploader on this class.
         super().__init__(
             locationConfig=locationConfig,
             butler=butler,
-            # TODO: DM-43764 this shouldn't be necessary on the
-            # base class after this ticket, I think.
-            detectors=None,
-            dataProduct=awaitsDataProduct,
-            # TODO: DM-43764 should also be able to fix needing
-            # channelName when tidying up the base class. Needed
-            # in some contexts but not all. Maybe default it to
-            # ''?
-            channelName="",
             podDetails=podDetails,
             doRaise=doRaise,
-            addUploader=False,  # pipeline running pods don't upload directly
         )
+        self.dataProduct = awaitsDataProduct
         self.instrument = instrument
         self.butler = butler
         self.step = step
@@ -461,6 +453,28 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 )
                 return builder, "", {}, self.cachingButler
 
+    def _dispatchToPlotter(self, dataCoord: DataCoordinate, podFlavor: PodFlavor) -> None:
+        """Send a dataCoord to a single worker of the given plotter flavor.
+
+        Wraps the dataCoord in a minimal `Payload` and enqueues it on the
+        chosen pod's queue. If no plotter pods of this flavor exist (free or
+        busy), the dispatch is dropped with an error log so that the rest of
+        post-processing continues.
+
+        Parameters
+        ----------
+        dataCoord : `lsst.daf.butler.DataCoordinate`
+            The dataCoord to send to the plotter (typically a visit-level id).
+        podFlavor : `lsst.rubintv.production.podDefinition.PodFlavor`
+            The plotter flavor to dispatch to.
+        """
+        worker = self.redisHelper.getSingleWorker(self.instrument, podFlavor)
+        if worker is None:
+            self.log.error(f"No workers available for {podFlavor=}, dropping plotter dispatch")
+            return
+        payload = Payload(dataId=dataCoord, pipelineGraphBytes=b"", run="", who="SFM")
+        self.redisHelper.enqueuePayload(payload, worker)
+
     def callback(self, payload: Payload) -> None:
         """Method called on each payload from the queue.
 
@@ -594,32 +608,31 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
             # finished looping over nodes
             if self.step == "step1a":
-                self.log.debug(f"Announcing completion of step1a for {expId} for {who}")
-                self.redisHelper.reportDetectorLevelFinished(
-                    self.instrument, "step1a", who=who, processingId=expId
-                )
+                detector = int(payload.dataId["detector"])
+                self.log.debug(f"Announcing completion of step1a for {expId} det {detector} for {who}")
+                self.redisHelper.reportDetectorFinished(self.instrument, expId, who=who, detector=detector)
             if self.step == "step1b":
                 self.log.debug(f"Announcing completion of step1b for {expId} for {who}")
                 self.redisHelper.reportVisitLevelFinished(self.instrument, "step1b", who=who)
-                # TODO: probably add a utility function on the helper for this
-                # and one for getting the most recent visit from the queue
-                # which does the decoding too to provide a unified interface.
+                self.redisHelper.markStep1bFinished(self.instrument, expId, who=who)
                 if who == "SFM":
-                    # in SFM this is never compound
-                    self.redisHelper.redis.lpush(f"{self.instrument}-PSFPLOTTER", str(expId))
-
                     # required the visitSummary so needs to be post-step1b
                     (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", visit=expId)
+                    visitDataCoord = DataCoordinate.standardize(
+                        instrument=self.instrument, visit=visitRecord.id, universe=self.butler.dimensions
+                    )
+                    self._dispatchToPlotter(visitDataCoord, PodFlavor.PSF_PLOTTER)
                     self.log.info(f"Sending {visitRecord.id} for fwhm plotting")
-                    self.redisHelper.sendExpRecordToQueue(visitRecord, f"{self.instrument}-FWHMPLOTTER")
-                    self.redisHelper.redis.lpush(f"{self.instrument}-ZERNIKE_PREDICTION_PLOTTER", str(expId))
+                    self._dispatchToPlotter(visitDataCoord, PodFlavor.FWHM_PLOTTER)
+                    self._dispatchToPlotter(visitDataCoord, PodFlavor.ZERNIKE_PREDICTED_FWHM_PLOTTER)
             if self.step == "nightlyRollup":
                 self.redisHelper.reportNightLevelFinished(self.instrument, who=who)
 
         except Exception as e:
             if self.step == "step1a":
-                self.redisHelper.reportDetectorLevelFinished(
-                    self.instrument, "step1a", who=who, processingId=expId, failed=True
+                detector = int(payload.dataId["detector"])
+                self.redisHelper.reportDetectorFinished(
+                    self.instrument, expId, who=who, detector=detector, failed=True
                 )
             if self.step == "step1b":
                 self.redisHelper.reportVisitLevelFinished(self.instrument, "step1b", who=who, failed=True)
@@ -680,8 +693,12 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             )
             if dRef is not None:
                 # it shouldn't ever be None here, but technically could be, so
-                # check here for mypy, and reraise if it was None
-                self.redisHelper.reportTaskFinished(self.instrument, "binnedIsrCreation", dRef.dataId)
+                # check here for mypy, and reraise if it was None. Report the
+                # binned-ISR slot as completed even on failure so the mosaic
+                # dispatch isn't held up by a single failed detector.
+                expId = int(dRef.dataId["exposure"])
+                detector = int(dRef.dataId["detector"])
+                self.redisHelper.reportBinnedIsrProduced(self.instrument, expId, detector)
             else:
                 raise AssertionError(
                     f"Failed to post-process *failed* isr quantum {quantum} and dRef was None. This shouldn't"
@@ -702,7 +719,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             locationConfig=self.locationConfig,
         )
         self.log.info(f"Wrote binned {output_dataset_name} for {dRef.dataId}")
-        self.redisHelper.reportTaskFinished(self.instrument, "binnedIsrCreation", dRef.dataId)
+        self.redisHelper.reportBinnedIsrProduced(
+            self.instrument, int(expRecord.id), int(dRef.dataId["detector"])
+        )
         if self.locationConfig.location in ["summit", "bts", "tts"]:  # don't fill ConsDB at USDF
             try:
                 detectorNum = exp.getDetector().getId()
@@ -878,11 +897,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
     def postProcessCalcZernikes(self, quantum: Quantum) -> None:
         """Post-process the Zernike table to send results to ConsDB."""
-        # protect import to stop the whole package depending on ts_wep. If this
-        # becomes a problem we could copy the functions or just accept that RA
-        # needs T&S software.
-        from lsst.ts.wep.utils.zernikeUtils import makeDense
-
         try:
             dRef = quantum.outputs["zernikes"][0]
             zkTable = self.cachingButler.get(dRef)
@@ -892,12 +906,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 " but still merits a warning due to the failing quantum."
             )
             return
-
-        # *ideally* this would be pulled from maxconfig.nollIndices() but
-        # that's not possible here, but a) they never run above 28, and b)
-        # ConsDB only goes out that far, so we'd truncate there anyway, so we
-        # just hardcode it here.
-        MAX_NOLL_INDEX = 28
 
         # Get the physical rotation from the EFD. Ideally this would be pulled
         # from the ConsDB, but that's calculated elsewhere in RA, and although
@@ -909,11 +917,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             zkTable.meta = {}
         zkTable.meta["shutter_to_zernike_time"] = float((Time.now() - visitRecord.timespan.end).sec)
 
-        # NOTE: this recipe is copied and pasted to
-        # highLevelTools.backfillCcdVisit1QuicklookForDayAos - if
-        # that recipe is updated, this needs to be updated too
-        # TODO: refactor this for proper reuse and remove this note
-
         data = getEfdData(self.efdClient, "lsst.sal.MTRotator.rotation", expRecord=visitRecord)
         physicalRotation = np.nanmean(data["actualPosition"])
 
@@ -921,32 +924,12 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         assert detector is not None, "detector is None, this shouldn't be possible"
         detectorId: int = detector.id  # hence .id rather than .getId()
 
-        zkTable = zkTable[zkTable["label"] == "average"]
-        zkColsHere = zkTable.meta["opd_columns"]
-        nollIndicesHere = np.asarray(zkTable.meta["noll_indices"])
-        # Grab Zernike values, convert to dense array, save
-        zkSparse = zkTable[zkColsHere].to_pandas().values[0]
-        zkDense = makeDense(zkSparse, nollIndicesHere, MAX_NOLL_INDEX)
-        rotationMatrix = zernikeRotMatrix(MAX_NOLL_INDEX, -np.deg2rad(physicalRotation))
-        # we only track z4 upwards and ConsDB only has slots for z4 to z28
-        zernikeValues: np.ndarray = zkDense / 1e3 @ rotationMatrix[4:, 4:]
-
-        consDbValues: dict[str, float] = {}
-        for i in range(len(zernikeValues)):  # these start at z4 and are dense so contain zeros
-            value = float(zernikeValues[i])  # make a real float for ConsDB
-            if value == 0:  # skip the ones which were zero due to sparseness so they're null in the DB
-                continue
-            consDbValues[f"z{i + 4}"] = float(zernikeValues[i])
+        consDbValues = computeRotatedZernikesForConsDB(zkTable, physicalRotation)
 
         # consDB validates the location and only inserts if it's summit-like
         self.consDBPopulator.populateCcdVisitRowZernikes(visitRecord, detectorId, consDbValues)
 
     def postProcessAggregateZernikeTables(self, quantum: Quantum) -> None:
-        # protect import to stop the whole package depending on ts_wep. If this
-        # becomes a problem we could copy the functions or just accept that RA
-        # needs T&S software.
-        from lsst.ts.wep.utils import convertZernikesToPsfWidth, makeDense
-
         try:
             dRef = quantum.outputs["aggregateZernikesAvg"][0]
             zernikes = self.cachingButler.get(dRef)
@@ -962,36 +945,11 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             zernikes.meta = {}
         zernikes.meta["shutter_to_zernike_time"] = float((Time.now() - expRecord.timespan.end).sec)
 
-        rowSums = []
-
-        # NOTE: this recipe is copied and pasted to
-        # highLevelTools.backfillVisit1QuicklookForDayAos - if
-        # that recipe is updated, this needs to be updated too
-        # TODO: refactor this for proper reuse and remove this note
-
-        nollIndices = zernikes.meta["nollIndices"]
-        maxNollIndex = np.max(zernikes.meta["nollIndices"])
-        for row in zernikes:
-            zkOcs = row["zk_deviation_OCS"]
-            detector = row["detector"]
-            zkDense = makeDense(zkOcs, nollIndices, maxNollIndex)
-            zkDense -= self.ofcData.y2_correction[detector][: len(zkDense)]
-            zkFwhm = convertZernikesToPsfWidth(zkDense)
-            rowSums.append(np.sqrt(np.sum(zkFwhm**2)))
-
-        average_result = np.nanmean(rowSums)
-        residual = 1.06 * np.log(1 + average_result)  # adjustement per John Franklin's paper
+        residual, donutBlurFwhm = computeAosResidualFwhm(zernikes, self.ofcData)
 
         outputDict = {"Residual AOS FWHM": f"{residual:.2f}"}
-
-        donutBlurFwhm = float("nan")  # needs to be defined for lower block but nans are removed on send
-        if "estimatorInfo" in zernikes.meta and zernikes.meta["estimatorInfo"] is not None:
-            # if danish is run then fwhm is in the metadata, if TIE then it's
-            # not. danish models the width of the Kolmogorov profile needed to
-            # convolve with the geometric donut model (the optics) to match the
-            # donut. If AI_DONUT then "estimatorInfo" might not be present.
-            if donutBlurFwhm := zernikes.meta["estimatorInfo"].get("fwhm"):
-                outputDict["Donut Blur FWHM"] = f"{donutBlurFwhm:.2f}"
+        if not np.isnan(donutBlurFwhm):
+            outputDict["Donut Blur FWHM"] = f"{donutBlurFwhm:.2f}"
 
         labels = {"_" + k: "measured" for k in outputDict.keys()}
         outputDict.update(labels)
@@ -1007,7 +965,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             self.log.info(f"Sending donut blur {donutBlurFwhm:.2f} for {expRecord.id} to consDB")
             # visit_id is required for updates
             consDbValues = {"aos_fwhm": residual, "visit_id": expRecord.id}
-            if donutBlurFwhm:
+            if not np.isnan(donutBlurFwhm):
                 consDbValues["donut_blur_fwhm"] = donutBlurFwhm
             self.consDBPopulator.populateArbitrary(
                 expRecord.instrument,
@@ -1015,7 +973,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 consDbValues,
                 expRecord.day_obs,
                 expRecord.seq_num,
-                True,  # insert into existing an row requires allowUpdate
+                True,  # inserting into an existing row requires allowUpdate
             )
         except Exception as e:
             self.log.error(

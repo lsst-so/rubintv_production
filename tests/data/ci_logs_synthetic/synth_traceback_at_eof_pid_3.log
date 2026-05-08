@@ -1,0 +1,8 @@
+2026-04-24 10:00:00 - lsst.synth - INFO - starting synthetic pod that dies at end-of-file
+2026-04-24 10:00:01 - lsst.synth - INFO - doing work
+Traceback (most recent call last):
+  File "/sdf/home/example/pkg/tail.py", line 1, in main
+    bar()
+  File "/sdf/home/example/pkg/tail.py", line 5, in bar
+    raise KeyError('missing')
+KeyError: 'missing'

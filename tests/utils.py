@@ -29,8 +29,8 @@ from lsst.daf.butler import (
     DimensionUniverse,
     MissingCollectionError,
 )
+from lsst.rubintv.production.parsers import safeJsonOpen
 from lsst.rubintv.production.processingControl import PIPELINE_NAMES
-from lsst.rubintv.production.utils import safeJsonOpen
 
 __all__ = ("getSampleExpRecord", "getUserRunCollectionName", "removeUserRunCollection")
 

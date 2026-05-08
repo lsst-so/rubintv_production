@@ -24,29 +24,116 @@ from __future__ import annotations
 import logging
 import re
 import shutil
+import time
+from datetime import timedelta
+from itertools import batched
 from pathlib import Path
-from time import sleep
 from typing import TYPE_CHECKING
 
+import astropy.units as u  # type: ignore[import-untyped]
+import humanize
+from astroplan import Observer
+from astropy.time import Time
+
 from lsst.daf.butler import Butler
+from lsst.obs.lsst.translators.lsst import SIMONYI_LOCATION
 from lsst.summit.utils.dateTime import getCurrentDayObsInt, offsetDayObs
 
 from .highLevelTools import deleteAllSkyStills, deleteNonFinalAllSkyMovies, syncBuckets
+from .predicates import raiseIf
 from .resources import getBasePath, getSubDirs, rmtree
 from .uploaders import MultiUploader
-from .utils import hasDayRolledOver, raiseIf
 
 if TYPE_CHECKING:
-    from lsst.rubintv.production.utils import LocationConfig
+    from lsst.rubintv.production.locationConfig import LocationConfig
 
 
 __all__ = ["TempFileCleaner"]
 
 _LOG = logging.getLogger(__name__)
 
+DATASETS_TO_CLEAN = (
+    "isrStatistics",
+    "isr_metadata",
+    "calibrateImage_metadata",
+    "preliminary_visit_image_background",
+    "initial_astrometry_match_detector",
+    "initial_photometry_match_detector",
+    "preliminary_visit_mask",
+    "verifyFlatIsrExpBin8",
+    "verifyFlatIsrExpBin64",
+    "verifyFlatIsr_metadata",
+    "verifyBiasIsrExpBin64",
+    "verifyBiasIsrExpBin8",
+    "verifyBiasIsr_metadata",
+    "verifyDarkIsrExpBin64",
+    "verifyDarkIsrExpBin8",
+    "verifyDarkIsr_metadata",
+    "postISRCCD",
+)
+BATCHSIZE = 5000
+SPEED_FACTOR = 0.5  # 0.5 = half-speed, 0.33 = one-third etc
+SMALL_FILE_KEEP_DAYS = 14
+
+
+def interruptibleSleep(duration: float, deadline: Time) -> bool:
+    """Sleep up to ``duration`` seconds, returning early if ``deadline``
+    passes.
+
+    The deadline is checked at most every 5 seconds, so the call may
+    continue sleeping for up to that long after ``deadline`` has passed.
+
+    Parameters
+    ----------
+    duration : `float`
+        The maximum number of seconds to sleep for.
+    deadline : `astropy.time.Time`
+        Absolute time after which the sleep should be cut short.
+
+    Returns
+    -------
+    deadlineHit : `bool`
+        ``True`` if the sleep was cut short because ``deadline`` had passed,
+        ``False`` if the full ``duration`` was slept.
+    """
+    slept = 0.0
+    while slept < duration:
+        if Time.now() >= deadline:
+            return True
+        chunk = min(5.0, duration - slept)
+        time.sleep(chunk)
+        slept += chunk
+    return False
+
+
+def waitUntil(t: Time) -> None:
+    """Block until the given absolute time has passed.
+
+    Returns immediately if ``t`` is already in the past. This is a plain
+    blocking sleep with no interruption mechanism.
+
+    Parameters
+    ----------
+    t : `astropy.time.Time`
+        The absolute time to wait for.
+    """
+    delta = (t - Time.now()).to(u.s).value
+    if delta > 0:
+        time.sleep(delta)
+
 
 class TempFileCleaner:
-    """Clean up all temporary files and directories created by RA."""
+    """Clean up temporary files, directories, and stale Butler datasets
+    created by Rapid Analysis.
+
+    Parameters
+    ----------
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
+        The location configuration for the site this cleaner is running at.
+    doRaise : `bool`, optional
+        If ``True``, re-raise exceptions encountered during cleanup rather
+        than logging and continuing.
+    """
 
     def __init__(self, locationConfig: LocationConfig, doRaise: bool = False) -> None:
         self.log = _LOG.getChild("TempFileCleaner")
@@ -59,8 +146,8 @@ class TempFileCleaner:
             "LATISSPlots": Path(locationConfig.plotPath) / "LATISS",
             "LSSTCamPlots": Path(locationConfig.plotPath) / "LSSTCam",
         }
-        self.s3DirsToDelete = ("binnedImages/",)  # NB: must end in the trailing backslash
-        self.keepDaysS3temp = 2  # 2 means curent dayObs and the day before
+        self.s3DirsToDelete = ("binnedImages/",)  # NB: must end in a trailing slash
+        self.keepDaysS3temp = 2  # 2 means current dayObs and the day before
         self.keepDaysPixelProducts = 14  # keep the last two weeks for pixel products for now
 
         self.butler = Butler.from_config(
@@ -72,9 +159,19 @@ class TempFileCleaner:
             ],
             writeable=True,
         )
+        self.observer = Observer(location=SIMONYI_LOCATION)
 
     def deletePixelProducts(self) -> None:
-        """Delete old pixel data products for LSSTCam."""
+        """Delete old pixel data products for LSSTCam from the quickLook
+        output chain.
+
+        Only runs at summit-like sites (summit/BTS/TTS). The retention
+        window is set by ``self.keepDaysPixelProducts``.
+        """
+        # TODO: add post_isr_image to main list and remove this function
+        # entirely once that cleanup code is actually managing to finish before
+        # sunset - the only reason this is separate it to do the big stuff
+        # first while still making max progress on the small files
         site = self.locationConfig.location
         if site.lower() not in ("summit", "bts", "tts"):
             self.log.info(f"Pixel products are only deleted at summit/BTS/TTS sites, not {site}, skipping")
@@ -113,9 +210,91 @@ class TempFileCleaner:
                 total += len(refs)
                 self.log.info(f"Deletion for {product} {100 * (total / len(allDRefs)):.1f}% complete")
 
+    def cleanupPass(
+        self,
+        datasetsToClean: tuple[str, ...],
+        deleteBefore: int,
+        deadline: Time,
+    ) -> int:
+        """Run one pass of the deletion loop, bailing out when ``deadline``
+        passes.
+
+        Always finishes the in-flight ``pruneDatasets`` call before returning,
+        so the function may overshoot ``deadline`` by up to the time taken to
+        prune one batch.
+
+        Parameters
+        ----------
+        datasetsToClean : `tuple` [`str`, ...]
+            The dataset type names to delete.
+        deleteBefore : `int`
+            The dayObs cutoff: only datasets with ``day_obs <= deleteBefore``
+            are deleted.
+        deadline : `astropy.time.Time`
+            Absolute time after which the pass should stop issuing new work.
+
+        Returns
+        -------
+        totalDeletions : `int`
+            The number of datasets deleted in this pass.
+        """
+        site = self.locationConfig.location
+        if site.lower() not in ("summit", "bts", "tts"):
+            self.log.info(f"Cleanup is only run at summit/BTS/TTS sites, not {site}, skipping")
+            return 0
+
+        totalDeletions = 0
+        # Trailing slash on the chain pattern is intentional: it filters
+        # to children of the chain (e.g. per-day runs) rather than the
+        # bare chain root itself.
+        outputChain = self.locationConfig.getOutputChain("LSSTCam")
+        collections = self.butler.registry.queryCollections(f"*{outputChain}/*")
+        for dataset in datasetsToClean:
+            for collection in collections:
+                where = f"exposure.day_obs<={deleteBefore} AND instrument='LSSTCam'"
+                t0 = time.time()
+                dRefs = set(
+                    self.butler.query_datasets(
+                        dataset,
+                        where=where,
+                        limit=1_000_000_000_000,
+                        collections=collection,
+                        explain=False,
+                        find_first=False,
+                    )
+                )
+                if not dRefs:
+                    continue
+                self.log.info(f"Butler query found {len(dRefs)} {dataset}'s in {(time.time() - t0):.2f}s")
+
+                for batch in batched(dRefs, BATCHSIZE):
+                    if Time.now() >= deadline:
+                        return totalDeletions
+                    t0 = time.time()
+                    self.butler.pruneDatasets(
+                        batch,
+                        disassociate=True,
+                        unstore=True,
+                        purge=True,
+                    )
+                    deletionTime = time.time() - t0
+                    sleepDuration = deletionTime * (1 / SPEED_FACTOR - 1)
+                    self.log.info(
+                        f"Deleted {len(batch)} {dataset}'s in {deletionTime:.1f}s, "
+                        f"sleeping for {sleepDuration:.1f}s"
+                    )
+                    totalDeletions += len(batch)
+                    if interruptibleSleep(sleepDuration, deadline):
+                        return totalDeletions
+        return totalDeletions
+
     def deleteDirectories(self) -> None:
-        """Delete all specified NFS directories that are older than
-        `keepDaysS3temp` days.
+        """Delete dayObs-named subdirectories of the configured NFS paths
+        that are older than ``self.keepDaysS3temp`` days.
+
+        Only subdirectories whose names match ``YYYYMMDD`` and begin with
+        ``2`` are considered. Regular files and non-matching directories
+        are left untouched.
         """
         currentDayObs = getCurrentDayObsInt()
         deleteBefore = offsetDayObs(currentDayObs, -self.keepDaysS3temp)
@@ -145,8 +324,11 @@ class TempFileCleaner:
                 raiseIf(self.doRaise, e, self.log, msg)
 
     def deleteS3Directories(self) -> None:
-        """Delete all specified S3 directories that are older than
-        `keepDaysS3temp` days.
+        """Delete dayObs-named subdirectories of the configured S3 paths
+        that are older than ``self.keepDaysS3temp`` days.
+
+        Only subdirectories whose names match ``YYYYMMDD`` (with an
+        optional trailing slash) and begin with ``2`` are considered.
         """
         currentDayObs = getCurrentDayObsInt()
         deleteBefore = offsetDayObs(currentDayObs, -self.keepDaysS3temp)
@@ -157,8 +339,8 @@ class TempFileCleaner:
 
             self.log.info(f"Deleting old data from subdirectories in {fullDirName}:")
             subDir = None
-            subDirs = getSubDirs(fullDirName)
             try:
+                subDirs = getSubDirs(fullDirName)
                 for subDir in subDirs:
                     fullSubDir = fullDirName.join(subDir)
                     if not fullSubDir.isdir():  # don't touch regular files
@@ -182,7 +364,7 @@ class TempFileCleaner:
                 msg = f"Error processing removing data from {subDir}: {e}"
                 raiseIf(self.doRaise, e, self.log, msg)
 
-    def cleanupBuckets(self) -> None:
+    def cleanupAndSyncBuckets(self) -> None:
         """Delete stale S3 files and sync local and remote buckets.
 
         Delete any stale all sky stills and non-final movies from the buckets
@@ -192,41 +374,90 @@ class TempFileCleaner:
         # class in case of connection problems
         mu = MultiUploader()
 
-        self.log.info("Deleting stale local all sky stills")
-        deleteAllSkyStills(mu.localUploader._s3Bucket)
+        remoteOk = mu.remoteUploader.checkAccess()
+        if not remoteOk:
+            self.log.warning("Cannot access remote bucket; skipping remote buck cleanup and sync")
 
-        self.log.info("Deleting stale remote all sky stills")
-        deleteAllSkyStills(mu.remoteUploader._s3Bucket)
+        localBucket = mu.localUploader._s3Bucket
+        remoteBucket = mu.remoteUploader._s3Bucket
+
+        self.log.info("Deleting stale local all sky stills")
+        deleteAllSkyStills(localBucket)
 
         self.log.info("Deleting local non-final movies")
-        deleteNonFinalAllSkyMovies(mu.localUploader._s3Bucket)
+        deleteNonFinalAllSkyMovies(localBucket)
 
-        self.log.info("Deleting remote non-final movies")
-        deleteNonFinalAllSkyMovies(mu.remoteUploader._s3Bucket)
+        if remoteOk:
+            self.log.info("Deleting stale remote all sky stills")
+            deleteAllSkyStills(remoteBucket)
 
-        self.log.info("Syncing remote bucket to local bucket's contents")
-        syncBuckets(mu, self.locationConfig)  # always do the deletion before running the sync
+            self.log.info("Deleting remote non-final movies")
+            deleteNonFinalAllSkyMovies(remoteBucket)
+
+            self.log.info("Syncing remote bucket to local bucket's contents")
+            syncBuckets(mu, self.locationConfig)  # always do the deletion before running the sync
+
         self.log.info("Finished bucket cleanup")
 
-    def runEndOfDay(self) -> None:
-        """Run all the functions at the end of the day to clean up."""
+    def runEndOfNightCleanupAndSync(self) -> None:
+        """Run all the fixed-cost cleanup chores.
+
+        These are the tasks that run once per day at sunrise, before the
+        throttled ``cleanupPass`` fills the remaining daylight hours.
+        """
         self.deletePixelProducts()
         self.deleteDirectories()
         self.deleteS3Directories()
-        self.cleanupBuckets()
+        try:
+            # this can raise when there's USDF connection issues so don't
+            # restart on this, the re-sync will happen the following day anyway
+            self.cleanupAndSyncBuckets()
+        except Exception as e:
+            msg = f"Error during bucket cleanup and sync: {e}"
+            raiseIf(self.doRaise, e, self.log, msg)
         self.log.info("Finished daily cleanup")
 
     def run(self) -> None:
-        """Run forever, deleting all old dayObs format directories in target
-        directories.
+        """Run sunrise chores then throttled cleanup until sunset, forever.
+
+        At each sunrise: run the fixed chores (directory/bucket/pixel cleanup),
+        then spend the rest of the daylight hours running ``cleanupPass`` on
+        quickLook datasets. After sunset, sleep until the next sunrise.
         """
-        self.runEndOfDay()  # always run once on startup
-
-        currentDayObs = getCurrentDayObsInt()
         while True:
-            if hasDayRolledOver(currentDayObs):
-                self.log.info("Day has rolled over, running cleanup")
-                currentDayObs = getCurrentDayObsInt()
-                self.runEndOfDay()
+            now = Time.now()
+            nextSunrise = self.observer.sun_rise_time(now, which="next")
+            nextSunset = self.observer.sun_set_time(now, which="next")
 
-            sleep(60)
+            if nextSunset < nextSunrise:
+                sunset = nextSunset
+            else:
+                untilSunrise = humanize.precisedelta(timedelta(seconds=(nextSunrise - now).sec))
+                self.log.info(f"Night-time; sleeping until sunrise at {nextSunrise.iso} (in {untilSunrise})")
+                waitUntil(nextSunrise)
+                sunset = self.observer.sun_set_time(Time.now(), which="next")
+
+            self.log.info("Sunrise reached; running fixed daily chores")
+            choresStart = time.time()
+            self.runEndOfNightCleanupAndSync()
+            choresElapsed = humanize.precisedelta(timedelta(seconds=time.time() - choresStart))
+            self.log.info(f"Fixed chores finished in {choresElapsed}")
+
+            if Time.now() >= sunset:
+                self.log.warning("Sunset reached before cleanupPass could start; skipping deletions")
+                continue
+
+            currentDayObs = getCurrentDayObsInt()
+            deleteBefore = offsetDayObs(currentDayObs, -SMALL_FILE_KEEP_DAYS)
+
+            secondsUntilSunset = (sunset - Time.now()).sec
+            untilSunset = humanize.precisedelta(timedelta(seconds=secondsUntilSunset))
+            self.log.info(f"Running daytime deletions until sunset at {sunset.iso} " f"(in {untilSunset})")
+            passStart = time.time()
+            deleted = self.cleanupPass(
+                DATASETS_TO_CLEAN,
+                deleteBefore,
+                deadline=sunset,
+            )
+            passElapsed = humanize.precisedelta(timedelta(seconds=time.time() - passStart))
+            self.log.info(f"Pass ended; deleted {deleted} total datasets in {passElapsed}")

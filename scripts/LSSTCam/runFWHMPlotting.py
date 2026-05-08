@@ -21,7 +21,9 @@
 
 from lsst.daf.butler import Butler
 from lsst.rubintv.production.aos import FocalPlaneFWHMPlotter
-from lsst.rubintv.production.utils import getAutomaticLocationConfig, setupSentry
+from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
+from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
+from lsst.rubintv.production.startupChecks import setupSentry
 from lsst.summit.utils.utils import setupLogging
 
 setupSentry()
@@ -38,13 +40,16 @@ butler = Butler.from_config(
         locationConfig.getOutputChain(instrument),
     ],
 )
-print(f"Running FWHM plotter launcher at {locationConfig.location}")
+podDetails = PodDetails(instrument=instrument, podFlavor=PodFlavor.FWHM_PLOTTER, detectorNumber=None, depth=0)
+print(
+    f"Running {podDetails.instrument} {podDetails.podFlavor.name} at {locationConfig.location},"
+    f" consuming from {podDetails.queueName}..."
+)
 
-queueName = f"{instrument}-FWHMPLOTTER"
-radialPlotter = FocalPlaneFWHMPlotter(  # XXX needs type annotations adding and moving to podDetails
+fwhmPlotter = FocalPlaneFWHMPlotter(
     butler=butler,
     locationConfig=locationConfig,
     instrument=instrument,
-    queueName=queueName,
+    podDetails=podDetails,
 )
-radialPlotter.run()
+fwhmPlotter.run()

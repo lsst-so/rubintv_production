@@ -21,13 +21,15 @@
 
 from __future__ import annotations
 
-__all__ = "RedisHelper"
+__all__ = ("ExposureProcessingInfo", "RedisHelper")
 
 
 import json
 import logging
 import os
+import re
 import time
+from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -35,10 +37,47 @@ import numpy as np
 import redis
 
 from lsst.daf.butler import DataCoordinate, DimensionRecord
+from lsst.utils.iteration import sequence_to_string
 
+from .butlerQueries import removeDetector
+from .parsers import expRecordFromJson
 from .payloads import Payload
 from .podDefinition import PodDetails, PodFlavor, getQueueName
-from .utils import expRecordFromJson, removeDetector, runningPyTest, runningScons, summaryStatsToDict
+from .predicates import runningPyTest, runningScons
+from .redisKeys import (
+    QUEUE_LENGTHS_KEY,
+    TRACKING_BINNED_ISR_PREFIX,
+    TRACKING_INITIALIZED_FIELD,
+    TRACKING_MOSAIC_DISPATCHED_FIELD,
+    TRACKING_PIPELINE_CONFIG_FIELD,
+    WITNESS_DETECTOR_KEY,
+    getActiveExposuresKey,
+    getButlerWatcherListKey,
+    getConsDbAnnouncementField,
+    getConsDbAnnouncementKey,
+    getIgnoredDetectorsKey,
+    getMtaosZernikeResultKey,
+    getNewDataQueueName,
+    getNightlyRollupFinishedKey,
+    getPodBusyKey,
+    getPodExistsKey,
+    getPodRunningKey,
+    getPodSecondaryStatusKey,
+    getTaskFailedCounterKey,
+    getTaskFinishedCounterKey,
+    getTrackingBinnedIsrField,
+    getTrackingExpectedField,
+    getTrackingFailedField,
+    getTrackingFinishedField,
+    getTrackingKey,
+    getTrackingStep1aDispatchedField,
+    getTrackingStep1bDispatchedField,
+    getTrackingStep1bFinishedField,
+    getVisitFailedCounterKey,
+    getVisitFinishedCounterKey,
+    getVisitSummaryStatsKey,
+)
+from .utils import summaryStatsToDict
 
 # Check if the environment is a notebook
 clear_output: Callable | None = None
@@ -65,14 +104,324 @@ if TYPE_CHECKING:
     from lsst.afw.image import ExposureSummaryStats
     from lsst.daf.butler import Butler
 
-    from .utils import LocationConfig
+    from .locationConfig import LocationConfig
 
 
 CONSDB_ANNOUNCE_EXPIRY_TIME = 86400 * 2
-WITNESS_DETECTOR_KEY = "RUBINTV_CONTROL_WITNESS_DETECTOR"
 DEQUE_TIMEOUT = 5  # keep this << than POD_EXISTENCE_TIMEOUT but > 1s
 POD_EXISTENCE_TIMEOUT = 30
 BUSY_EXPIRY = 60 * 15  # keep this longer than the longest payload execution
+TRACKING_EXPIRY = int(86400 * 2.5)  # 2.5 days, unified TTL for exposure tracking
+
+# Regex for parsing tracking hash field names like "SFM:finished:42"
+_TRACKING_FIELD_RE = re.compile(r"^([A-Z_]+):(\w+?)(?::(\d+))?$")
+
+
+@dataclass
+class ExposureProcessingInfo:
+    """Structured view of the per-exposure tracking hash in Redis.
+
+    This is the Python-side representation of the
+    ``{instrument}-TRACKING-{expId}`` Redis hash. It is built from
+    ``HGETALL`` via the ``fromRedisHash`` classmethod and provides
+    set-based detector tracking for expected, finished, and failed
+    detectors per pipeline (``who``).
+
+    Parameters
+    ----------
+    expId : `int`
+        The exposure ID this tracking info is for.
+    expected : `dict` [`str`, `set` [`int`]]
+        Mapping of who -> set of expected detector IDs.
+    finished : `dict` [`str`, `set` [`int`]]
+        Mapping of who -> set of finished detector IDs.
+    failed : `dict` [`str`, `set` [`int`]]
+        Mapping of who -> set of failed detector IDs.
+    step1aDispatched : `dict` [`str`, `bool`]
+        Mapping of who -> whether the step1a gather has been dispatched.
+    step1bDispatched : `dict` [`str`, `bool`]
+        Mapping of who -> whether step1b has been dispatched.
+    step1bFinished : `dict` [`str`, `bool`]
+        Mapping of who -> whether step1b has finished.
+    pipelineConfig : `str` or `None`
+        The AOS pipeline name (e.g. "AOS_DANISH"), or None if not set.
+    """
+
+    expId: int
+    expected: dict[str, set[int]] = field(default_factory=dict)
+    finished: dict[str, set[int]] = field(default_factory=dict)
+    failed: dict[str, set[int]] = field(default_factory=dict)
+    step1aDispatched: dict[str, bool] = field(default_factory=dict)
+    step1bDispatched: dict[str, bool] = field(default_factory=dict)
+    step1bFinished: dict[str, bool] = field(default_factory=dict)
+    binnedIsrProduced: set[int] = field(default_factory=set)
+    mosaicDispatched: bool = False
+    pipelineConfig: str | None = None
+
+    @classmethod
+    def fromRedisHash(cls, expId: int, fields: dict[str, str]) -> ExposureProcessingInfo:
+        """Parse an HGETALL result into an ExposureProcessingInfo.
+
+        Field naming convention in the Redis hash:
+
+        - ``{who}:expected`` -> comma-separated detector IDs
+        - ``{who}:finished:{det}`` -> "1" per completed detector
+        - ``{who}:failed:{det}`` -> "1" per failed detector
+        - ``{who}:step1aDispatched`` -> "1"
+        - ``{who}:step1bDispatched`` -> "1"
+        - ``{who}:step1bFinished`` -> "1"
+        - ``_binnedIsr:{det}`` -> "1" per detector that produced a
+          binned post-ISR image (pipeline-agnostic)
+        - ``_mosaicDispatched`` -> "1" once the post-ISR focal-plane
+          mosaic has been dispatched
+        - ``pipeline_config`` -> pipeline name string
+        - ``_initialized`` -> sentinel, ignored
+
+        Parameters
+        ----------
+        expId : `int`
+            The exposure ID.
+        fields : `dict` [`str`, `str`]
+            Decoded HGETALL result (string keys and values).
+
+        Returns
+        -------
+        info : `ExposureProcessingInfo`
+            The parsed tracking info.
+        """
+        expected: dict[str, set[int]] = {}
+        finished: dict[str, set[int]] = {}
+        failed: dict[str, set[int]] = {}
+        step1aDispatched: dict[str, bool] = {}
+        step1bDispatched: dict[str, bool] = {}
+        step1bFinished: dict[str, bool] = {}
+        binnedIsrProduced: set[int] = set()
+        mosaicDispatched = False
+        pipelineConfig: str | None = None
+
+        for key, value in fields.items():
+            if key == TRACKING_PIPELINE_CONFIG_FIELD:
+                pipelineConfig = value
+                continue
+            if key == TRACKING_INITIALIZED_FIELD:
+                continue
+            if key == TRACKING_MOSAIC_DISPATCHED_FIELD:
+                mosaicDispatched = True
+                continue
+            if key.startswith(TRACKING_BINNED_ISR_PREFIX):
+                detStr = key[len(TRACKING_BINNED_ISR_PREFIX) :]
+                if detStr.isdigit():
+                    binnedIsrProduced.add(int(detStr))
+                continue
+
+            match = _TRACKING_FIELD_RE.match(key)
+            if not match:
+                continue
+
+            who = match.group(1)
+            fieldName = match.group(2)
+            detStr = match.group(3)
+
+            if fieldName == "expected":
+                if value and value != "":
+                    expected[who] = {int(d) for d in value.split(",")}
+                else:
+                    expected[who] = set()
+            elif fieldName == "finished" and detStr is not None:
+                finished.setdefault(who, set()).add(int(detStr))
+            elif fieldName == "failed" and detStr is not None:
+                failed.setdefault(who, set()).add(int(detStr))
+            elif fieldName == "step1aDispatched":
+                step1aDispatched[who] = True
+            elif fieldName == "step1bDispatched":
+                step1bDispatched[who] = True
+            elif fieldName == "step1bFinished":
+                step1bFinished[who] = True
+
+        return cls(
+            expId=expId,
+            expected=expected,
+            finished=finished,
+            failed=failed,
+            step1aDispatched=step1aDispatched,
+            step1bDispatched=step1bDispatched,
+            step1bFinished=step1bFinished,
+            binnedIsrProduced=binnedIsrProduced,
+            mosaicDispatched=mosaicDispatched,
+            pipelineConfig=pipelineConfig,
+        )
+
+    def getExpectedDetectors(self, who: str) -> set[int]:
+        """Get the set of expected detectors for ``who``."""
+        return self.expected.get(who, set())
+
+    def getFinishedDetectors(self, who: str) -> set[int]:
+        """Get the set of finished detectors for ``who``."""
+        return self.finished.get(who, set())
+
+    def getFailedDetectors(self, who: str) -> set[int]:
+        """Get the set of failed detectors for ``who``."""
+        return self.failed.get(who, set())
+
+    def getMissingDetectors(self, who: str) -> set[int]:
+        """Get expected - finished, useful for debugging."""
+        return self.getExpectedDetectors(who) - self.getFinishedDetectors(who)
+
+    def isComplete(self, who: str) -> bool:
+        """Check if all expected detectors for ``who`` have finished.
+
+        Returns False if there are no expected detectors for ``who``.
+        """
+        expectedDets = self.getExpectedDetectors(who)
+        if not expectedDets:
+            return False
+        return self.getFinishedDetectors(who) >= expectedDets
+
+    def isStep1aDispatched(self, who: str) -> bool:
+        """Check if the step1a gather has been dispatched for ``who``."""
+        return self.step1aDispatched.get(who, False)
+
+    def isStep1bDispatched(self, who: str) -> bool:
+        """Check if step1b has been dispatched for ``who``."""
+        return self.step1bDispatched.get(who, False)
+
+    def isStep1bFinished(self, who: str) -> bool:
+        """Check if step1b has finished for ``who``."""
+        return self.step1bFinished.get(who, False)
+
+    def markStep1aDispatched(self, who: str) -> None:
+        """Mark the step1a gather as dispatched (Python-side only)."""
+        self.step1aDispatched[who] = True
+
+    def getBinnedIsrProduced(self) -> set[int]:
+        """Get the set of detectors that have produced a binned post-ISR
+        image (pipeline-agnostic).
+        """
+        return self.binnedIsrProduced
+
+    def getAllExpectedDetectors(self) -> set[int]:
+        """Return the union of expected detectors across all whos.
+
+        This is the set of detectors that the head node has dispatched
+        at least one step1a pipeline to, and therefore the set of
+        detectors that are expected to produce a binned post-ISR image.
+        """
+        out: set[int] = set()
+        for dets in self.expected.values():
+            out |= dets
+        return out
+
+    def isMosaicDispatched(self) -> bool:
+        """Check if the post-ISR focal-plane mosaic has been dispatched."""
+        return self.mosaicDispatched
+
+    def markMosaicDispatched(self) -> None:
+        """Mark the post-ISR mosaic as dispatched (Python-side only)."""
+        self.mosaicDispatched = True
+
+    def allGathersDispatched(self) -> bool:
+        """Check if all whos with expected detectors have been dispatched.
+
+        Also gates on the post-ISR mosaic once any binned-ISR production
+        has begun, so the head node keeps the exposure in its active set
+        until ``dispatchPostIsrMosaic`` has had a chance to fire. LATISS
+        never produces binned-ISR mosaics, so the gate is a no-op there.
+        """
+        for who, dets in self.expected.items():
+            if dets and not self.step1aDispatched.get(who, False):
+                return False
+        if self.binnedIsrProduced and not self.mosaicDispatched:
+            return False
+        return True
+
+    def _formatDetectors(self, detectors: set[int]) -> str:
+        """Format a set of detector IDs as a compact string.
+
+        Parameters
+        ----------
+        detectors : `set` [`int`]
+            The detector IDs to format.
+
+        Returns
+        -------
+        formatted : `str`
+            Compact string representation, or "none" if empty.
+        """
+        if not detectors:
+            return "none"
+        return sequence_to_string(sorted(detectors))
+
+    def __repr__(self) -> str:
+        whos = sorted(self.expected.keys())
+        parts = [f"ExposureProcessingInfo(expId={self.expId}"]
+        for who in whos:
+            nExpected = len(self.getExpectedDetectors(who))
+            nFinished = len(self.getFinishedDetectors(who))
+            nFailed = len(self.getFailedDetectors(who))
+            step1aDispatched = self.isStep1aDispatched(who)
+            step1bDispatched = self.isStep1bDispatched(who)
+            step1bFinished = self.isStep1bFinished(who)
+            parts.append(
+                f"  {who}: {nFinished}/{nExpected} finished"
+                f"{f', {nFailed} failed' if nFailed else ''}"
+                f", step1a_dispatched={step1aDispatched}"
+                f", step1b_dispatched={step1bDispatched}"
+                f", step1b_finished={step1bFinished}"
+            )
+        parts.append(
+            f"  binned_isr_produced={len(self.binnedIsrProduced)}"
+            f", mosaic_dispatched={self.mosaicDispatched}"
+        )
+        if self.pipelineConfig:
+            parts.append(f"  pipeline_config={self.pipelineConfig}")
+        return "\n".join(parts) + ")"
+
+    def __str__(self) -> str:
+        whos = sorted(self.expected.keys())
+        lines = [f"Exposure {self.expId}:"]
+        for who in whos:
+            expectedDets = self.getExpectedDetectors(who)
+            finishedDets = self.getFinishedDetectors(who)
+            failedDets = self.getFailedDetectors(who)
+            missingDets = self.getMissingDetectors(who)
+
+            status = "complete" if self.isComplete(who) else "in progress"
+            line = f"  {who}: {len(finishedDets)}/{len(expectedDets)} detectors ({status})"
+            if failedDets:
+                line += f", {len(failedDets)} failed"
+            lines.append(line)
+
+            lines.append(f"    expected:  {self._formatDetectors(expectedDets)}")
+            lines.append(f"    finished:  {self._formatDetectors(finishedDets)}")
+            if failedDets:
+                lines.append(f"    failed:    {self._formatDetectors(failedDets)}")
+            if missingDets:
+                lines.append(f"    missing:   {self._formatDetectors(missingDets)}")
+
+            flags = []
+            if self.isStep1aDispatched(who):
+                flags.append("step1a dispatched")
+            if self.isStep1bDispatched(who):
+                flags.append("step1b dispatched")
+            if self.isStep1bFinished(who):
+                flags.append("step1b finished")
+            if flags:
+                lines.append(f"    flags:     {', '.join(flags)}")
+
+        lines.append(
+            f"  binned-ISR produced: {len(self.binnedIsrProduced)}"
+            f"    mosaic dispatched: {self.mosaicDispatched}"
+        )
+        if self.binnedIsrProduced:
+            lines.append(f"    {self._formatDetectors(self.binnedIsrProduced)}")
+
+        if self.pipelineConfig:
+            lines.append(f"  AOS pipeline: {self.pipelineConfig}")
+        return "\n".join(lines)
+
+    def _repr_pretty_(self, p: Any, cycle: bool) -> None:
+        """IPython pretty-print hook — displays ``__str__`` output."""
+        p.text(str(self))
 
 
 def decode_string(value: bytes) -> str:
@@ -161,27 +510,22 @@ def getRedisSecret(filename: str = "$HOME/.lsst/redis_secret.ini") -> str:
         return f.read().strip()
 
 
-def getNewDataQueueName(instrument: str) -> str:
-    return f"INCOMING-{instrument}-raw"
-
-
 def _extractExposureIds(exposureBytes: bytes, instrument: str) -> list[int]:
     """Extract the exposure IDs from the byte string.
 
     Parameters
     ----------
     exposureBytes : `bytes`
-        The byte string containing the exposure IDs.
+        The byte string containing the comma-separated exposure IDs.
+    instrument : `str`
+        The instrument the IDs belong to. ``LSSTComCamSim`` simulated IDs are
+        offset to put them in the simulated year, since OCS does not know about
+        the offset that the butler applies.
 
     Returns
     -------
-    expIds : `list` of `int`
-        A list of two exposure IDs extracted from the byte string.
-
-    Raises
-    ------
-    ValueError
-        If the number of exposure IDs extracted is not equal to 2.
+    expIds : `list` [`int`]
+        The exposure IDs extracted from the byte string.
     """
     exposureIdStrs = exposureBytes.decode("utf-8").split(",")
     exposureIds = [int(v) for v in exposureIdStrs]
@@ -249,23 +593,28 @@ class RedisHelper:
 
         Parameters
         ----------
-        podName : `str`
-            The name of the pod.
-        timePeriod : `float`
-            The amount of time after which the pod would be considered dead if
-            not reaffirmed by.
+        pod : `PodDetails`
+            The pod whose liveness key should be refreshed.
+        timePeriod : `int` or `float`
+            The amount of time after which the pod will be considered dead if
+            not reaffirmed.
         """
-        self.redis.setex(f"{pod.queueName}+IS_RUNNING", timedelta(seconds=timePeriod), value=1)
+        self.redis.setex(getPodRunningKey(pod.queueName), timedelta(seconds=timePeriod), value=1)
 
     def confirmRunning(self, pod: PodDetails) -> bool:
         """Check whether the named pod is running or should be considered dead.
 
         Parameters
         ----------
-        podName : `str`
-            The name of the pod.
+        pod : `PodDetails`
+            The pod whose liveness key should be checked.
+
+        Returns
+        -------
+        running : `bool`
+            ``True`` if the pod's running key is still set in Redis.
         """
-        isRunning = self.redis.get(f"{pod.queueName}+IS_RUNNING")
+        isRunning = self.redis.get(getPodRunningKey(pod.queueName))
         return bool(isRunning)  # 0 and None both bool() to False
 
     def announceBusy(self, pod: PodDetails) -> None:
@@ -273,10 +622,10 @@ class RedisHelper:
 
         Parameters
         ----------
-        queueName : `str`
-            The name of the queue the worker is processing.
+        pod : `PodDetails`
+            The pod that is announcing it is busy.
         """
-        self.redis.setex(f"{pod.queueName}+IS_BUSY", time=BUSY_EXPIRY, value=1)
+        self.redis.setex(getPodBusyKey(pod.queueName), time=BUSY_EXPIRY, value=1)
 
     def announceFree(self, pod: PodDetails) -> None:
         """Announce that a worker is free to process a queue.
@@ -285,14 +634,14 @@ class RedisHelper:
 
         Parameters
         ----------
-        queueName : `str`
-            The name of the queue the worker is processing.
+        pod : `PodDetails`
+            The pod that is announcing it is free.
         """
         self.announceExistence(pod)
         # delete the IS_BUSY key, regardless of its expiry, as we've finished
         # working and are ready for new work. It's only an expiring key for
         # safety in case workers fully die and don't come back.
-        self.redis.delete(f"{pod.queueName}+IS_BUSY")
+        self.redis.delete(getPodBusyKey(pod.queueName))
 
     def announceExistence(self, pod: PodDetails, remove: bool = False) -> None:
         """Announce that a worker is present in the pool.
@@ -307,15 +656,16 @@ class RedisHelper:
 
         Parameters
         ----------
-        queueName : `str`
-            The name of the queue the worker is processing.
+        pod : `PodDetails`
+            The pod that is announcing its presence.
         remove : `bool`, optional
             Remove the worker from pool. Default is ``False``.
         """
+        existsKey = getPodExistsKey(pod.queueName)
         if not remove:
-            self.redis.setex(f"{pod.queueName}+EXISTS", timedelta(seconds=POD_EXISTENCE_TIMEOUT), value=1)
+            self.redis.setex(existsKey, timedelta(seconds=POD_EXISTENCE_TIMEOUT), value=1)
         else:
-            self.redis.delete(f"{pod.queueName}+EXISTS")
+            self.redis.delete(existsKey)
 
     def setPodSecondaryStatus(self, pod: PodDetails, status: str) -> None:
         """Set the secondary status of a pod.
@@ -330,7 +680,7 @@ class RedisHelper:
         status : `str`
             The status to set the pod to.
         """
-        self.redis.set(f"{pod.queueName}+SECONDARY_STATUS", status)
+        self.redis.set(getPodSecondaryStatusKey(pod.queueName), status)
 
     def getPodSecondaryStatus(self, pod: PodDetails) -> str:
         """Get the secondary status of a pod.
@@ -348,7 +698,7 @@ class RedisHelper:
         str | None
             The status of the pod, or None if no status is set.
         """
-        status = self.redis.get(f"{pod.queueName}+SECONDARY_STATUS")
+        status = self.redis.get(getPodSecondaryStatusKey(pod.queueName))
         if status is None:
             return ""
         return status.decode("utf-8")
@@ -364,7 +714,7 @@ class RedisHelper:
         pod : `PodDetails`
             The pod to clear the status for.
         """
-        self.redis.delete(f"{pod.queueName}+SECONDARY_STATUS")
+        self.redis.delete(getPodSecondaryStatusKey(pod.queueName))
 
     def getAllWorkers(self, instrument: str, podFlavor: PodFlavor) -> list[PodDetails]:
         """Get the list of workers that are currently active.
@@ -388,10 +738,10 @@ class RedisHelper:
 
         queueName = getQueueName(podFlavor, instrument, "*", "*")
 
-        existing = self.redis.keys(f"{queueName}+EXISTS")
+        existing = self.redis.keys(getPodExistsKey(queueName))
         existing = [key.decode("utf-8").replace("+EXISTS", "") for key in existing]
 
-        busy = self.redis.keys(f"{queueName}+IS_BUSY")
+        busy = self.redis.keys(getPodBusyKey(queueName))
         busy = [key.decode("utf-8").replace("+IS_BUSY", "") for key in busy]
 
         allWorkerQueues = sorted(set(existing + busy))
@@ -417,9 +767,43 @@ class RedisHelper:
         workers = []
         allWorkers = self.getAllWorkers(instrument=instrument, podFlavor=podFlavor)
         for worker in allWorkers:
-            if not self.redis.get(f"{worker.queueName}+IS_BUSY"):
+            if not self.redis.get(getPodBusyKey(worker.queueName)):
                 workers.append(worker)
         return sorted(workers)
+
+    def getSingleWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails | None:
+        """Pick one worker of the given flavor for the given instrument.
+
+        Prefers a free worker. Falls back to the last busy worker in the stack
+        if none are free, and returns ``None`` if no workers exist at all.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name.
+        podFlavor : `PodFlavor`
+            The flavor of pod to pick a worker from.
+
+        Returns
+        -------
+        worker : `PodDetails` or `None`
+            The selected worker, or ``None`` if no workers (free or busy)
+            exist for the given flavor.
+        """
+        freeWorkers = sorted(self.getFreeWorkers(instrument=instrument, podFlavor=podFlavor))
+        if freeWorkers:
+            return freeWorkers[0]
+
+        # No free workers - fall back to the last worker in the stack so the
+        # work still lands somewhere. TODO: replace this with a real backlog
+        # queue when one exists.
+        busyWorkers = sorted(self.getAllWorkers(instrument=instrument, podFlavor=podFlavor))
+        if not busyWorkers:
+            self.log.error(f"No free or busy workers available for {podFlavor=}, cannot dispatch work.")
+            return None
+        busyWorker = busyWorkers[-1]
+        self.log.warning(f"No free workers available for {podFlavor=}, sending work to {busyWorker=}")
+        return busyWorker
 
     def pushToButlerWatcherList(self, instrument, expRecord: DimensionRecord) -> None:
         """Keep a record of what's been found by the butler watcher for all
@@ -431,7 +815,7 @@ class RedisHelper:
             The exposure record to push to the list.
         """
         expRecordJson = expRecord.to_simple().json()
-        self.redis.lpush(f"{instrument}-fromButlerWacher", expRecordJson)
+        self.redis.lpush(getButlerWatcherListKey(instrument), expRecordJson)
 
     def reportTaskFinished(
         self, instrument: str, taskName: str, dataId: DataCoordinate, failed=False
@@ -451,14 +835,14 @@ class RedisHelper:
         dataId : `DataCoordinate`
             The dataId the task has finished processing.
         """
-        key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
+        key = getTaskFinishedCounterKey(instrument, taskName)
         dataIdNoDetector = removeDetector(dataId, self.butler)
         processingId = dataIdNoDetector.to_json().encode("utf-8")
         self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
 
         if failed:  # fails have finished too, so increment finished and failed
-            key = key.replace("FINISHEDCOUNTER", "FAILEDCOUNTER")
-            self.redis.hincrby(key, processingId, 1)  # creates the key if it doesn't exist
+            failedKey = getTaskFailedCounterKey(instrument, taskName)
+            self.redis.hincrby(failedKey, processingId, 1)  # creates the key if it doesn't exist
 
     def getNumTaskFinished(self, instrument: str, taskName: str, dataId: DataCoordinate) -> int:
         """Get the number of items finished for a given task and id.
@@ -477,7 +861,7 @@ class RedisHelper:
         numFinished : `int`
             The number of times the task has finished.
         """
-        key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
+        key = getTaskFinishedCounterKey(instrument, taskName)
         dataIdNoDetector = removeDetector(dataId, self.butler)
         processingId = dataIdNoDetector.to_json().encode("utf-8")
         value = self.redis.hget(key, processingId)
@@ -488,7 +872,7 @@ class RedisHelper:
 
         These are returned
         """
-        key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
+        key = getTaskFinishedCounterKey(instrument, taskName)
         idList = self.redis.hgetall(key).keys()  # list of bytes
         return [
             DataCoordinate.from_json(dataCoordJson, universe=self.butler.dimensions)
@@ -509,7 +893,7 @@ class RedisHelper:
         dataId : `DataCoordinate`
             The dataId the task has finished processing.
         """
-        key = f"{instrument}-{taskName}-FINISHEDCOUNTER"
+        key = getTaskFinishedCounterKey(instrument, taskName)
         dataIdNoDetector = removeDetector(dataId, self.butler)
         processingId = dataIdNoDetector.to_json().encode("utf-8")
         if self.redis.hexists(key, processingId):
@@ -518,80 +902,6 @@ class RedisHelper:
             self.log.warning(
                 f"Key {key} with processingId {processingId.decode('utf-8')} from {dataId} for {taskName}"
                 " did not exist when removal was attempted"
-            )
-
-    def reportDetectorLevelFinished(
-        self, instrument: str, step: str, who: str, processingId: int, failed=False
-    ) -> None:
-        """Count the number of times a detector-level pipeline has finished.
-
-        Increments the FINISHEDCOUNTER for the key corresponding to the
-        instrument, step, and who. If the processing failed, the FAILEDCOUNTER
-        is also incremented.
-
-        Parameters
-        ----------
-        instrument : `str`
-            The name of the instrument.
-        step : `str`
-            The name of the step which finished processing.
-        who : `str`
-            Who are we running the pipeline for, e.g. "SFM" or "AOS".
-        processingId : `str`
-            The processing id, either single or compound.
-        failed : `bool`
-            True if the processing did not fail to complete
-        """
-        key = f"{instrument}-{step}-{who}-DETECTOR_FINISHED_COUNTER"
-        self.redis.hincrby(key, str(processingId), 1)  # creates the key if it doesn't exist
-
-        if failed:  # fails have finished too, so increment finished and failed
-            key = key.replace("DETECTOR_FINISHED_COUNTER", "DETECTOR_FAILED_COUNTER")
-            self.redis.hincrby(key, str(processingId), 1)  # creates the key if it doesn't exist
-
-    def getNumDetectorLevelFinished(self, instrument: str, step: str, who: str, processingId: int) -> int:
-        """Get the number of times a visit-level pipeline has finished.
-
-        Returns the number of times the step has finished for the given
-        processingId.
-
-        Parameters
-        ----------
-        instrument : `str`
-            The name of the instrument.
-        step : `str`
-            The name of the step which finished processing.
-        who : `str`
-            Whose pipeline is the step counter for e.g. "SFM" or "AOS".
-        processingId : `str`
-            The processing id, either single or compound.
-
-        Returns
-        -------
-        numFinished : `int`
-            The number of times the step has finished.
-        """
-        key = f"{instrument}-{step}-{who}-DETECTOR_FINISHED_COUNTER"
-        if not self.redis.hexists(key, str(processingId)):
-            self.log.warning(f"Key {key} with processingId {processingId} does not exist")
-        return int(self.redis.hget(key, str(processingId)) or 0)
-
-    def getAllIdsForDetectorLevel(self, instrument: str, step: str, who: str) -> list[int]:
-        """Get a list of processed ids for the specified step."""
-        key = f"{instrument}-{step}-{who}-DETECTOR_FINISHED_COUNTER"
-        idList = self.redis.hgetall(key).keys()
-        return [int(procId.decode("utf-8")) for procId in idList]
-
-    def removeFinishedIdDetectorLevel(self, instrument: str, step: str, who: str, processingId: int) -> None:
-        """Remove the specified counter for the processingId from the list of
-        finishing ids.
-        """
-        key = f"{instrument}-{step}-{who}-DETECTOR_FINISHED_COUNTER"
-        if self.redis.hexists(key, str(processingId)):
-            self.redis.hdel(key, str(processingId))
-        else:
-            self.log.warning(
-                f"Key {key} with processingId {processingId} did not exist when removal was attempted"
             )
 
     def reportVisitLevelFinished(self, instrument: str, step: str, who: str, failed=False) -> None:
@@ -605,15 +915,16 @@ class RedisHelper:
             The name of the step which finished processing.
         who : `str`
             Who are we running the pipeline for, e.g. "SFM" or "AOS".
-        failed : `bool`
-            True if the processing did not fail to complete
+        failed : `bool`, optional
+            ``True`` if the processing failed to complete. Both the
+            "finished" and "failed" counters are incremented in that case.
         """
-        key = f"{instrument}-{step}-{who}-VISIT_FINISIHED_COUNTER"
+        key = getVisitFinishedCounterKey(instrument, step, who)
         self.redis.incr(key, 1)  # creates the key if it doesn't exist
 
         if failed:  # fails have finished too, so increment finished and failed
-            key = key.replace("VISIT_FINISIHED_COUNTER", "VISIT_FAILED_COUNTER")
-            self.redis.incr(key, 1)  # creates the key if it doesn't exist
+            failedKey = getVisitFailedCounterKey(instrument, step, who)
+            self.redis.incr(failedKey, 1)  # creates the key if it doesn't exist
 
     def getNumVisitLevelFinished(self, instrument: str, step: str, who: str) -> int:
         """Get the number of times a visit-level pipeline has finished.
@@ -632,7 +943,7 @@ class RedisHelper:
         numFinished : `int`
             The number of times the step has finished.
         """
-        key = f"{instrument}-{step}-{who}-VISIT_FINISIHED_COUNTER"
+        key = getVisitFinishedCounterKey(instrument, step, who)
         return int(self.redis.get(key) or 0)
 
     def reportNightLevelFinished(self, instrument: str, who: str, failed=False) -> None:
@@ -642,10 +953,12 @@ class RedisHelper:
         ----------
         instrument : `str`
             The name of the instrument.
-        failed : `bool`
-            True if the processing did not fail to complete
+        who : `str`
+            Who are we running the pipeline for, e.g. "SFM" or "AOS".
+        failed : `bool`, optional
+            ``True`` if the processing failed to complete.
         """
-        key = f"{instrument}-{who}-NIGHTLYROLLUP-FINISHEDCOUNTER"
+        key = getNightlyRollupFinishedKey(instrument, who)
         self.redis.incr(key, 1)
 
     def checkButlerWatcherList(self, instrument: str, expRecord: DimensionRecord) -> bool:
@@ -663,17 +976,19 @@ class RedisHelper:
 
         Parameters
         ----------
+        instrument : `str`
+            The instrument the watcher list belongs to.
         expRecord : `lsst.daf.butler.dimensions.ExposureRecord`
             The exposure record to check.
 
         Returns
         -------
-        bool
+        seenBefore : `bool`
             Whether the exposure record has already been processed.
         """
         expRecordJson = expRecord.to_simple().json()
 
-        data = self.redis.lrange(f"{instrument}-fromButlerWacher", 0, -1)
+        data = self.redis.lrange(getButlerWatcherListKey(instrument), 0, -1)
         recordStrings = [item.decode("utf-8") for item in data]
         return expRecordJson in recordStrings
 
@@ -689,7 +1004,7 @@ class RedisHelper:
         """Send an exposure record for processing.
 
         This queue is consumed by the head node, which fans it out for
-        processing by the workers. Which detetors for the exposure will be
+        processing by the workers. Which detectors for the exposure will be
         processed is determined by state of the ``focalPlaneControl`` on the
         head node at the time the exposure record is fanned out.
 
@@ -719,18 +1034,18 @@ class RedisHelper:
         # Use a top-level key per dayObs for all consdb announcements
         # if it's not per-dayObs then it will never expire
         dayObs = obsId // 100_000  # hacky but fine for here and keeps the API the same as the previous
-        announcementKey = f"consdb-announcements-{dayObs}"
+        announcementKey = getConsDbAnnouncementKey(dayObs)
 
         # Create a unique hash field for the actual announcement
-        field = f"{instrument}-{table}-{obsId}".lower()
+        field = getConsDbAnnouncementField(instrument, table, obsId)
 
         # Set in hash if not already present
         self.redis.hsetnx(announcementKey, field, 1)
-        # Expire the entire announcementKey after 2 days if if nothing has
+        # Expire the entire announcementKey after 2 days if nothing has
         # landed in that time
         self.redis.expire(announcementKey, CONSDB_ANNOUNCE_EXPIRY_TIME)
 
-    def waitForResultInConsdDb(self, instrument: str, table: str, obsId: int, timeout=None) -> bool:
+    def waitForResultInConsDb(self, instrument: str, table: str, obsId: int, timeout=None) -> bool:
         """Wait for an item to be available in consDB.
 
         NB: this function is only appropriate for items less than 2 days old,
@@ -755,16 +1070,16 @@ class RedisHelper:
             Was the item found before timeout?
         """
         dayObs = obsId // 100_000  # hacky but fine for here and keeps the API the same as the previous
-        announcementKey = f"consdb-announcements-{dayObs}"
+        announcementKey = getConsDbAnnouncementKey(dayObs)
 
-        field = f"{instrument}-{table}-{obsId}".lower()
+        field = getConsDbAnnouncementField(instrument, table, obsId)
 
-        start_time = time.time()
+        startTime = time.time()
         while True:
             if self.redis.hexists(announcementKey, field):
                 return True
 
-            if timeout is not None and (time.time() - start_time) > timeout:
+            if timeout is not None and (time.time() - startTime) > timeout:
                 return False
 
             time.sleep(0.1)  # Small sleep to prevent tight loop
@@ -780,7 +1095,7 @@ class RedisHelper:
         Returns
         -------
         expRecord : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
-            The next exposure to process for the specified detector, or
+            The next exposure to process for the specified instrument, or
             ``None`` if the queue is empty.
         """
         self._checkIsHeadNode()
@@ -790,46 +1105,46 @@ class RedisHelper:
             return None
         return expRecordFromJson(expRecordJson, self.locationConfig)
 
-    def enqueuePayload(self, payload: Payload, destinationPod: PodDetails, top=True) -> None:
+    def enqueuePayload(self, payload: Payload, destinationPod: PodDetails, top: bool = True) -> None:
         """Send a unit of work to a specific worker-queue.
 
         Parameters
         ----------
         payload : `lsst.rubintv.production.payloads.Payload`
             The payload to enqueue.
-        queueName : `str`
-            The name of the queue to enqueue the payload to.
+        destinationPod : `lsst.rubintv.production.podDefinition.PodDetails`
+            The pod whose queue the payload should be sent to.
         top : `bool`, optional
             Whether to add the payload to the top of the queue. Default is
             ``True``.
         """
         if top:
             self.redis.lpush(destinationPod.queueName, payload.to_json())
-            self.redis.hincrby("_QUEUE-LENGTHS", f"{destinationPod.queueName}", 1)
+            self.redis.hincrby(QUEUE_LENGTHS_KEY, f"{destinationPod.queueName}", 1)
         else:
             self.redis.rpush(destinationPod.queueName, payload.to_json())
-            self.redis.hincrby("_QUEUE-LENGTHS", f"{destinationPod.queueName}", 1)
+            self.redis.hincrby(QUEUE_LENGTHS_KEY, f"{destinationPod.queueName}", 1)
 
     def dequeuePayload(self, pod: PodDetails) -> Payload | None:
         """Get the next unit of work from a specific worker queue.
 
         Parameters
         ----------
-        pod : `lsst.rubintv.production.podDetails.PodDetails`
+        pod : `lsst.rubintv.production.podDefinition.PodDetails`
             The pod to dequeue the payload from.
 
         Returns
         -------
-        expRecord : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
-            The next exposure to process for the specified detector, or
-            ``None`` if the queue is empty.
+        payload : `lsst.rubintv.production.payloads.Payload` or `None`
+            The next payload from the worker's queue, or ``None`` if the
+            queue is empty.
         """
         popped = self.redis.blpop(pod.queueName, timeout=DEQUE_TIMEOUT)
         if popped is None:
-            self.redis.hset("_QUEUE-LENGTHS", f"{pod.queueName}", 0)  # assert we're at exactly zero
+            self.redis.hset(QUEUE_LENGTHS_KEY, f"{pod.queueName}", 0)  # assert we're at exactly zero
             return None
         else:
-            self.redis.hincrby("_QUEUE-LENGTHS", f"{pod.queueName}", -1)
+            self.redis.hincrby(QUEUE_LENGTHS_KEY, f"{pod.queueName}", -1)
         _, payLoadJson = popped  # if it's not None, it's a tuple of (queueName, payload)
         return Payload.from_json(payLoadJson, self.butler)
 
@@ -857,208 +1172,329 @@ class RedisHelper:
         TODO: consider removing this function/approach - it might not be
         saving any time at all now.
         """
-        length = self.redis.hget("_QUEUE-LENGTHS", f"{pod.queueName}")
+        length = self.redis.hget(QUEUE_LENGTHS_KEY, f"{pod.queueName}")
         return int(length) if length else 0
 
     def clearTaskCounters(self) -> None:
         # TODO: DM-44102 check if .keys() is OK here
         keys = self.redis.keys("*EDCOUNTER*")  # FINISHEDCOUNTER and FAILEDCOUNTER
-        keys.extend(self.redis.keys("*EXPECTED_DETECTORS*"))
-        keys.extend(self.redis.keys("*DETECTOR_FINISHED_COUNTER*"))
+        keys.extend(self.redis.keys("*TRACKING*"))
+        keys.extend(self.redis.keys("*ACTIVE-EXPOSURES*"))
         for key in keys:
             self.redis.delete(key)
 
-    def writeDetectorsToExpect(
-        self, instrument: str, indentifier: int, detectors: list[int], who: str, append: bool = True
-    ) -> None:
-        """Write the detectors we are processing for a given exposureId.
+    # ------------------------------------------------------------------ #
+    # Unified exposure tracking (per-exposure Redis hash)
+    # ------------------------------------------------------------------ #
 
-        Notes
-        -----
-        Whilst this function is only called by the head node, this remains
-        safe, as is the existence of ``removeDetectorsToExpect``, because the
-        head node is single threaded, so this is functioanlly atomic. However,
-        usage of ``removeDetectorsToExpect`` from elsewhere would be non-atomic
-        and thus unsafe.
+    def initExposureTracking(self, instrument: str, expId: int) -> None:
+        """Create the tracking hash and register in the active set.
+
+        Idempotent — safe to call from both ``doAosFanout`` and
+        ``doDetectorFanout``. Sets the TTL on the hash immediately via
+        a sentinel field so that even if subsequent writes crash, the
+        hash will eventually expire.
 
         Parameters
         ----------
         instrument : `str`
-            The name of the instrument.
-        indentifier : `int` or `str`
-            The exposure or visit ID(s) the detectors are being processed for.
-        detectors : `list` of `int`
-            The list of detectors to expect.
+            The instrument name.
+        expId : `int`
+            The exposure ID.
+        """
+        key = getTrackingKey(instrument, expId)
+        self.redis.hset(key, TRACKING_INITIALIZED_FIELD, "1")
+        self.redis.expire(key, TRACKING_EXPIRY)
+        self.redis.sadd(getActiveExposuresKey(instrument), str(expId))
+
+    def setExpectedDetectors(
+        self, instrument: str, expId: int, detectors: list[int], who: str, append: bool = False
+    ) -> None:
+        """Write expected detectors for ``who`` in the tracking hash.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name.
+        expId : `int`
+            The exposure ID.
+        detectors : `list` [`int`]
+            Detector IDs to expect.
         who : `str`
-            Who are we running the pipeline for, e.g. "SFM" or "AOS".
+            Pipeline identifier, e.g. "SFM", "AOS", "ISR".
         append : `bool`, optional
-            If True, append to the existing list of detectors instead of
-            replacing it. Default is False.
+            If True, merge with any existing expected detectors for this
+            ``who``. Default is False (overwrite).
         """
+        key = getTrackingKey(instrument, expId)
+        fieldName = getTrackingExpectedField(who)
+
         if append:
-            # Get existing detectors using the existing method, suppressing
-            # warning if key doesn't exist
-            existingDetectors = self.getExpectedDetectors(instrument, indentifier, who, noWarn=True)
-            # Combine and remove duplicates
-            detectors = sorted(set(existingDetectors + detectors))
+            existing = self.getExpectedDetectors(instrument, expId, who)
+            merged = sorted(set(existing) | set(detectors))
+        else:
+            merged = sorted(set(detectors))
 
-        key = f"{instrument}-EXPECTED_DETECTORS-{who}-{indentifier}"
-        self.redis.set(key, ",".join(str(det) for det in detectors))
+        self.redis.hset(key, fieldName, ",".join(str(d) for d in merged))
+        self.redis.expire(key, TRACKING_EXPIRY)
 
-        # this key expiring has an interesting and useful side effect. It means
-        # that even if tasks have failures or their Payloads disappear somehow
-        # and they never report back, when this is removed, the visit level
-        # processing will see this as (over) finished (because it'll have
-        # non-zero items finished and zero expected detectors) so all the other
-        # processing will suddenly then spawn. For this reason, we set it to a
-        # half-day value, so that when that happens, it won't be during the
-        # night, thus making sure we don't increase processing load for the
-        # current night's observing.
+    def removeExpectedDetectors(self, instrument: str, expId: int, detectors: list[int], who: str) -> None:
+        """Remove detectors from the expected set for ``who``.
 
-        # Note that this does *not* result in double-processing, because when
-        # those dispatches do actually happen, they remove their task counters
-        # and thus no longer check for the expected detectors.
-        self.redis.expire(key, int(86400 * 2.5))  # expire in 2.5 days
-
-    def removeDetectorsToExpect(
-        self, instrument: str, indentifier: int, detectors: list[int], who: str
-    ) -> None:
-        """Remove detectors from the expected detectors for a given exposureId.
-
-        Notes
-        -----
-        See notes in ``writeDetectorsToExpect`` about atomicity and safety.
+        Only safe to call from the single-threaded head node.
 
         Parameters
         ----------
         instrument : `str`
-            The name of the instrument.
-        indentifier : `int` or `str`
-            The exposure or visit ID(s) the detectors are being processed for.
-        detectors : `list` of `int`
-            The list of detectors to expect.
+            The instrument name.
+        expId : `int`
+            The exposure ID.
+        detectors : `list` [`int`]
+            Detector IDs to remove.
         who : `str`
-            Who are we running the pipeline for, e.g. "SFM" or "AOS".
+            Pipeline identifier.
         """
-        existingDetectors = self.getExpectedDetectors(instrument, indentifier, who, noWarn=False)
+        existing = self.getExpectedDetectors(instrument, expId, who)
         for det in detectors:
-            if det in existingDetectors:
-                existingDetectors.remove(det)
+            if det in existing:
+                existing.remove(det)
             else:
                 self.log.warning(
-                    f"Detector {det} not found in existing detectors for"
-                    f" {instrument} {who} {indentifier} when attempting removal!"
+                    f"Detector {det} not found in expected detectors for"
+                    f" {instrument} {who} {expId} when attempting removal!"
                 )
-        self.writeDetectorsToExpect(instrument, indentifier, existingDetectors, who, append=False)
+        key = getTrackingKey(instrument, expId)
+        self.redis.hset(key, getTrackingExpectedField(who), ",".join(str(d) for d in sorted(existing)))
 
-    def getExpectedDetectors(
-        self, instrument: str, indentifier: int, who: str, noWarn: bool = False
-    ) -> list[int]:
-        """Get the expected detectors for a given exposure or visit ID.
+    def getExpectedDetectors(self, instrument: str, expId: int, who: str) -> list[int]:
+        """Get the expected detectors for ``who`` from the tracking hash.
+
+        Returns a list (not set) for compatibility with existing callers.
 
         Parameters
         ----------
         instrument : `str`
-            The name of the instrument.
-        indentifier : `int` or `str`
-            The exposure or visit ID(s).
+            The instrument name.
+        expId : `int`
+            The exposure ID.
         who : `str`
-            Who are we running the pipeline for, e.g. "SFM" or "AOS".
-        noWarn : `bool`, optional
-            If True, suppress the warning when the key is not found. Default is
-            ``False``.
+            Pipeline identifier.
 
         Returns
         -------
-        detectors : `list` of `int` or `None`
-            The list of expected detectors, or ``None`` if not found.
+        detectors : `list` [`int`]
+            Sorted list of expected detector IDs, or empty list if not
+            found.
         """
-        key = f"{instrument}-EXPECTED_DETECTORS-{who}-{indentifier}"
-        value = self.redis.get(key)
+        key = getTrackingKey(instrument, expId)
+        value = self.redis.hget(key, getTrackingExpectedField(who))
         if value is None:
-            if not noWarn and key not in self._loggedAbout:
-                self._loggedAbout.add(key)
-                self.log.warning(f"Key {key} not found in redis! Are you processing stale data?")
             return []
-        detectors = value.decode("utf-8").split(",")
-        if not detectors or detectors == [""]:
+        decoded = value.decode("utf-8") if isinstance(value, bytes) else value
+        if not decoded or decoded == "":
             return []
-        return [int(det) for det in detectors]
+        return sorted(int(d) for d in decoded.split(","))
 
-    def recordAosPipelineConfig(self, instrument: str, expId: int, pipelineName: str) -> None:
-        """Record the pipeline configuration used for a given exposure ID.
+    def reportDetectorFinished(
+        self, instrument: str, expId: int, who: str, detector: int, failed: bool = False
+    ) -> None:
+        """Report that a detector has finished processing for ``who``.
 
-        e.g. AOS_TIE or AOS_DANISH
+        Each call writes a single ``HSET`` to the tracking hash, which
+        is atomic. Safe for concurrent calls from multiple workers.
 
         Parameters
         ----------
         instrument : `str`
-            The name of the instrument.
+            The instrument name.
+        expId : `int`
+            The exposure ID.
+        who : `str`
+            Pipeline identifier.
+        detector : `int`
+            The detector number that finished.
+        failed : `bool`, optional
+            If True, also mark the detector as failed.
+        """
+        key = getTrackingKey(instrument, expId)
+        self.redis.hset(key, getTrackingFinishedField(who, detector), "1")
+        if failed:
+            self.redis.hset(key, getTrackingFailedField(who, detector), "1")
+
+    def reportBinnedIsrProduced(self, instrument: str, expId: int, detector: int) -> None:
+        """Mark that a binned post-ISR image has been produced for
+        ``detector`` of ``expId`` (pipeline-agnostic).
+
+        Called from every ``postProcessIsr`` invocation, regardless of
+        which pipeline the ISR quantum belongs to. Idempotent under
+        re-runs; multiple pipelines writing the same detector just set
+        the same field to "1".
+        """
+        key = getTrackingKey(instrument, expId)
+        self.redis.hset(key, getTrackingBinnedIsrField(detector), "1")
+
+    def getNumBinnedIsrProduced(self, instrument: str, expId: int) -> int:
+        """Return the number of binned post-ISR images produced so far
+        for ``expId``.
+        """
+        key = getTrackingKey(instrument, expId)
+        rawFields = self.redis.hkeys(key)
+        count = 0
+        for raw in rawFields:
+            field = raw.decode("utf-8") if isinstance(raw, bytes) else raw
+            if field.startswith(TRACKING_BINNED_ISR_PREFIX):
+                count += 1
+        return count
+
+    def markMosaicDispatched(self, instrument: str, expId: int) -> None:
+        """Mark the post-ISR focal-plane mosaic as dispatched for
+        ``expId``.
+        """
+        key = getTrackingKey(instrument, expId)
+        self.redis.hset(key, TRACKING_MOSAIC_DISPATCHED_FIELD, "1")
+
+    def getExposureProcessingInfo(self, instrument: str, expId: int) -> ExposureProcessingInfo | None:
+        """Get the full tracking state for an exposure.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name.
+        expId : `int`
+            The exposure ID.
+
+        Returns
+        -------
+        info : `ExposureProcessingInfo` or `None`
+            The parsed tracking info, or None if the hash does not
+            exist (expired or never created).
+        """
+        key = getTrackingKey(instrument, expId)
+        rawFields = self.redis.hgetall(key)
+        if not rawFields:
+            return None
+        fields = {k.decode("utf-8"): v.decode("utf-8") for k, v in rawFields.items()}
+        return ExposureProcessingInfo.fromRedisHash(expId, fields)
+
+    def getActiveExposures(self, instrument: str) -> set[int]:
+        """Get all exposure IDs currently being tracked.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name.
+
+        Returns
+        -------
+        expIds : `set` [`int`]
+            Set of active exposure IDs.
+        """
+        key = getActiveExposuresKey(instrument)
+        members = self.redis.smembers(key)
+        return {int(m.decode("utf-8")) for m in members}
+
+    def markStep1aDispatched(self, instrument: str, expId: int, who: str) -> None:
+        """Mark the step1a gather as dispatched for ``who``.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name.
+        expId : `int`
+            The exposure ID.
+        who : `str`
+            Pipeline identifier.
+        """
+        key = getTrackingKey(instrument, expId)
+        self.redis.hset(key, getTrackingStep1aDispatchedField(who), "1")
+
+    def markStep1bDispatched(self, instrument: str, expId: int, who: str) -> None:
+        """Mark step1b as dispatched for ``who``.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name.
+        expId : `int`
+            The exposure ID.
+        who : `str`
+            Pipeline identifier.
+        """
+        key = getTrackingKey(instrument, expId)
+        self.redis.hset(key, getTrackingStep1bDispatchedField(who), "1")
+
+    def markStep1bFinished(self, instrument: str, expId: int, who: str) -> None:
+        """Mark step1b as finished for ``who``.
+
+        Called by the step1b worker after completion.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name.
+        expId : `int`
+            The exposure ID.
+        who : `str`
+            Pipeline identifier.
+        """
+        key = getTrackingKey(instrument, expId)
+        self.redis.hset(key, getTrackingStep1bFinishedField(who), "1")
+
+    def completeExposure(self, instrument: str, expId: int) -> None:
+        """Remove an exposure from the active set.
+
+        Does NOT delete the tracking hash — let TTL handle that so
+        async consumers (e.g. mosaic plotter) can still read it.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name.
+        expId : `int`
+            The exposure ID.
+        """
+        self.redis.srem(getActiveExposuresKey(instrument), str(expId))
+
+    def setAosPipelineConfig(self, instrument: str, expId: int, pipelineName: str) -> None:
+        """Record the AOS pipeline name in the tracking hash.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name.
         expId : `int`
             The exposure ID.
         pipelineName : `str`
-            The name of the pipeline configuration used.
+            The pipeline name, e.g. "AOS_DANISH" or "AOS_FAM_TIE".
         """
-        key = f"{instrument}-AOS_PIPELINE_CONFIG-{expId}"
-        self.redis.set(key, pipelineName)
-        self.redis.expire(key, 86400 * 2)
+        key = getTrackingKey(instrument, expId)
+        self.redis.hset(key, TRACKING_PIPELINE_CONFIG_FIELD, pipelineName)
 
     def getAosPipelineConfig(self, instrument: str, expId: int) -> str | None:
-        """Get the pipeline configuration used for a given exposure ID.
-
-        e.g. AOS_TIE or AOS_DANISH
+        """Get the AOS pipeline name from the tracking hash.
 
         Parameters
         ----------
         instrument : `str`
-            The name of the instrument.
+            The instrument name.
         expId : `int`
             The exposure ID.
 
         Returns
         -------
         pipelineName : `str` or `None`
-            The name of the pipeline configuration used, or ``None`` if not
-            found.
+            The pipeline name, or None if not set.
         """
-        key = f"{instrument}-AOS_PIPELINE_CONFIG-{expId}"
-        value = self.redis.get(key)
+        key = getTrackingKey(instrument, expId)
+        value = self.redis.hget(key, TRACKING_PIPELINE_CONFIG_FIELD)
         if value is None:
-            self.log.warning(f"Key {key} not found in redis! Are you processing stale data?")
+            self.log.warning(f"pipeline_config not found in {key}! Are you processing stale data?")
             return None
-        return value.decode("utf-8")
+        return value.decode("utf-8") if isinstance(value, bytes) else value
 
-    def sendExpRecordToQueue(self, record: DimensionRecord, queueName: str) -> None:
-        """Send an exposure record to a specific queue.
-
-        Parameters
-        ----------
-        record : `lsst.daf.butler.dimensions.ExposureRecord`
-            The exposure record to send.
-        queueName : `str`
-            The name of the queue to send the record to.
-        """
-        recordJson = record.to_simple().json()
-        self.redis.lpush(queueName, recordJson)
-
-    def getExpRecordFromQueue(self, queueName: str) -> DimensionRecord | None:
-        """Get the next exposure record from a specific queue.
-
-        Parameters
-        ----------
-        queueName : `str`
-            The name of the queue to get the record from.
-
-        Returns
-        -------
-        record : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
-            The next exposure record from the specified queue, or ``None`` if
-            the queue is empty.
-        """
-        recordJson = self.redis.lpop(queueName)
-        if recordJson is None:
-            return None
-        return expRecordFromJson(recordJson, self.locationConfig)
+    # ------------------------------------------------------------------ #
+    # End of unified exposure tracking
+    # ------------------------------------------------------------------ #
 
     def getWitnessDetectorNumber(self, instrument: str, camera: Camera | None = None) -> int:
         """Get the witness detector number for a given instrument.
@@ -1087,7 +1523,7 @@ class RedisHelper:
         if instrument != "LSSTCam":
             raise ValueError(f"Unknown instrument {instrument=}")
         if camera is None:
-            raise ValueError("Camera must be provided LSSTCam")
+            raise ValueError("Camera must be provided for LSSTCam")
 
         valueBytes = self.redis.get(WITNESS_DETECTOR_KEY)
         if valueBytes is not None:
@@ -1115,7 +1551,7 @@ class RedisHelper:
             The number of Zernike butler datasets that would be available if
             all processing was successful, i.e. the number that were processed.
         """
-        key = f"{instrument.upper()}_WEP_PROCESSING_RESULT"
+        key = getMtaosZernikeResultKey(instrument)
         self.redis.hset(key, str(visitId), zernikeCount)
 
     def getMTAOSZernikeCount(self, instrument: str, visitId: int) -> int | None:
@@ -1134,7 +1570,7 @@ class RedisHelper:
             The number of Zernike butler datasets that were processed, or
             ``None`` if the processing hasn't finished yet.
         """
-        key = f"{instrument.upper()}_WEP_PROCESSING_RESULT"
+        key = getMtaosZernikeResultKey(instrument)
         zernikeCount = self.redis.hget(key, str(visitId))
         if zernikeCount is not None:
             return int(zernikeCount)
@@ -1151,7 +1587,7 @@ class RedisHelper:
         detectors : `list` of `int`
             The list of detector numbers to ignore.
         """
-        key = f"{instrument}-HEADNODE-IGNORED_DETECTORS"
+        key = getIgnoredDetectorsKey(instrument)
         self.redis.set(key, ",".join(str(det) for det in detectors))
 
     def getDetectorsIgnoredByHeadNode(self, instrument: str) -> list[int]:
@@ -1169,7 +1605,7 @@ class RedisHelper:
             The list of detector numbers that are currently ignored by the head
             node.
         """
-        key = f"{instrument}-HEADNODE-IGNORED_DETECTORS"
+        key = getIgnoredDetectorsKey(instrument)
         value = self.redis.get(key)
         if value is None:
             return []
@@ -1189,7 +1625,7 @@ class RedisHelper:
         stats : `ExposureSummaryStats`
             The summary statistics for the visit.
         """
-        key = f"{instrument}-VISIT_SUMMARY_STATS-{visit}"
+        key = getVisitSummaryStatsKey(instrument, visit)
         statsDict = summaryStatsToDict(stats)
         self.redis.hset(key, str(detector), json.dumps(statsDict))
         self.redis.expire(key, int(86400 * 1.5))
@@ -1209,7 +1645,7 @@ class RedisHelper:
         stats : `dict[int, ExposureSummaryStats]`
             A dictionary mapping detector numbers to their summary statistics.
         """
-        key = f"{instrument}-VISIT_SUMMARY_STATS-{visit}"
+        key = getVisitSummaryStatsKey(instrument, visit)
         statsDict = self.redis.hgetall(key)
         if not statsDict:
             return {}
@@ -1228,9 +1664,9 @@ class RedisHelper:
 
         Returns
         -------
-        averagedStats : `dict[str, Any]` or `None`
-            The averaged summary statistics for the visit, or ``None`` if not
-            found.
+        averagedStats : `dict` [`str`, `float`]
+            The averaged summary statistics for the visit, keyed by stat name.
+            An empty dict is returned if no stats are available.
         """
         allStats = self.getAllVisitSummaryStats(instrument, visit)
         if not allStats:
@@ -1262,7 +1698,10 @@ class RedisHelper:
         ignorePods: bool = True,
         ignoreKeysStartingWith: list[str] | None = None,
     ) -> None:
-        """Get the next unit of work from a specific worker queue.
+        """Print a human-readable dump of the contents of Redis.
+
+        Useful for debugging — walks every key in the database, classifies the
+        value (payload, exposure record, queue, etc.) and prints a summary.
 
         Parameters
         ----------
@@ -1271,15 +1710,9 @@ class RedisHelper:
         ignorePods : `bool`, optional
             Whether to ignore pod-related keys (those ending with +EXISTS or
             +IS_BUSY). Default is ``True``.
-        ignoreKeysStartingWith : `list[str]`, optional
+        ignoreKeysStartingWith : `list` [`str`], optional
             List of string prefixes. Keys starting with any of these strings
             will be ignored. Default is ``None``.
-
-        Returns
-        -------
-        expRecord : `lsst.daf.butler.dimensions.ExposureRecord` or `None`
-            The next exposure to process for the specified detector, or
-            ``None`` if the queue is empty.
         """
 
         def _isPayload(jsonData) -> bool:
@@ -1301,8 +1734,6 @@ class RedisHelper:
             return False
 
         def getPayloadDataId(jsonData) -> str:
-            # XXX pretty sure this now crashes due to it being dataIds plural
-            # check if you can get mypy to catch this when fixing
             loaded = json.loads(jsonData)
             return f"{loaded['dataId']}, run={loaded['run']}"
 
@@ -1427,12 +1858,12 @@ class RedisHelper:
             print("Redis database cleared, but ButlerWatcher history retained.")
 
     def clearWorkerQueues(self, force: bool = False) -> None:
-        """Clear all keys in the Redis database.
+        """Clear all worker-queue keys (matching ``*WORKER*``) from Redis.
 
         Parameters
         ----------
         force : `bool`, optional
-            Whether to clear the Redis database without user confirmation.
+            Whether to clear the worker queues without user confirmation.
             Default is ``False``.
         """
         if not force:

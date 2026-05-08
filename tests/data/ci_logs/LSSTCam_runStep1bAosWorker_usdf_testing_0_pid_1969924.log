@@ -1,0 +1,555 @@
+================================================================================
+Exit Code: timeout
+================================================================================
+
+STDOUT:
+--------------------------------------------------------------------------------
+Found WORKER_NUMBER=None in the env
+Running LSSTCam STEP1B_AOS_WORKER at usdf_testing,consuming from STEP1B_AOS_WORKER-LSSTCam-000...
+Termination signal received for /sdf/home/m/mfl/lsst/rubintv_production/scripts/LSSTCam/runStep1bAosWorker.py:usdf_testing:0, exiting...
+
+--------------------------------------------------------------------------------
+
+LOGS:
+--------------------------------------------------------------------------------
+WARNING - Sentry DSN not found or client inactive — events will not be reported
+INFO - Creating CachingLimitedButler with cachedOnPut={'aggregateAOSVisitTableRaw', 'aggregateAOSVisitTableAvg', 'donutStampsExtraVisit', 'aggregateZernikesAvg', 'donutStampsIntra', 'donutStampsExtra', 'aggregateZernikesRaw', 'donutTable', 'aggregateDonutTable', 'donutStampsIntraVisit', 'post_isr_image', 'donutStampsCwfs', 'donutStampsUnpairedVisit'}, cachedOnGet={'the_monster_20250219', 'donutQualityTable', 'donutStamps', 'raw', 'intrinsic_aberrations_temp', 'donutStampsIntra', 'donutTable', 'gain_correction', 'cti', 'ptc', 'flat', 'donutStampsExtra', 'dark', 'preliminary_visit_image', 'donutTableExtra', 'bias', 'defects', 'camera', 'zernikes', 'donutTableIntra', 'astrometry_camera', 'crosstalk', 'linearizer', 'post_isr_image', 'donutStampsCwfs'}, noCopyOnCache={'flat', 'astrometry_camera', 'dark', 'camera', 'defects', 'bias'}
+INFO - Pipeline running configured to consume from STEP1B_AOS_WORKER-LSSTCam-000
+INFO - Running pipeline for {instrument: 'LSSTCam', visit: 2025111500227, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Waiting for None for {instrument: 'LSSTCam', visit: 2025111500227, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Spent 0.00 seconds waiting for the None (should be ~1s per id)
+INFO - Making AllDimensionQGBuilder for step1b for expId 2025111500227 for AOS
+INFO - Processing pipeline subgraph 1 of 3 with 2 task(s).
+INFO - Iterating over data ID query results.
+INFO - Initial bipartite graph has 2 quanta, 627 dataset nodes, and 625 edges.
+INFO - Processing pipeline subgraph 2 of 3 with 4 task(s).
+ERROR - Initial data ID query returned no rows, so QuantumGraph will be empty.
+Search for dataset type 'donutTableIntra' in ['LSSTCam/runs/quickLookTesting/338', 'LSSTCam/defaults', 'u/gmegias/intrinsic_aberrations_collection_temp'] is doomed to fail.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/runs/quickLookTesting/338'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/raw/all'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch00/sky-u.20260115a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch01/sky-u.20260115a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch02/sky-u.20260115a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch00/sky-g.20260115a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch01/sky-g.20260115a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch02/sky-g.20260115a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch00/sky-r.20260115a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch01/sky-r.20260115a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch02/sky-r.20260115a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch00/sky-i.20260115a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch01/sky-i.20260115a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch02/sky-i.20260115a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch00/sky-z.20260115a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch01/sky-z.20260115a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch02/sky-z.20260115a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch00/sky-y.20260115a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch01/sky-y.20260115a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch02/sky-y.20260115a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53722/3s_v2/flat-y.20260127b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53722/3s_v2/flat-z.20260127b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53722/3s_v2/flat-i.20260127b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53722/3s_v2/flat-r.20260127b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53722/3s_v2/flat-g.20260127b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53722/3s_v2/dark.20260127b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53722/3s_v2/bias.20260127b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53722/3s_v2/electroBFDistortionMatrix.20260127b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53722/3s_v2/ptc.20260127b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53722/3s_v2/cti.20260127b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53722/3s_v2/linearizer.20260127b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53722/3s_v2/defects.20260127b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53668/3s_v1_oct_2025/flat-y.20251218a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53668/3s_v1_oct_2025/flat-z.20251218a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53668/3s_v1_oct_2025/flat-i.20251218a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53668/3s_v1_oct_2025/flat-r.20251218a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53668/3s_v1_oct_2025/flat-g.20251218a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2_gain_correction_20250920/gainCorrection.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2_gain_correction_20250827/gainCorrection.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2_gain_correction_20250814/gainCorrection.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2_gain_correction_20250720/gainCorrection.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/flat-y.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/flat-z.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/flat-i.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/flat-r.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/flat-g.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/flat-u.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/dark.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/bias.20251215c'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/ptc.20251215c'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/cti.20251215c'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/linearizer.20251215c'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/defects.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/flat-y.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/flat-z.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/flat-i.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/flat-r.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/flat-g.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/flat-u.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/dark.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/bias.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/ptc.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/cti.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/linearizer.20251215a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53549/3s_v1_electrostatic_bf/electroBFDistortionMatrix.20251205b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2_gain_correction_20250920/gainCorrection.20251124a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2_gain_correction_20250827/gainCorrection.20251124a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2_gain_correction_20250814/gainCorrection.20251124a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2_gain_correction_20250720/gainCorrection.20251124a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/flat-y.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/flat-z.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/flat-i.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/flat-r.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/flat-g.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/flat-u.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/dark.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/bias.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/ptc.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/cti.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/linearizer.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/defects.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/flat-y.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/flat-z.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/flat-i.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/flat-r.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/flat-g.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/flat-u.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/dark.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/bias.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/ptc.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/cti.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/linearizer.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51599/cbp_crosstalk/crosstalk.20251121a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53514/3s_v1_electrostatic_bf/electroBFDistortionMatrix.20251203a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-53186/oct-2025-y-1050nm/flat-y.20251106a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch01/sky-u.20251023a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch01/sky-g.20251023a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch01/sky-r.20251023a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch01/sky-i.20251023a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch01/sky-z.20251023a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch01/sky-y.20251023a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch02/sky-u.20251023a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch02/sky-g.20251023a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch02/sky-r.20251023a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch02/sky-i.20251023a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch02/sky-z.20251023a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch02/sky-y.20251023a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/flat-y.20251003b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/flat-z.20251003b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/flat-i.20251003b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/flat-r.20251003b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/flat-g.20251003b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/flat-u.20251003b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/dark.20251003b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/bias.20251003b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/ptc.20251003b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/linearizer.20251003a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52727/flats-2s-v30-dp2/flat-y.20251006a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52727/flats-2s-v30-dp2/flat-z.20251006a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52727/flats-2s-v30-dp2/flat-i.20251006a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52727/flats-2s-v30-dp2/flat-r.20251006a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52727/flats-2s-v30-dp2/flat-g.20251006a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52727/flats-2s-v30-dp2/flat-u.20251006a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52726/ref-sky-radial-gradient-dp2/flatGradientReference-y.20251002a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52726/ref-sky-radial-gradient-dp2/flatGradientReference-z.20251002a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52726/ref-sky-radial-gradient-dp2/flatGradientReference-i.20251002a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52726/ref-sky-radial-gradient-dp2/flatGradientReference-r.20251002a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52726/ref-sky-radial-gradient-dp2/flatGradientReference-g.20251002a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52726/ref-sky-radial-gradient-dp2/flatGradientReference-u.20251002a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50151/astrometry_camera/astrometry_camera-u.20250914a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50151/astrometry_camera/astrometry_camera-g.20250914a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50151/astrometry_camera/astrometry_camera-r.20250914a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50151/astrometry_camera/astrometry_camera-i.20250914a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50151/astrometry_camera/astrometry_camera-z.20250914a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50151/astrometry_camera/astrometry_camera-y.20250914a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51897/3s_v1/flat-y.20250814a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51897/3s_v1/flat-z.20250814a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51897/3s_v1/flat-i.20250814a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51897/3s_v1/flat-r.20250814a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51897/3s_v1/flat-g.20250814a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51897/3s_v1/flat-u.20250814a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51897/3s_v1/dark.20250814a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51897/3s_v1/bias.20250808a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51897/3s_v1/cti.20250808a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51897/3s_v1/bfk.20250808a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51897/3s_v1/ptc.20250808a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51897/3s_v1/linearizer.20250808a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51432/ref-sky-radial-gradient-ugrizy/flatGradientReference-y.20250812a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51432/ref-sky-radial-gradient-ugrizy/flatGradientReference-z.20250812a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51432/ref-sky-radial-gradient-ugrizy/flatGradientReference-i.20250812a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51432/ref-sky-radial-gradient-ugrizy/flatGradientReference-r.20250812a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51432/ref-sky-radial-gradient-ugrizy/flatGradientReference-g.20250812a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51432/ref-sky-radial-gradient-ugrizy/flatGradientReference-u.20250812a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52163/flats-2s-v30-nograd-ugrizy/flat-y.20250812a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52163/flats-2s-v30-nograd-ugrizy/flat-z.20250812a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52163/flats-2s-v30-nograd-ugrizy/flat-i.20250812a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52163/flats-2s-v30-nograd-ugrizy/flat-r.20250812a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52163/flats-2s-v30-nograd-ugrizy/flat-g.20250812a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-52163/flats-2s-v30-nograd-ugrizy/flat-u.20250812a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50904/izy-flats-20250515/flat-y.20250515a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50904/izy-flats-20250515/flat-z.20250515a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50904/izy-flats-20250515/flat-i.20250515a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50736/onSkyDefects/defects.20250506a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50630/ugri-flats-20250501/flat-i.20250501a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50630/ugri-flats-20250501/flat-r.20250501a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50630/ugri-flats-20250501/flat-g.20250501a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50630/ugri-flats-20250501/flat-u.20250501a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50448/initial-ugri-flats/flat-i.20250424a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50448/initial-ugri-flats/flat-r.20250424a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50448/initial-ugri-flats/flat-g.20250424a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50448/initial-ugri-flats/flat-u.20250424a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50336/run7/ptc.20250423a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50295/initial-i-flat/flat-i.20250420a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-50162/pseudoFlats/pseudoFlat.20250414b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-49175/run7/dark.20250320a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-49175/run7/bias.20250320a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-49175/run7/cti.20250320a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-49175/run7/bfk.20250320a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-49175/run7/ptc.20250320a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-49175/run7/linearizer.20250320a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-49175/run7/defects.20250401a'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-49679/pseudoFlats/pseudoFlat.20250401b'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51669'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/DM-51669/unbounded'.
+No datasets of type 'donutTableIntra' in collection 'refcats/DM-28636'.
+No datasets of type 'donutTableIntra' in collection 'refcats/DM-33444'.
+No datasets of type 'donutTableIntra' in collection 'refcats/DM-39298'.
+No datasets of type 'donutTableIntra' in collection 'refcats/DM-46370/the_monster_20240904'.
+No datasets of type 'donutTableIntra' in collection 'refcats/DM-49042/the_monster_20250219'.
+No datasets of type 'donutTableIntra' in collection 'skymaps'.
+No datasets of type 'donutTableIntra' in collection 'pretrained_models/tac_cnn_lsstcam_2026-02-26'.
+No datasets of type 'donutTableIntra' in collection 'LSSTCam/calib/fgcmcal/DM-50154'.
+No datasets of type 'donutTableIntra' in collection 'sorcha_cache'.
+No datasets of type 'donutTableIntra' in collection 'mpcorb/DM-54095'.
+No datasets of type 'donutTableIntra' in collection 'u/gmegias/intrinsic_aberrations_collection_temp'.
+Search for dataset type 'donutTableExtra' in ['LSSTCam/runs/quickLookTesting/338', 'LSSTCam/defaults', 'u/gmegias/intrinsic_aberrations_collection_temp'] is doomed to fail.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/runs/quickLookTesting/338'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/raw/all'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch00/sky-u.20260115a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch01/sky-u.20260115a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch02/sky-u.20260115a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch00/sky-g.20260115a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch01/sky-g.20260115a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch02/sky-g.20260115a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch00/sky-r.20260115a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch01/sky-r.20260115a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch02/sky-r.20260115a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch00/sky-i.20260115a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch01/sky-i.20260115a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch02/sky-i.20260115a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch00/sky-z.20260115a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch01/sky-z.20260115a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch02/sky-z.20260115a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch00/sky-y.20260115a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch01/sky-y.20260115a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53546/skyFrames_epoch02/sky-y.20260115a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53722/3s_v2/flat-y.20260127b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53722/3s_v2/flat-z.20260127b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53722/3s_v2/flat-i.20260127b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53722/3s_v2/flat-r.20260127b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53722/3s_v2/flat-g.20260127b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53722/3s_v2/dark.20260127b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53722/3s_v2/bias.20260127b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53722/3s_v2/electroBFDistortionMatrix.20260127b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53722/3s_v2/ptc.20260127b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53722/3s_v2/cti.20260127b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53722/3s_v2/linearizer.20260127b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53722/3s_v2/defects.20260127b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53668/3s_v1_oct_2025/flat-y.20251218a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53668/3s_v1_oct_2025/flat-z.20251218a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53668/3s_v1_oct_2025/flat-i.20251218a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53668/3s_v1_oct_2025/flat-r.20251218a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53668/3s_v1_oct_2025/flat-g.20251218a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2_gain_correction_20250920/gainCorrection.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2_gain_correction_20250827/gainCorrection.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2_gain_correction_20250814/gainCorrection.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2_gain_correction_20250720/gainCorrection.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/flat-y.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/flat-z.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/flat-i.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/flat-r.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/flat-g.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/flat-u.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/dark.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/bias.20251215c'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/ptc.20251215c'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/cti.20251215c'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/linearizer.20251215c'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53620/3s_v1_dp2_v2/defects.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/flat-y.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/flat-z.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/flat-i.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/flat-r.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/flat-g.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/flat-u.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/dark.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/bias.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/ptc.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/cti.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53619/2s_v30_dp2_v2/linearizer.20251215a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53549/3s_v1_electrostatic_bf/electroBFDistortionMatrix.20251205b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2_gain_correction_20250920/gainCorrection.20251124a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2_gain_correction_20250827/gainCorrection.20251124a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2_gain_correction_20250814/gainCorrection.20251124a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2_gain_correction_20250720/gainCorrection.20251124a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/flat-y.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/flat-z.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/flat-i.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/flat-r.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/flat-g.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/flat-u.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/dark.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/bias.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/ptc.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/cti.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/linearizer.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53399/3s_v1_dp2/defects.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/flat-y.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/flat-z.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/flat-i.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/flat-r.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/flat-g.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/flat-u.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/dark.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/bias.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/ptc.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/cti.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53397/2s_v30_dp2/linearizer.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51599/cbp_crosstalk/crosstalk.20251121a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53514/3s_v1_electrostatic_bf/electroBFDistortionMatrix.20251203a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-53186/oct-2025-y-1050nm/flat-y.20251106a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch01/sky-u.20251023a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch01/sky-g.20251023a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch01/sky-r.20251023a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch01/sky-i.20251023a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch01/sky-z.20251023a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch01/sky-y.20251023a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch02/sky-u.20251023a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch02/sky-g.20251023a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch02/sky-r.20251023a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch02/sky-i.20251023a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch02/sky-z.20251023a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52145/skyFrames_epoch02/sky-y.20251023a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/flat-y.20251003b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/flat-z.20251003b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/flat-i.20251003b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/flat-r.20251003b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/flat-g.20251003b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/flat-u.20251003b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/dark.20251003b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/bias.20251003b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/ptc.20251003b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52754/3s_v1_rc2_interim/linearizer.20251003a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52727/flats-2s-v30-dp2/flat-y.20251006a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52727/flats-2s-v30-dp2/flat-z.20251006a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52727/flats-2s-v30-dp2/flat-i.20251006a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52727/flats-2s-v30-dp2/flat-r.20251006a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52727/flats-2s-v30-dp2/flat-g.20251006a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52727/flats-2s-v30-dp2/flat-u.20251006a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52726/ref-sky-radial-gradient-dp2/flatGradientReference-y.20251002a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52726/ref-sky-radial-gradient-dp2/flatGradientReference-z.20251002a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52726/ref-sky-radial-gradient-dp2/flatGradientReference-i.20251002a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52726/ref-sky-radial-gradient-dp2/flatGradientReference-r.20251002a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52726/ref-sky-radial-gradient-dp2/flatGradientReference-g.20251002a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52726/ref-sky-radial-gradient-dp2/flatGradientReference-u.20251002a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50151/astrometry_camera/astrometry_camera-u.20250914a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50151/astrometry_camera/astrometry_camera-g.20250914a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50151/astrometry_camera/astrometry_camera-r.20250914a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50151/astrometry_camera/astrometry_camera-i.20250914a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50151/astrometry_camera/astrometry_camera-z.20250914a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50151/astrometry_camera/astrometry_camera-y.20250914a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51897/3s_v1/flat-y.20250814a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51897/3s_v1/flat-z.20250814a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51897/3s_v1/flat-i.20250814a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51897/3s_v1/flat-r.20250814a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51897/3s_v1/flat-g.20250814a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51897/3s_v1/flat-u.20250814a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51897/3s_v1/dark.20250814a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51897/3s_v1/bias.20250808a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51897/3s_v1/cti.20250808a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51897/3s_v1/bfk.20250808a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51897/3s_v1/ptc.20250808a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51897/3s_v1/linearizer.20250808a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51432/ref-sky-radial-gradient-ugrizy/flatGradientReference-y.20250812a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51432/ref-sky-radial-gradient-ugrizy/flatGradientReference-z.20250812a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51432/ref-sky-radial-gradient-ugrizy/flatGradientReference-i.20250812a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51432/ref-sky-radial-gradient-ugrizy/flatGradientReference-r.20250812a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51432/ref-sky-radial-gradient-ugrizy/flatGradientReference-g.20250812a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51432/ref-sky-radial-gradient-ugrizy/flatGradientReference-u.20250812a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52163/flats-2s-v30-nograd-ugrizy/flat-y.20250812a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52163/flats-2s-v30-nograd-ugrizy/flat-z.20250812a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52163/flats-2s-v30-nograd-ugrizy/flat-i.20250812a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52163/flats-2s-v30-nograd-ugrizy/flat-r.20250812a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52163/flats-2s-v30-nograd-ugrizy/flat-g.20250812a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-52163/flats-2s-v30-nograd-ugrizy/flat-u.20250812a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50904/izy-flats-20250515/flat-y.20250515a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50904/izy-flats-20250515/flat-z.20250515a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50904/izy-flats-20250515/flat-i.20250515a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50736/onSkyDefects/defects.20250506a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50630/ugri-flats-20250501/flat-i.20250501a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50630/ugri-flats-20250501/flat-r.20250501a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50630/ugri-flats-20250501/flat-g.20250501a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50630/ugri-flats-20250501/flat-u.20250501a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50448/initial-ugri-flats/flat-i.20250424a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50448/initial-ugri-flats/flat-r.20250424a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50448/initial-ugri-flats/flat-g.20250424a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50448/initial-ugri-flats/flat-u.20250424a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50336/run7/ptc.20250423a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50295/initial-i-flat/flat-i.20250420a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-50162/pseudoFlats/pseudoFlat.20250414b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-49175/run7/dark.20250320a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-49175/run7/bias.20250320a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-49175/run7/cti.20250320a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-49175/run7/bfk.20250320a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-49175/run7/ptc.20250320a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-49175/run7/linearizer.20250320a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-49175/run7/defects.20250401a'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-49679/pseudoFlats/pseudoFlat.20250401b'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51669'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/DM-51669/unbounded'.
+No datasets of type 'donutTableExtra' in collection 'refcats/DM-28636'.
+No datasets of type 'donutTableExtra' in collection 'refcats/DM-33444'.
+No datasets of type 'donutTableExtra' in collection 'refcats/DM-39298'.
+No datasets of type 'donutTableExtra' in collection 'refcats/DM-46370/the_monster_20240904'.
+No datasets of type 'donutTableExtra' in collection 'refcats/DM-49042/the_monster_20250219'.
+No datasets of type 'donutTableExtra' in collection 'skymaps'.
+No datasets of type 'donutTableExtra' in collection 'pretrained_models/tac_cnn_lsstcam_2026-02-26'.
+No datasets of type 'donutTableExtra' in collection 'LSSTCam/calib/fgcmcal/DM-50154'.
+No datasets of type 'donutTableExtra' in collection 'sorcha_cache'.
+No datasets of type 'donutTableExtra' in collection 'mpcorb/DM-54095'.
+No datasets of type 'donutTableExtra' in collection 'u/gmegias/intrinsic_aberrations_collection_temp'.
+To reproduce this query for debugging purposes, run:
+
+with butler.query() as query:
+    query = query.join_dimensions(['band', 'instrument', 'day_obs', 'detector', 'physical_filter', 'visit'])
+    collections = ['LSSTCam/runs/quickLookTesting/338', 'LSSTCam/defaults', 'u/gmegias/intrinsic_aberrations_collection_temp']
+    query = query.join_dataset_search('donutTableIntra', collections)
+    query = query.join_dataset_search('donutTableExtra', collections)
+    query = query.where({'instrument': 'LSSTCam'}, 'instrument=dataId0_instrument AND visit=dataId0_visit', bind={'dataId0_instrument': 'LSSTCam', 'dataId0_visit': 2025111500227})
+    print(query.any())
+
+And then try removing various constraints until query.any() returns True.
+INFO - Initial bipartite graph has 0 quanta, 4 dataset nodes, and 0 edges.
+INFO - Processing pipeline subgraph 3 of 3 with 1 task(s).
+INFO - Iterating over data ID query results.
+INFO - Initial bipartite graph has 1 quanta, 210 dataset nodes, and 208 edges.
+INFO - Dropping task aggregateDonutStampsTask because no quanta remain (1 had no work to do).
+WARNING - More than half of aggregateDonutStampsTask quanta had no work to do given available inputs.
+A query constraint on one of ['donutQualityTable', 'donutStampsExtra', 'donutStampsIntra'] may yield a much faster build.
+INFO - Dropping task aggregateDonutTablesVisitTask because no quanta remain.
+INFO - Dropping task aggregateZernikeTablesTask because no quanta remain.
+INFO - Dropping task aggregateAOSVisitTableTask because no quanta remain.
+INFO - Dropping task plotAOSTask because no quanta remain.
+INFO - Dropping task plotDonutTask because no quanta remain (1 had no work to do).
+WARNING - More than half of plotDonutTask quanta had no work to do given available inputs.
+A query constraint on one of None may yield a much faster build.
+INFO - Dropping task plotPsfZernTask because no quanta remain (1 had no work to do).
+WARNING - More than half of plotPsfZernTask quanta had no work to do given available inputs.
+A query constraint on one of ['zernikes'] may yield a much faster build.
+INFO - Fetching and attaching datastore records for all overall inputs.
+INFO - Transforming graph skeleton into PredictedQuantumGraph components.
+INFO - Graph build complete.
+INFO - Building quantum graph for {instrument: 'LSSTCam', visit: 2025111500227, band: 'i', day_obs: 20251115, physical_filter: 'i_39'} for AOS took 0.884s
+WARNING - No work found for {instrument: 'LSSTCam', visit: 2025111500227, band: 'i', day_obs: 20251115, physical_filter: 'i_39'} in quantum graph
+INFO - Using 4 CPUs for LSSTCam step1b AOS
+INFO - Running pipeline for {instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Waiting for None for {instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}
+INFO - Spent 0.00 seconds waiting for the None (should be ~1s per id)
+INFO - Making AllDimensionQGBuilder for step1b for expId 2025111500226 for AOS
+INFO - Processing pipeline subgraph 1 of 2 with 8 task(s).
+INFO - Iterating over data ID query results.
+INFO - Initial bipartite graph has 8 quanta, 93 dataset nodes, and 96 edges.
+INFO - Processing pipeline subgraph 2 of 2 with 1 task(s).
+INFO - Iterating over data ID query results.
+INFO - Initial bipartite graph has 1 quanta, 210 dataset nodes, and 208 edges.
+INFO - Generated 1 quantum for task aggregateDonutStampsTask.
+INFO - Generated 1 quantum for task aggregateDonutTablesCwfsTask.
+INFO - Generated 1 quantum for task aggregateZernikeTablesTask.
+INFO - Generated 1 quantum for task aggregateAOSVisitTableCwfsTask.
+INFO - Generated 1 quantum for task plotAOSTask.
+INFO - Generated 1 quantum for task plotDonutCwfsTask.
+INFO - Generated 1 quantum for task plotDonutFitsTask.
+INFO - Generated 1 quantum for task plotPairingTask.
+INFO - Generated 1 quantum for task plotPsfZernTask.
+INFO - Fetching and attaching datastore records for all overall inputs.
+INFO - Transforming graph skeleton into PredictedQuantumGraph components.
+INFO - Graph build complete.
+INFO - Building quantum graph for {instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'} for AOS took 1.219s
+INFO - Using 4 CPUs for LSSTCam step1b AOS
+INFO - Starting to process aggregateDonutStampsTask
+INFO - Preparing execution of quantum for label=aggregateDonutStampsTask dataId={instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Constructing task and executing quantum for label=aggregateDonutStampsTask dataId={instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Execution of task 'aggregateDonutStampsTask' on quantum {instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'} took 3.669 seconds
+INFO - Starting to process aggregateDonutTablesCwfsTask
+INFO - Preparing execution of quantum for label=aggregateDonutTablesCwfsTask dataId={instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Constructing task and executing quantum for label=aggregateDonutTablesCwfsTask dataId={instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Execution of task 'aggregateDonutTablesCwfsTask' on quantum {instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'} took 0.653 seconds
+INFO - Starting to process aggregateZernikeTablesTask
+INFO - Preparing execution of quantum for label=aggregateZernikeTablesTask dataId={instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Constructing task and executing quantum for label=aggregateZernikeTablesTask dataId={instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Execution of task 'aggregateZernikeTablesTask' on quantum {instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'} took 0.815 seconds
+INFO - Sending donut blur 0.85 for 2025111500226 to consDB
+INFO - Skipping consDB insert at usdf_testing for LSSTCam.visit1_quicklook
+INFO - Starting to process aggregateAOSVisitTableCwfsTask
+INFO - Preparing execution of quantum for label=aggregateAOSVisitTableCwfsTask dataId={instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Constructing task and executing quantum for label=aggregateAOSVisitTableCwfsTask dataId={instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Execution of task 'aggregateAOSVisitTableCwfsTask' on quantum {instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'} took 0.358 seconds
+INFO - Starting to process plotAOSTask
+INFO - Preparing execution of quantum for label=plotAOSTask dataId={instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Constructing task and executing quantum for label=plotAOSTask dataId={instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_zk_measurement_pyramid_dayObs_20251115_seqNum_000226.png to lsstcam_aos/20251115/zk_measurement_pyramid/000226/lsstcam_aos_zk_measurement_pyramid_20251115_000226.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_zk_measurement_pyramid_dayObs_20251115_seqNum_000226.png to lsstcam_aos/20251115/zk_measurement_pyramid/000226/lsstcam_aos_zk_measurement_pyramid_20251115_000226.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_zk_residual_pyramid_dayObs_20251115_seqNum_000226.png to lsstcam_aos/20251115/zk_residual_pyramid/000226/lsstcam_aos_zk_residual_pyramid_20251115_000226.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_zk_residual_pyramid_dayObs_20251115_seqNum_000226.png to lsstcam_aos/20251115/zk_residual_pyramid/000226/lsstcam_aos_zk_residual_pyramid_20251115_000226.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Execution of task 'plotAOSTask' on quantum {instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'} took 4.515 seconds
+INFO - Starting to process plotDonutCwfsTask
+INFO - Preparing execution of quantum for label=plotDonutCwfsTask dataId={instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Constructing task and executing quantum for label=plotDonutCwfsTask dataId={instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_fp_donut_gallery_dayObs_20251115_seqNum_000226.png to lsstcam_aos/20251115/fp_donut_gallery/000226/lsstcam_aos_fp_donut_gallery_20251115_000226.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_fp_donut_gallery_dayObs_20251115_seqNum_000226.png to lsstcam_aos/20251115/fp_donut_gallery/000226/lsstcam_aos_fp_donut_gallery_20251115_000226.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Execution of task 'plotDonutCwfsTask' on quantum {instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'} took 1.834 seconds
+INFO - Starting to process plotDonutFitsTask
+INFO - Preparing execution of quantum for label=plotDonutFitsTask dataId={instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Constructing task and executing quantum for label=plotDonutFitsTask dataId={instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_donut_fits_dayObs_20251115_seqNum_000226.png to lsstcam_aos/20251115/donut_fits/000226/lsstcam_aos_donut_fits_20251115_000226.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_donut_fits_dayObs_20251115_seqNum_000226.png to lsstcam_aos/20251115/donut_fits/000226/lsstcam_aos_donut_fits_20251115_000226.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Execution of task 'plotDonutFitsTask' on quantum {instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'} took 11.916 seconds
+INFO - Starting to process plotPairingTask
+INFO - Preparing execution of quantum for label=plotPairingTask dataId={instrument: 'LSSTCam', exposure: 2025111500226, visit: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}.
+INFO - Constructing task and executing quantum for label=plotPairingTask dataId={instrument: 'LSSTCam', exposure: 2025111500226, visit: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'}.
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_fp_pairing_plot_dayObs_20251115_seqNum_000226.png to lsstcam_aos/20251115/fp_pairing_plot/000226/lsstcam_aos_fp_pairing_plot_20251115_000226.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_fp_pairing_plot_dayObs_20251115_seqNum_000226.png to lsstcam_aos/20251115/fp_pairing_plot/000226/lsstcam_aos_fp_pairing_plot_20251115_000226.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Execution of task 'plotPairingTask' on quantum {instrument: 'LSSTCam', exposure: 2025111500226, visit: 2025111500226, band: 'i', day_obs: 20251115, group: '2025-11-16T03:54:57.068', physical_filter: 'i_39'} took 15.215 seconds
+INFO - Starting to process plotPsfZernTask
+INFO - Preparing execution of quantum for label=plotPsfZernTask dataId={instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Constructing task and executing quantum for label=plotPsfZernTask dataId={instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'}.
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_psf_zk_panel_dayObs_20251115_seqNum_000226.png to lsstcam_aos/20251115/psf_zk_panel/000226/lsstcam_aos_psf_zk_panel_20251115_000226.png
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_psf_zk_panel_dayObs_20251115_seqNum_000226.png to lsstcam_aos/20251115/psf_zk_panel/000226/lsstcam_aos_psf_zk_panel_20251115_000226.png
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Execution of task 'plotPsfZernTask' on quantum {instrument: 'LSSTCam', visit: 2025111500226, band: 'i', day_obs: 20251115, physical_filter: 'i_39'} took 0.960 seconds
+
+--------------------------------------------------------------------------------

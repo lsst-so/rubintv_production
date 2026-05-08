@@ -1,0 +1,368 @@
+================================================================================
+Exit Code: timeout
+================================================================================
+
+STDOUT:
+--------------------------------------------------------------------------------
+Running LSSTCam GUIDER_WORKER at usdf_testing,consuming from GUIDER_WORKER-LSSTCam-000...
+Termination signal received for /sdf/home/m/mfl/lsst/rubintv_production/scripts/LSSTCam/runGuiderAnalysis.py:usdf_testing, exiting...
+
+--------------------------------------------------------------------------------
+
+LOGS:
+--------------------------------------------------------------------------------
+WARNING - Sentry DSN not found or client inactive — events will not be reported
+INFO - Created MockUploader
+INFO - Created MockUploader
+INFO - Created MockMultiUploader
+INFO - Guider worker running, consuming from GUIDER_WORKER-LSSTCam-000
+INFO - Processing guider data for dayObs=20251115 seqNum=227
+INFO - Loading guider data took 10.827s
+INFO - Using self-generated refcat
+WARNING - No sources detected in `buildReferenceCatalog`for R00_SG0 in 2025111500227. 
+WARNING - No sources detected in `buildReferenceCatalog`for R00_SG1 in 2025111500227. 
+WARNING - No sources detected in `buildReferenceCatalog`for R04_SG0 in 2025111500227. 
+WARNING - No sources detected in `buildReferenceCatalog`for R04_SG1 in 2025111500227. 
+WARNING - No sources detected in `buildReferenceCatalog`for R40_SG0 in 2025111500227. 
+WARNING - No sources detected in `buildReferenceCatalog`for R40_SG1 in 2025111500227. 
+WARNING - No sources detected in `buildReferenceCatalog`for R44_SG0 in 2025111500227. 
+WARNING - No sources detected in `buildReferenceCatalog`for R44_SG1 in 2025111500227. 
+WARNING - buildReferenceCatalog failed - no stars detected in any guider for 2025111500227.
+WARNING - Reference catalog is empty for 2025111500227. No stars to track.
+INFO - Creating star catalog from guider data took 4.489s
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000227.mp4 to lsstcam_guider/20251115/full_movie/000227/lsstcam_guider_full_movie_20251115_000227.mp4
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000227.mp4 to lsstcam_guider/20251115/full_movie/000227/lsstcam_guider_full_movie_20251115_000227.mp4
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Making the full frame movie took 17.205s
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000227.mp4 to lsstcam_guider/20251115/star_movie/000227/lsstcam_guider_star_movie_20251115_000227.mp4
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000227.mp4 to lsstcam_guider/20251115/star_movie/000227/lsstcam_guider_star_movie_20251115_000227.mp4
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Making the star cutout movie took 17.217s
+WARNING - No stars were tracked, skipping strip plots
+WARNING - No data found for expid=2025111500227. Returning empty metrics DataFrame.
+WARNING - Key n_stars not found in metrics DataFrame columns or has no values
+WARNING - Key n_measurements not found in metrics DataFrame columns or has no values
+WARNING - Key fraction_possible_measurements not found in metrics DataFrame columns or has no values
+WARNING - Key exptime not found in metrics DataFrame columns or has no values
+WARNING - Key az_slope_significance not found in metrics DataFrame columns or has no values
+WARNING - Key az_drift_trend_rmse not found in metrics DataFrame columns or has no values
+WARNING - Key az_drift_global_std not found in metrics DataFrame columns or has no values
+WARNING - Key alt_slope_significance not found in metrics DataFrame columns or has no values
+WARNING - Key alt_drift_trend_rmse not found in metrics DataFrame columns or has no values
+WARNING - Key alt_drift_global_std not found in metrics DataFrame columns or has no values
+WARNING - Key rotator_slope_significance not found in metrics DataFrame columns or has no values
+WARNING - Key rotator_trend_rmse not found in metrics DataFrame columns or has no values
+WARNING - Key rotator_global_std not found in metrics DataFrame columns or has no values
+WARNING - Key mag_slope_significance not found in metrics DataFrame columns or has no values
+WARNING - Key mag_trend_rmse not found in metrics DataFrame columns or has no values
+WARNING - Key mag_global_std not found in metrics DataFrame columns or has no values
+WARNING - Key psf_intercept not found in metrics DataFrame columns or has no values
+WARNING - Key psf_slope_significance not found in metrics DataFrame columns or has no values
+WARNING - Key psf_trend_rmse not found in metrics DataFrame columns or has no values
+WARNING - Key psf_global_std not found in metrics DataFrame columns or has no values
+WARNING - Key az_drift_slope not found in metrics DataFrame columns or has no values
+WARNING - Key alt_drift_slope not found in metrics DataFrame columns or has no values
+WARNING - Key rotator_slope not found in metrics DataFrame columns or has no values
+WARNING - Key mag_slope not found in metrics DataFrame columns or has no values
+WARNING - Key psf_slope not found in metrics DataFrame columns or has no values
+WARNING - Key guider_n_tracked_stars not found in metrics DataFrame columns or has no values
+WARNING - Key guider_n_measurements not found in metrics DataFrame columns or has no values
+WARNING - Key guider_altitude_standard_deviation not found in metrics DataFrame columns or has no values
+WARNING - Key guider_altitude_rms_detrended not found in metrics DataFrame columns or has no values
+WARNING - Key guider_azimuth_standard_deviation not found in metrics DataFrame columns or has no values
+WARNING - Key guider_azimuth_rms_detrended not found in metrics DataFrame columns or has no values
+WARNING - Key guider_focalplane_theta_standard_deviation not found in metrics DataFrame columns or has no values
+WARNING - Key guider_focalplane_theta_rms_detrended not found in metrics DataFrame columns or has no values
+WARNING - Key guider_magnitude_standard_deviation not found in metrics DataFrame columns or has no values
+WARNING - Key guider_magnitude_rms_detrended not found in metrics DataFrame columns or has no values
+WARNING - Key guider_psf_fwhm_start not found in metrics DataFrame columns or has no values
+WARNING - Key guider_psf_fwhm_standard_deviation not found in metrics DataFrame columns or has no values
+WARNING - Key guider_psf_fwhm_rms_detrended not found in metrics DataFrame columns or has no values
+WARNING - Key guider_altitude_drift not found in metrics DataFrame columns or has no values
+WARNING - Key guider_azimuth_drift not found in metrics DataFrame columns or has no values
+WARNING - Key guider_focalplane_theta_drift not found in metrics DataFrame columns or has no values
+WARNING - Key guider_magnitude_drift not found in metrics DataFrame columns or has no values
+WARNING - Key guider_psf_fwhm_drift not found in metrics DataFrame columns or has no values
+ERROR - Error measuring tomographic seeing for dataId={instrument: 'LSSTCam', exposure: 2025111500227, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}: Stars dataframe has no data with expid=2025111500227
+Traceback (most recent call last):
+  File "/sdf/home/m/mfl/lsst/rubintv_production/python/lsst/rubintv/production/guiders.py", line 401, in callback
+    correlationAnalysis = CorrelationAnalysis(stars, guiderData.expid)
+  File "/sdf/home/m/mfl/lsst/summit_utils/python/lsst/summit/utils/guiders/seeing.py", line 235, in __init__
+    raise ValueError(f"Stars dataframe has no data with expid={expid}")
+ValueError: Stars dataframe has no data with expid=2025111500227
+ERROR - Error processing payload Payload(dataId=[{instrument: 'LSSTCam', exposure: 2025111500227, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}], run=, who=ONE_OFF, pipelineGraphBytes=<the bytes>): Stars dataframe has no data with expid=2025111500227
+Traceback (most recent call last):
+  File "/sdf/home/m/mfl/lsst/rubintv_production/python/lsst/rubintv/production/watchers.py", line 91, in run
+    callback(payload)
+    ~~~~~~~~^^^^^^^^^
+  File "/sdf/home/m/mfl/lsst/rubintv_production/python/lsst/rubintv/production/guiders.py", line 412, in callback
+    raiseIf(self.doRaise, e, self.log, msg)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/sdf/home/m/mfl/lsst/rubintv_production/python/lsst/rubintv/production/predicates.py", line 91, in raiseIf
+    raise error
+  File "/sdf/home/m/mfl/lsst/rubintv_production/python/lsst/rubintv/production/guiders.py", line 401, in callback
+    correlationAnalysis = CorrelationAnalysis(stars, guiderData.expid)
+  File "/sdf/home/m/mfl/lsst/summit_utils/python/lsst/summit/utils/guiders/seeing.py", line 235, in __init__
+    raise ValueError(f"Stars dataframe has no data with expid={expid}")
+ValueError: Stars dataframe has no data with expid=2025111500227
+INFO - Processing guider data for dayObs=20251115 seqNum=228
+INFO - Loading guider data took 10.943s
+INFO - Using self-generated refcat
+WARNING - No sources detected in `buildReferenceCatalog`for R00_SG0 in 2025111500228. 
+WARNING - No sources detected in `buildReferenceCatalog`for R00_SG1 in 2025111500228. 
+WARNING - No sources detected in `buildReferenceCatalog`for R04_SG0 in 2025111500228. 
+WARNING - No sources detected in `buildReferenceCatalog`for R04_SG1 in 2025111500228. 
+WARNING - No sources detected in `buildReferenceCatalog`for R40_SG0 in 2025111500228. 
+WARNING - No sources detected in `buildReferenceCatalog`for R40_SG1 in 2025111500228. 
+WARNING - No sources detected in `buildReferenceCatalog`for R44_SG0 in 2025111500228. 
+WARNING - No sources detected in `buildReferenceCatalog`for R44_SG1 in 2025111500228. 
+WARNING - buildReferenceCatalog failed - no stars detected in any guider for 2025111500228.
+WARNING - Reference catalog is empty for 2025111500228. No stars to track.
+INFO - Creating star catalog from guider data took 4.114s
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000228.mp4 to lsstcam_guider/20251115/full_movie/000228/lsstcam_guider_full_movie_20251115_000228.mp4
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000228.mp4 to lsstcam_guider/20251115/full_movie/000228/lsstcam_guider_full_movie_20251115_000228.mp4
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Making the full frame movie took 20.099s
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+WARNING - No stars data available. Using full frame.
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000228.mp4 to lsstcam_guider/20251115/star_movie/000228/lsstcam_guider_star_movie_20251115_000228.mp4
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000228.mp4 to lsstcam_guider/20251115/star_movie/000228/lsstcam_guider_star_movie_20251115_000228.mp4
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Making the star cutout movie took 16.600s
+WARNING - No stars were tracked, skipping strip plots
+WARNING - No data found for expid=2025111500228. Returning empty metrics DataFrame.
+WARNING - Key n_stars not found in metrics DataFrame columns or has no values
+WARNING - Key n_measurements not found in metrics DataFrame columns or has no values
+WARNING - Key fraction_possible_measurements not found in metrics DataFrame columns or has no values
+WARNING - Key exptime not found in metrics DataFrame columns or has no values
+WARNING - Key az_slope_significance not found in metrics DataFrame columns or has no values
+WARNING - Key az_drift_trend_rmse not found in metrics DataFrame columns or has no values
+WARNING - Key az_drift_global_std not found in metrics DataFrame columns or has no values
+WARNING - Key alt_slope_significance not found in metrics DataFrame columns or has no values
+WARNING - Key alt_drift_trend_rmse not found in metrics DataFrame columns or has no values
+WARNING - Key alt_drift_global_std not found in metrics DataFrame columns or has no values
+WARNING - Key rotator_slope_significance not found in metrics DataFrame columns or has no values
+WARNING - Key rotator_trend_rmse not found in metrics DataFrame columns or has no values
+WARNING - Key rotator_global_std not found in metrics DataFrame columns or has no values
+WARNING - Key mag_slope_significance not found in metrics DataFrame columns or has no values
+WARNING - Key mag_trend_rmse not found in metrics DataFrame columns or has no values
+WARNING - Key mag_global_std not found in metrics DataFrame columns or has no values
+WARNING - Key psf_intercept not found in metrics DataFrame columns or has no values
+WARNING - Key psf_slope_significance not found in metrics DataFrame columns or has no values
+WARNING - Key psf_trend_rmse not found in metrics DataFrame columns or has no values
+WARNING - Key psf_global_std not found in metrics DataFrame columns or has no values
+WARNING - Key az_drift_slope not found in metrics DataFrame columns or has no values
+WARNING - Key alt_drift_slope not found in metrics DataFrame columns or has no values
+WARNING - Key rotator_slope not found in metrics DataFrame columns or has no values
+WARNING - Key mag_slope not found in metrics DataFrame columns or has no values
+WARNING - Key psf_slope not found in metrics DataFrame columns or has no values
+WARNING - Key guider_n_tracked_stars not found in metrics DataFrame columns or has no values
+WARNING - Key guider_n_measurements not found in metrics DataFrame columns or has no values
+WARNING - Key guider_altitude_standard_deviation not found in metrics DataFrame columns or has no values
+WARNING - Key guider_altitude_rms_detrended not found in metrics DataFrame columns or has no values
+WARNING - Key guider_azimuth_standard_deviation not found in metrics DataFrame columns or has no values
+WARNING - Key guider_azimuth_rms_detrended not found in metrics DataFrame columns or has no values
+WARNING - Key guider_focalplane_theta_standard_deviation not found in metrics DataFrame columns or has no values
+WARNING - Key guider_focalplane_theta_rms_detrended not found in metrics DataFrame columns or has no values
+WARNING - Key guider_magnitude_standard_deviation not found in metrics DataFrame columns or has no values
+WARNING - Key guider_magnitude_rms_detrended not found in metrics DataFrame columns or has no values
+WARNING - Key guider_psf_fwhm_start not found in metrics DataFrame columns or has no values
+WARNING - Key guider_psf_fwhm_standard_deviation not found in metrics DataFrame columns or has no values
+WARNING - Key guider_psf_fwhm_rms_detrended not found in metrics DataFrame columns or has no values
+WARNING - Key guider_altitude_drift not found in metrics DataFrame columns or has no values
+WARNING - Key guider_azimuth_drift not found in metrics DataFrame columns or has no values
+WARNING - Key guider_focalplane_theta_drift not found in metrics DataFrame columns or has no values
+WARNING - Key guider_magnitude_drift not found in metrics DataFrame columns or has no values
+WARNING - Key guider_psf_fwhm_drift not found in metrics DataFrame columns or has no values
+ERROR - Error measuring tomographic seeing for dataId={instrument: 'LSSTCam', exposure: 2025111500228, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}: Stars dataframe has no data with expid=2025111500228
+Traceback (most recent call last):
+  File "/sdf/home/m/mfl/lsst/rubintv_production/python/lsst/rubintv/production/guiders.py", line 401, in callback
+    correlationAnalysis = CorrelationAnalysis(stars, guiderData.expid)
+  File "/sdf/home/m/mfl/lsst/summit_utils/python/lsst/summit/utils/guiders/seeing.py", line 235, in __init__
+    raise ValueError(f"Stars dataframe has no data with expid={expid}")
+ValueError: Stars dataframe has no data with expid=2025111500228
+ERROR - Error processing payload Payload(dataId=[{instrument: 'LSSTCam', exposure: 2025111500228, band: 'i', day_obs: 20251115, group: '2025-11-16T03:58:56.145#1', physical_filter: 'i_39'}], run=, who=ONE_OFF, pipelineGraphBytes=<the bytes>): Stars dataframe has no data with expid=2025111500228
+Traceback (most recent call last):
+  File "/sdf/home/m/mfl/lsst/rubintv_production/python/lsst/rubintv/production/watchers.py", line 91, in run
+    callback(payload)
+    ~~~~~~~~^^^^^^^^^
+  File "/sdf/home/m/mfl/lsst/rubintv_production/python/lsst/rubintv/production/guiders.py", line 412, in callback
+    raiseIf(self.doRaise, e, self.log, msg)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/sdf/home/m/mfl/lsst/rubintv_production/python/lsst/rubintv/production/predicates.py", line 91, in raiseIf
+    raise error
+  File "/sdf/home/m/mfl/lsst/rubintv_production/python/lsst/rubintv/production/guiders.py", line 401, in callback
+    correlationAnalysis = CorrelationAnalysis(stars, guiderData.expid)
+  File "/sdf/home/m/mfl/lsst/summit_utils/python/lsst/summit/utils/guiders/seeing.py", line 235, in __init__
+    raise ValueError(f"Stars dataframe has no data with expid={expid}")
+ValueError: Stars dataframe has no data with expid=2025111500228
+INFO - Processing guider data for dayObs=20251115 seqNum=226
+INFO - Loading guider data took 8.346s
+INFO - Using self-generated refcat
+WARNING - No sources detected in `buildReferenceCatalog`for R00_SG0 in 2025111500226. 
+WARNING - No sources detected in `buildReferenceCatalog`for R00_SG1 in 2025111500226. 
+WARNING - No sources detected in `buildReferenceCatalog`for R40_SG0 in 2025111500226. 
+WARNING - No sources detected in `buildReferenceCatalog`for R40_SG1 in 2025111500226. 
+WARNING - No stars found in reference catalog for R00_SG0 in 2025111500226.
+WARNING - No stars found in reference catalog for R00_SG1 in 2025111500226.
+WARNING - No stars passed quality cuts for R04_SG1 in 2025111500226. Tried 1 candidates.
+WARNING - No stars found in reference catalog for R40_SG0 in 2025111500226.
+WARNING - No stars found in reference catalog for R40_SG1 in 2025111500226.
+INFO - Creating star catalog from guider data took 9.035s
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000226.mp4 to lsstcam_guider/20251115/full_movie/000226/lsstcam_guider_full_movie_20251115_000226.mp4
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000226.mp4 to lsstcam_guider/20251115/full_movie/000226/lsstcam_guider_full_movie_20251115_000226.mp4
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Making the full frame movie took 14.852s
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000226.mp4 to lsstcam_guider/20251115/star_movie/000226/lsstcam_guider_star_movie_20251115_000226.mp4
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000226.mp4 to lsstcam_guider/20251115/star_movie/000226/lsstcam_guider_star_movie_20251115_000226.mp4
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Making the star cutout movie took 11.329s
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_centroid_alt_az_dayObs_20251115_seqNum_000226.jpg to lsstcam_guider/20251115/centroid_alt_az/000226/lsstcam_guider_centroid_alt_az_20251115_000226.jpg
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_centroid_alt_az_dayObs_20251115_seqNum_000226.jpg to lsstcam_guider/20251115/centroid_alt_az/000226/lsstcam_guider_centroid_alt_az_20251115_000226.jpg
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Making the centroid alt/az plot took 0.212s
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_flux_trend_dayObs_20251115_seqNum_000226.jpg to lsstcam_guider/20251115/flux_trend/000226/lsstcam_guider_flux_trend_20251115_000226.jpg
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_flux_trend_dayObs_20251115_seqNum_000226.jpg to lsstcam_guider/20251115/flux_trend/000226/lsstcam_guider_flux_trend_20251115_000226.jpg
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Making the flux strip plot took 0.128s
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_psf_trend_dayObs_20251115_seqNum_000226.jpg to lsstcam_guider/20251115/psf_trend/000226/lsstcam_guider_psf_trend_20251115_000226.jpg
+INFO - uploaded to local
+INFO - Mock uploadPerSeqNumPlot: /sdf/home/m/mfl/u/rubintv/plots/LSSTCam/20251115/LSSTCam_psf_trend_dayObs_20251115_seqNum_000226.jpg to lsstcam_guider/20251115/psf_trend/000226/lsstcam_guider_psf_trend_20251115_000226.jpg
+INFO - Successfully uploaded to remote using uploadPerSeqNumPlot
+INFO - Making the psf strip plot took 0.107s
+WARNING - Key az_slope_significance not found in metrics DataFrame columns or has no values
+WARNING - Key alt_slope_significance not found in metrics DataFrame columns or has no values
+WARNING - /sdf/home/m/mfl/lsst/summit_utils/python/lsst/summit/utils/guiders/seeing.py:465: RuntimeWarning: All-NaN slice encountered
+  coeffs["low"][0][0] * float(np.nanmedian(corrsDiag[:, 0]))
+
+WARNING - /sdf/home/m/mfl/lsst/summit_utils/python/lsst/summit/utils/guiders/seeing.py:466: RuntimeWarning: All-NaN slice encountered
+  + coeffs["low"][0][1] * float(np.nanmedian(corrsDiag[:, 1]))
+
+WARNING - /sdf/home/m/mfl/lsst/summit_utils/python/lsst/summit/utils/guiders/seeing.py:467: RuntimeWarning: All-NaN slice encountered
+  + coeffs["low"][1][0] * float(np.nanmedian(corrsCross[:, 0]))
+
+WARNING - /sdf/home/m/mfl/lsst/summit_utils/python/lsst/summit/utils/guiders/seeing.py:468: RuntimeWarning: All-NaN slice encountered
+  + coeffs["low"][1][1] * float(np.nanmedian(corrsCross[:, 1]))
+
+WARNING - /sdf/home/m/mfl/lsst/summit_utils/python/lsst/summit/utils/guiders/seeing.py:474: RuntimeWarning: All-NaN slice encountered
+  - coeffs["high"][0][0] * float(np.nanmedian(corrsDiag[:, 0]))
+
+WARNING - /sdf/home/m/mfl/lsst/summit_utils/python/lsst/summit/utils/guiders/seeing.py:475: RuntimeWarning: All-NaN slice encountered
+  - coeffs["high"][0][1] * float(np.nanmedian(corrsDiag[:, 1]))
+
+WARNING - /sdf/home/m/mfl/lsst/summit_utils/python/lsst/summit/utils/guiders/seeing.py:476: RuntimeWarning: All-NaN slice encountered
+  - coeffs["high"][1][0] * float(np.nanmedian(corrsCross[:, 0]))
+
+WARNING - /sdf/home/m/mfl/lsst/summit_utils/python/lsst/summit/utils/guiders/seeing.py:477: RuntimeWarning: All-NaN slice encountered
+  - coeffs["high"][1][1] * float(np.nanmedian(corrsCross[:, 1]))
+
+INFO - Skipping consDB insert at usdf_testing for LSSTCam.visit1_quicklook
+INFO - Skipping dataId={instrument: 'LSSTCam', exposure: 2025111500436, band: 'z', day_obs: 20251115, group: 'BT399_O_20251115_000001_101134', physical_filter: 'z_20'} as it's not on sky
+
+--------------------------------------------------------------------------------

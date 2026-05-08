@@ -270,6 +270,7 @@ class IUploader(ABC):
 
 class MultiUploader(IUploader):
     def __init__(self, allowNoRemote: bool = False) -> None:
+        self.log = _LOG.getChild("MultiUploader")
 
         self.localUploader = createLocalS3UploaderForSite()
         localOk = self.localUploader.checkAccess()
@@ -287,9 +288,8 @@ class MultiUploader(IUploader):
         elif remoteRequired and self.hasRemote:
             remoteOk = self.remoteUploader.checkAccess()
             if not remoteOk and not allowNoRemote:
-                self.log.error("Failed to connect to required remote - restart the service once remote us up")
+                self.log.error("Failed to connect to required remote - restart the service once remote is up")
 
-        self.log = _LOG.getChild("MultiUploader")
         self.log.info(
             f"Created MultiUploader with local: {self.localUploader}" f" and remote: {self.remoteUploader}"
         )
@@ -739,7 +739,7 @@ class S3Uploader(IUploader):
         checkInstrument(instrument)
 
         dayObsStr = dayObsIntToString(dayObs)
-        ext = os.path.splitext(filename)[1]  # contains the perdiod
+        ext = os.path.splitext(filename)[1]  # contains the period
 
         if seqNum is None:
             seqNum = "final"
@@ -760,19 +760,27 @@ class S3Uploader(IUploader):
     def uploadMetdata(
         self, channel: str, dayObs: int, filename: str  # TODO: DM-43413 change this to instrument
     ) -> str:
-        """Upload a file to a storage bucket.
+        """Upload a metadata JSON file to the per-day metadata location.
 
         Parameters
         ----------
-        destinationFilename : `str`
-            The destination filename including channel location.
-        sourceFilename : `str`
-            The full path and filename of the file to upload.
+        channel : `str`
+            The RubinTV metadata channel to upload to (must resolve to a
+            metadata plot type).
+        dayObs : `int`
+            The dayObs that the metadata is for.
+        filename : `str`
+            The full path and filename of the metadata file to upload.
+
+        Returns
+        -------
+        uploadAs : `str`
+            The destination key the metadata file was uploaded to.
 
         Raises
         ------
-        UploadError
-            Raised if uploading the file to the Bucket was not possible.
+        ValueError
+            Raised if ``channel`` does not resolve to a metadata channel.
         """
         # TODO: DM-43413 this could be tidied up to not call
         # getCameraAndPlotName by renaming the "channel" on the

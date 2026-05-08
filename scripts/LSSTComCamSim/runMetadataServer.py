@@ -19,8 +19,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
+from lsst.rubintv.production.predicates import getDoRaise
+from lsst.rubintv.production.startupChecks import checkRubinTvExternalPackages
 from lsst.rubintv.production.timedServices import TimedMetadataServer
-from lsst.rubintv.production.utils import checkRubinTvExternalPackages, getAutomaticLocationConfig, getDoRaise
 from lsst.summit.utils.utils import setupLogging
 
 setupLogging()

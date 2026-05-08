@@ -21,14 +21,14 @@
 
 from __future__ import annotations
 
-__all__ = ["SfmWorkerSet", "Step1bWorkerSet", "AosWorkerSet"]
+__all__ = ["SfmWorkerSet", "Step1bWorkerSet", "AosWorkerSet", "BacklogWorkerSet"]
 
 import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Sequence
 
+from .formatters import mapAosWorkerNumber
 from .podDefinition import PodDetails, PodFlavor
-from .utils import mapAosWorkerNumber
 
 if TYPE_CHECKING:
     from .clusterManagement import ClusterStatus, WorkerStatus
@@ -196,7 +196,7 @@ class AosWorkerSet(WorkerSet):
 
 @dataclass
 class BacklogWorkerSet(WorkerSet):
-    """A set of Step1b worker pods."""
+    """A set of backlog worker pods."""
 
     @classmethod
     def create(cls, instrument: str, count: int) -> BacklogWorkerSet:
