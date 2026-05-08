@@ -164,3 +164,11 @@ jobs:
           files: /repos/rubintv_production/coverage.xml
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
+          # Run the action from inside the in-image clone so codecov
+          # discovers the repo's file network for path-matching. We
+          # deliberately skip actions/checkout (see mypy job above),
+          # so GITHUB_WORKSPACE is empty -- without this override the
+          # network contains only the codecov binaries themselves,
+          # nothing in coverage.xml matches a "real" file, and the
+          # report is rejected as "Unusable".
+          working-directory: /repos/rubintv_production
