@@ -12,11 +12,11 @@ ENV GID=73006
 ARG drp_pipe_ref="w.2026.18"
 ARG summit_utils_ref="1485dcbc10ad7637a845ee7e9a5a29d0f1da7680"
 ARG summit_extras_ref="w.2026.18"
-ARG ts_wep_ref="5107292b"
-ARG donut_viz_ref="18ea94d"
-ARG tarts_ref="fa6acd3"
-ARG ts_ofc_ref="5245ded"
-ARG ts_config_mttcs_ref="ad3ef1b"
+ARG ts_wep_ref="99e6f775e32ac12f5ff742d5aaedb36ae9f3b9aa"
+ARG donut_viz_ref="c2d0d491ef5622917925f30a885067d0fde99f7e"
+ARG tarts_ref="fa6acd31400a278a0b9bc0e537dee5c9afd5c0de"
+ARG ts_ofc_ref="5245ded9c985c7707232f53f130a8cb6a402f7e1"
+ARG ts_config_mttcs_ref="ad3ef1b625f0ab5f276193987e4251db95161227"
 
 ARG USER=saluser
 ENV USER=${USER}
