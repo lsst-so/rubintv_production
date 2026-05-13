@@ -66,6 +66,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     rubin-libradtran \
     timm \
     peft \
+    imagemagick \
     && conda clean -afy
 
 USER saluser
