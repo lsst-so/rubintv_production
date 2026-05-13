@@ -472,7 +472,7 @@ class DayAnimator:
         channel: str,
         bucketName: str,
         historical: bool = False,
-    ):
+    ) -> None:
         self.dayObsInt = dayObsInt
         self.todaysDataDir = todaysDataDir
         self.outputImageDir = outputImageDir
