@@ -555,13 +555,13 @@ class NightReportChannel(BaseButlerChannel):
         visitSummaryTableOutputCatalog : `pandas.DataFrame` or `None`
             The visit summary table for the dayObs.
         """
-        visitSummaries = self.butler.registry.queryDatasets(
+        visitSummariesQuery = self.butler.registry.queryDatasets(
             "visitSummary",
             where="visit.day_obs=dayObs",
             bind={"dayObs": dayObs},
             collections=["LATISS/runs/quickLook/1"],
         ).expanded()
-        visitSummaries = list(visitSummaries)
+        visitSummaries = list(visitSummariesQuery)
         if len(visitSummaries) == 0:
             self.log.warning(f"Found no visitSummaries for dayObs {dayObs}")
             return None
