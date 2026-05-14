@@ -527,8 +527,6 @@ summary is the whole story.
 | [`highLevelTools.py:211`](python/lsst/rubintv/production/highLevelTools.py#L211) | Make `bucket` mandatory — trivial. |
 | [`highLevelTools.py:501`](python/lsst/rubintv/production/highLevelTools.py#L501) | `remakeStarTrackerDay` post-refactor — paired with broader StarTracker work. |
 | [`allSky.py:638`](python/lsst/rubintv/production/allSky.py#L638) | "Add wait time message" — two-line nice-to-have. |
-| [`catchupService.py:49`](python/lsst/rubintv/production/catchupService.py#L49) | Catchup for imExam/specExam/metadata — big speculative work, defer. |
-| [`catchupService.py:269`](python/lsst/rubintv/production/catchupService.py#L269) | Move auxtel movie to its own channel — defer. |
 | [`guiders.py:127`](python/lsst/rubintv/production/guiders.py#L127) | Replace `waitForIngest` with `CachingLimitedButler` — blocked on butler upgrade. |
 | [`Dockerfile:106`](Dockerfile#L106) | DM-43475 resync RA images — out-of-scope DevOps. |
 | [`tests/ci/test_rapid_analysis.py:577`](tests/ci/test_rapid_analysis.py#L577) | Double zernike count for unpaired pipelines — pair with unpaired-pipeline rollout. |

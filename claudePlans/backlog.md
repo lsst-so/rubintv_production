@@ -75,11 +75,11 @@ Needs a deployment-aware decision:
 `raiseIf` in
 [predicates.py](../python/lsst/rubintv/production/predicates.py) calls
 `sentry_sdk.capture_exception(error)` unconditionally — every swallowed
-exception (`doRaise=False`) still fires a Sentry event. There are ~33
-callsites including routine expected-failure paths (`catchupService`,
-`starTracker`, `timedServices`, `oneOffProcessing`), so the noise floor
-on Sentry may be much higher than intended. Either add an explicit
-`captureSentry: bool` arg or only capture when `doRaise=True`.
+exception (`doRaise=False`) still fires a Sentry event. There are many
+callsites including routine expected-failure paths (`starTracker`,
+`timedServices`, `oneOffProcessing`), so the noise floor on Sentry may
+be much higher than intended. Either add an explicit `captureSentry:
+bool` arg or only capture when `doRaise=True`.
 
 ### `setupSentry()` runs before `setupLogging()` in every pod script
 

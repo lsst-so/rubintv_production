@@ -81,9 +81,9 @@ extracting pure logic out of I/O wrappers.
 
 `aos.py`, `allSky.py`, `guiders.py`, `starTracker.py`, `mountTorques.py`,
 `oneOffProcessing.py`, `cleanup.py`, most of `plotting/`, and the long-running
-orchestrators in `baseChannels.py` / `catchupService.py` / `rubinTv.py`. These
-are either thin wrappers around DM Stack code or end-to-end loops where mocks
-would teach us nothing the CI doesn't.
+orchestrators in `baseChannels.py` / `rubinTv.py`. These are either thin
+wrappers around DM Stack code or end-to-end loops where mocks would teach us
+nothing the CI doesn't.
 
 ---
 
