@@ -369,8 +369,8 @@ class CalibrateCcdRunner(BaseButlerChannel):
             Data Id containing a visitId.
         """
         expIdDict = {"exposure": expRecord.id}
-        visitDataIds = self.butler.registry.queryDataIds(["visit", "detector"], dataId=expIdDict)
-        visitDataIds = list(set(visitDataIds))
+        visitDataIdsQuery = self.butler.registry.queryDataIds(["visit", "detector"], dataId=expIdDict)
+        visitDataIds = list(set(visitDataIdsQuery))
         if len(visitDataIds) == 1:
             visitDataId = visitDataIds[0]
             return visitDataId
