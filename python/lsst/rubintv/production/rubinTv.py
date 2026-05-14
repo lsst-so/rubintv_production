@@ -279,6 +279,8 @@ class CalibrateCcdRunner(BaseButlerChannel):
             nSources = len(charRes.sourceCat)
             dayObs = butlerUtils.getDayObs(expRecord)
             seqNum = butlerUtils.getSeqNum(expRecord)
+            assert dayObs is not None, f"Expected a dayObs on {expRecord}"
+            assert seqNum is not None, f"Expected a seqNum on {expRecord}"
             outputDict: dict[str, Any] = {"50-sigma source count": nSources}
             # flag as measured to color the cells in the table
             labels = {"_" + k: "measured" for k in outputDict.keys()}
