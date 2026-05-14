@@ -241,6 +241,9 @@ class CalibrateCcdRunner(BaseButlerChannel):
                 return
 
             dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
+            # updateDataId preserves the input type; expRecord.dataId is a
+            # DataCoordinate, so the result is too.
+            assert isinstance(dataId, dafButler.DataCoordinate)
             tStart = time.time()
 
             self.log.info(f"Running Image Characterization for {dataId}")
