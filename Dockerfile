@@ -67,6 +67,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     timm \
     peft \
     imagemagick \
+    fakeredis \
     && conda clean -afy
 
 USER saluser
