@@ -35,7 +35,6 @@ from lsst.summit.utils.bestEffort import BestEffortIsr
 from lsst.summit.utils.dateTime import getCurrentDayObsInt
 
 from .allSky import cleanupAllSkyIntermediates
-from .highLevelTools import remakeDay
 from .predicates import hasDayRolledOver, raiseIf
 from .uploaders import MultiUploader
 
@@ -165,82 +164,14 @@ class RubinTvBackgroundService:
             except ConflictingDefinitionError:
                 pass
 
-    def catchupMountTorques(self) -> None:
-        """Create and upload any missing mount torque plots for the current
-        dayObs.
-        """
-        self.log.info(f"Catching up mount torques for {self.dayObs}")
-        remakeDay(
-            self.locationConfig.location,
-            self.instrument,
-            "auxtel_mount_torques",
-            self.dayObs,
-            remakeExisting=False,
-            notebook=False,
-        )
-
-    def catchupMonitor(self) -> None:
-        """Create and upload any missing monitor images for the current
-        dayObs.
-        """
-        self.log.info(f"Catching up monitor images for {self.dayObs}")
-        remakeDay(
-            self.locationConfig.location,
-            self.instrument,
-            "auxtel_monitor",
-            self.dayObs,
-            remakeExisting=False,
-            notebook=False,
-        )
-
-    def catchupImageExaminer(self) -> None:
-        """Create and upload any missing imExam images for the current
-        dayObs.
-        """
-        self.log.info(f"Catching up imExam images for {self.dayObs}")
-        remakeDay(
-            self.locationConfig.location,
-            self.instrument,
-            "summit_imexam",
-            self.dayObs,
-            remakeExisting=False,
-            notebook=False,
-        )
-
-    def catchupSpectrumExaminer(self) -> None:
-        """Create and upload any missing specExam images for the current
-        dayObs.
-        """
-        self.log.info(f"Catching up specExam images for {self.dayObs}")
-        remakeDay(
-            self.locationConfig.location,
-            self.instrument,
-            "summit_specexam",
-            self.dayObs,
-            remakeExisting=False,
-            notebook=False,
-        )
-
     def runCatchup(self) -> None:
-        """Run all the catchup routines: isr, monitor images, mount torques."""
+        """Run all the catchup routines."""
         startTime = time.time()
 
-        # a little ugly but saves copy/pasting the try block 4 times
-        # we need to try each one because raising here has bad consequences
-        # on the try block in run():
-        # the day doesn't roll over, we constantly hammer on the same images...
-        for component in [
-            # self.catchupMetadata,
-            self.catchupIsrRunner,
-            self.catchupMonitor,
-            self.catchupImageExaminer,
-            self.catchupSpectrumExaminer,
-            self.catchupMountTorques,
-        ]:
-            try:
-                component()
-            except Exception as e:
-                raiseIf(self.doRaise, e, self.log)
+        try:
+            self.catchupIsrRunner()
+        except Exception as e:
+            raiseIf(self.doRaise, e, self.log)
 
         endTime = time.time()
         self.log.info(f"Catchup for all channels took {(endTime - startTime):.2f} seconds")
