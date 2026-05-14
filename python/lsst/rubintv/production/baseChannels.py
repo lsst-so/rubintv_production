@@ -32,7 +32,7 @@ from .watchers import RedisWatcher
 if TYPE_CHECKING:
     from logging import Logger
 
-    from lsst.daf.butler import Butler, DataCoordinate, DimensionRecord, LimitedButler
+    from lsst.daf.butler import Butler, DataCoordinate, LimitedButler
 
     from .locationConfig import LocationConfig
     from .podDefinition import PodDetails
@@ -146,7 +146,7 @@ class BaseButlerChannel(BaseChannel):
         self.dataProduct: str | None = None
 
     @abstractmethod
-    def callback(self, expRecord: DimensionRecord) -> None:
+    def callback(self, arg: Any, /) -> None:
         raise NotImplementedError()
 
     def _waitForDataProduct(

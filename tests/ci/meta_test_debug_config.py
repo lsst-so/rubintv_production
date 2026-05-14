@@ -1,4 +1,4 @@
-from metaToImport import TestClass
+from metaToImport import TestClass  # type: ignore[import-not-found]
 
 
 def main() -> None:

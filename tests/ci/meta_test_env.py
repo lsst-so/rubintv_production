@@ -6,7 +6,7 @@ import time
 import redis
 
 # Import the TestConfig class to access Redis configuration
-from test_rapid_analysis import TestConfig
+from test_rapid_analysis import TestConfig  # type: ignore[import-not-found]
 
 from lsst.rubintv.production.predicates import getDoRaise
 
@@ -86,7 +86,11 @@ def check_redis_connection(host: str, port: str, password: str) -> bool:
 
         # Set and read back a test key
         r.set("test_key", "test_value")
-        value = r.get("test_key").decode("utf-8")
+        raw = r.get("test_key")
+        if raw is None:
+            print("Could not set and read back a test key in Redis")
+            return False
+        value = raw.decode("utf-8")
         if value != "test_value":
             print("Could not set and read back a test key in Redis")
             return False
@@ -106,7 +110,7 @@ def stop_redis(process: subprocess.Popen | None) -> None:
         print(f"Terminated Redis process PID: {process.pid}")
 
 
-def main() -> None:
+def main() -> int:
     failures: list[str] = []  # Collect specific failures
 
     def fail(msg: str) -> None:

@@ -1,4 +1,4 @@
-from lsst.rubintv.production import MultiUploader
+from lsst.rubintv.production.uploaders import MultiUploader
 
 
 def main() -> None:

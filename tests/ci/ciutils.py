@@ -3,7 +3,7 @@ import logging
 import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import IO, Any
+from typing import TextIO
 
 
 @dataclass
@@ -56,7 +56,7 @@ class Check:
 
 
 class Tee:
-    def __init__(self, *files: IO[Any]) -> None:
+    def __init__(self, *files: TextIO) -> None:
         self.files = files
 
     def write(self, obj: str) -> None:
@@ -115,8 +115,8 @@ class LoggingTee(logging.Handler):
 @contextlib.contextmanager
 def conditional_redirect(
     tee_output: bool,
-    f_stdout: IO[Any],
-    f_stderr: IO[Any],
+    f_stdout: TextIO,
+    f_stderr: TextIO,
     log_handler: logging.Handler,
     root_logger: logging.Logger,
 ) -> Iterator[None]:
@@ -129,8 +129,8 @@ def conditional_redirect(
         for handler in existing_handlers:
             root_logger.removeHandler(handler)
 
-        sys.stdout = Tee(stdout, f_stdout)  # type: ignore[assignment]
-        sys.stderr = Tee(stderr, f_stderr)  # type: ignore[assignment]
+        sys.stdout = Tee(stdout, f_stdout)
+        sys.stderr = Tee(stderr, f_stderr)
 
         # Console handler should write to original stdout, not the tee
         console_handler = logging.StreamHandler(stdout)

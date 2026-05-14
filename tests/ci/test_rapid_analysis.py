@@ -43,6 +43,7 @@ from lsst.rubintv.production.locationConfig import LocationConfig  # noqa: E402
 from lsst.rubintv.production.predicates import getDoRaise, runningCI  # noqa: E402
 from lsst.rubintv.production.redisUtils import RedisHelper  # noqa: E402
 from lsst.rubintv.production.resources import getBasePath, listDir, rmtree  # noqa: E402
+from lsst.rubintv.production.uploaders import MultiUploader  # noqa: E402
 
 
 # Add mock uploader class for testing
@@ -148,7 +149,7 @@ def setup_mock_uploaders() -> list:
     remote_uploader_patch.start()
 
     # Create mock MultiUploader init that doesn't try to connect
-    def mock_multi_uploader_init(self: object, allowNoRemote: bool = False) -> None:
+    def mock_multi_uploader_init(self: MultiUploader, allowNoRemote: bool = False) -> None:
         self.localUploader = MockUploader()
         self.remoteUploader = MockUploader()
         self.log = logging.getLogger("MockMultiUploader")

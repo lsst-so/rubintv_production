@@ -29,6 +29,8 @@ import matplotlib.pyplot as plt
 if TYPE_CHECKING:
     import pandas as pd
 
+    from lsst.summit.utils import NightReport
+
     from ..locationConfig import LocationConfig
     from ..uploaders import MultiUploader
 
@@ -61,9 +63,9 @@ class BasePlot(ABC):
         dayObs: int,
         plotName: str,
         plotGroup: str,
-        channelName: str | None = None,
-        locationConfig: LocationConfig | None = None,
-        s3Uploader: MultiUploader | None = None,
+        channelName: str,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         self.dayObs = dayObs
         self.plotName = plotName
@@ -87,17 +89,12 @@ class BasePlot(ABC):
         return os.path.join(self.locationConfig.nightReportPath, f"{self.channelName}-{self.plotName}.png")
 
     @abstractmethod
-    def plot(self, nightReport: Any, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
+    def plot(self, *args: Any, **kwargs: Any) -> bool:
         """Subclasses must implement this method.
 
-        Parameters
-        ----------
-        nightReport : `lsst.rubintv.production.nightReport.NightReport`
-            The night report for the current night.
-        metadata : `pandas.DataFrame`
-            The front page metadata, as a dataframe.
-        ccdVisitTable : `pandas.DataFrame`
-            The visit summary table for the current day.
+        The argument list is specific to each plot — LATISS plots take
+        ``(nightReport, metadata, ccdVisitTable)``; StarTracker plots
+        take a single ``tableData`` DataFrame.
 
         Returns
         -------
@@ -158,7 +155,9 @@ class LatissPlot(BasePlot):
             s3Uploader=s3Uploader,
         )
 
-    def createAndUpload(self, nightReport: Any, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> None:
+    def createAndUpload(
+        self, nightReport: NightReport, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame
+    ) -> None:
         """Create the plot defined in ``plot`` and upload it.
 
         This is the method called by the Night Report channel to create the
@@ -173,9 +172,6 @@ class LatissPlot(BasePlot):
         ccdVisitTable : `pandas.DataFrame`
             The visit summary table for the current day.
         """
-        if self.locationConfig is None or self.s3Uploader is None:
-            raise RuntimeError("locationConfig and uploader can only be None for development work.")
-
         try:
             success = self.plot(nightReport, metadata, ccdVisitTable)
             if not success:
@@ -253,9 +249,6 @@ class StarTrackerPlot(BasePlot):
         tableData : `pandas.DataFrame`
             The data from all three StarTracker page tables, as a dataframe.
         """
-        if self.locationConfig is None or self.s3Uploader is None:
-            raise RuntimeError("locationConfig and uploader can only be None for development work.")
-
         try:
             success = self.plot(tableData)
             if not success:

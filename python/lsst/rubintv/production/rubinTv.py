@@ -34,7 +34,7 @@ import pandas as pd
 
 import lsst.daf.butler as dafButler
 import lsst.summit.utils.butlerUtils as butlerUtils
-from lsst.meas.algorithms import ReferenceObjectLoader
+from lsst.meas.algorithms import LoadReferenceObjectsConfig, ReferenceObjectLoader
 from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.pipe.base import Instrument
 from lsst.pipe.tasks.calibrate import CalibrateConfig, CalibrateTask
@@ -168,7 +168,10 @@ class CalibrateCcdRunner(BaseButlerChannel):
         self.calibrate = CalibrateTask(config=config, icSourceSchema=self.charImage.schema)
 
     def _getRefObjLoader(
-        self, refcatName: str, dataId: DataCoordinate | dict, config: Any
+        self,
+        refcatName: str,
+        dataId: DataCoordinate | dict,
+        config: LoadReferenceObjectsConfig,
     ) -> ReferenceObjectLoader:
         """Construct a referenceObjectLoader for a given refcat
 
@@ -276,7 +279,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
             nSources = len(charRes.sourceCat)
             dayObs = butlerUtils.getDayObs(expRecord)
             seqNum = butlerUtils.getSeqNum(expRecord)
-            outputDict = {"50-sigma source count": nSources}
+            outputDict: dict[str, Any] = {"50-sigma source count": nSources}
             # flag as measured to color the cells in the table
             labels = {"_" + k: "measured" for k in outputDict.keys()}
             outputDict.update(labels)

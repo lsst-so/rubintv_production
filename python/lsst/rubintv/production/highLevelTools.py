@@ -59,8 +59,11 @@ except ImportError:
     HAS_EFD_CLIENT = False
 
 if TYPE_CHECKING:
-    from lsst.summit.utils import ConsDbClient
+    from google.cloud.storage.bucket import Bucket
 
+    from lsst.summit.utils import ConsDbClient, NightReport
+
+    from .baseChannels import BaseButlerChannel
     from .uploaders import MultiUploader
 
 __all__ = [
@@ -134,7 +137,7 @@ def getDaysWithDataForPlotting(path: str) -> list[int]:
     return list(days)
 
 
-def getPlottingArgs(butler: Butler, path: str, dayObs: int) -> tuple[Any, pd.DataFrame, Any]:
+def getPlottingArgs(butler: Butler, path: str, dayObs: int) -> tuple[NightReport, pd.DataFrame, Any]:
     """Get the args which are passed to a night report plot.
 
     Checks if the data is available for the specified ``dayObs`` at the
@@ -178,7 +181,7 @@ def getPlottingArgs(butler: Butler, path: str, dayObs: int) -> tuple[Any, pd.Dat
     return report, mdTable, ccdVisitTable
 
 
-def getPlotSeqNumsForDayObs(channel: str, dayObs: int, bucket: Any = None) -> list[int]:
+def getPlotSeqNumsForDayObs(channel: str, dayObs: int, bucket: Bucket | None = None) -> list[int]:
     """Return the list of seqNums for which the plot exists in the bucket for
     the specified channel.
 
@@ -227,7 +230,7 @@ def createChannelByName(
     *,
     embargo: bool = False,
     doRaise: bool = False,
-) -> Any:
+) -> BaseButlerChannel:
     """Create a RubinTV Channel object using the name of the channel.
 
     Parameters
@@ -480,8 +483,8 @@ def pushTestImageToCurrent(channel: str, bucketName: str, duration: float = 15) 
 
     # names are like
     # 'auxtel_monitor/auxtel-monitor_dayObs_2021-07-06_seqNum_100.png'
-    days = set([b.name.split(f"{prefix}_dayObs_")[1].split("_seqNum")[0] for b in blobs])
-    days = [int(d.replace("-", "")) for d in days]  # days are like 2022-01-02
+    dayStrs = set([b.name.split(f"{prefix}_dayObs_")[1].split("_seqNum")[0] for b in blobs])
+    days = [int(d.replace("-", "")) for d in dayStrs]  # days are like 2022-01-02
     recentDay = max(days)
 
     seqNums = getPlotSeqNumsForDayObs(channel, recentDay, bucket)

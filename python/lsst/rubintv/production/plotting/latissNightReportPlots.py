@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import matplotlib.dates as md
 import matplotlib.pyplot as plt
@@ -31,6 +31,8 @@ from .nightReportPlotBase import LatissPlot
 
 if TYPE_CHECKING:
     import pandas as pd
+
+    from lsst.summit.utils import NightReport
 
     from ..locationConfig import LocationConfig
     from ..uploaders import MultiUploader
@@ -68,20 +70,18 @@ class ZeroPointPlot(LatissPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
-        s3Uploader: MultiUploader | None = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
             s3Uploader=s3Uploader,
         )
 
-    def plot(self, nightReport: Any, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
+    def plot(self, nightReport: NightReport, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
         """Create the zeropoint plot.
 
         Parameters
@@ -139,20 +139,18 @@ class SkyMeanPlot(LatissPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
-        s3Uploader: MultiUploader | None = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
             s3Uploader=s3Uploader,
         )
 
-    def plot(self, nightReport: Any, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
+    def plot(self, nightReport: NightReport, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
         """Create the zeropoint plot.
 
         Parameters
@@ -211,20 +209,18 @@ class PsfFwhmPlot(LatissPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
-        s3Uploader: MultiUploader | None = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
             s3Uploader=s3Uploader,
         )
 
-    def plot(self, nightReport: Any, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
+    def plot(self, nightReport: NightReport, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
         """Plot filter and airmass corrected PSF FWHM and DIMM seeing for the
         current report.
 
@@ -303,20 +299,18 @@ class PsfE1Plot(LatissPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
-        s3Uploader: MultiUploader | None = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
             s3Uploader=s3Uploader,
         )
 
-    def plot(self, nightReport: Any, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
+    def plot(self, nightReport: NightReport, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
         """Plot the PSF ellipticity e1 values for the current report.
 
         Parameters
@@ -377,20 +371,18 @@ class PsfE2Plot(LatissPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
-        s3Uploader: MultiUploader | None = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
             s3Uploader=s3Uploader,
         )
 
-    def plot(self, nightReport: Any, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
+    def plot(self, nightReport: NightReport, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
         """Plot the PSF ellipticity e2 values for the current report.
 
         Parameters
@@ -451,20 +443,18 @@ class SourceCountsPlot(LatissPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
-        s3Uploader: MultiUploader | None = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
             s3Uploader=s3Uploader,
         )
 
-    def plot(self, nightReport: Any, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
+    def plot(self, nightReport: NightReport, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
         """Plot source counts for sources detected above 5-sigma and sources
         used for PSF fitting.
 
@@ -520,20 +510,18 @@ class TelescopeAzElPlot(LatissPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
-        s3Uploader: MultiUploader | None = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
             s3Uploader=s3Uploader,
         )
 
-    def plot(self, nightReport: Any, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
+    def plot(self, nightReport: NightReport, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
         """Plot Telescope Azimuth and Elevation with Wind Direction and
         Wind Speed as subplots
 
@@ -620,20 +608,18 @@ class MountMotionPlot(LatissPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
-        s3Uploader: MultiUploader | None = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
             s3Uploader=s3Uploader,
         )
 
-    def plot(self, nightReport: Any, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
+    def plot(self, nightReport: NightReport, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
         """Plot the RMS mount motion vs time.
 
         Parameters
@@ -685,20 +671,18 @@ class AstrometricOffsetMeanPlot(LatissPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
-        s3Uploader: MultiUploader | None = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
             s3Uploader=s3Uploader,
         )
 
-    def plot(self, nightReport: Any, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
+    def plot(self, nightReport: NightReport, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
         """Create the astometric offset mean plot.
 
         Parameters
@@ -763,20 +747,18 @@ class MountMotionVsZenith(LatissPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
-        s3Uploader: MultiUploader | None = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
             s3Uploader=s3Uploader,
         )
 
-    def plot(self, nightReport: Any, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
+    def plot(self, nightReport: NightReport, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
         """Create the Mt Motion vs Zenith angle plot.
 
         Parameters
@@ -829,20 +811,18 @@ class SkyMeanVsSkyRms(LatissPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
-        s3Uploader: MultiUploader | None = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
             s3Uploader=s3Uploader,
         )
 
-    def plot(self, nightReport: Any, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
+    def plot(self, nightReport: NightReport, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
         """Create the Sky mean vs SkyRMS plot.
 
         Parameters
@@ -895,20 +875,18 @@ class PsfVsSkyRms(LatissPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
-        s3Uploader: MultiUploader | None = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
             s3Uploader=s3Uploader,
         )
 
-    def plot(self, nightReport: Any, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
+    def plot(self, nightReport: NightReport, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
         """Create the PSF vs SkyRMS plot.
 
         Parameters
@@ -961,20 +939,18 @@ class PsfVsZenith(LatissPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
-        s3Uploader: MultiUploader | None = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
             s3Uploader=s3Uploader,
         )
 
-    def plot(self, nightReport: Any, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
+    def plot(self, nightReport: NightReport, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
         """Create the PSF vs Zenith angle plot.
 
         Parameters
@@ -1027,20 +1003,18 @@ class PsfVsMountMotion(LatissPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
-        s3Uploader: MultiUploader | None = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
             s3Uploader=s3Uploader,
         )
 
-    def plot(self, nightReport: Any, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
+    def plot(self, nightReport: NightReport, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
         """Create the PSF vs mount motion ploot.
 
         Parameters

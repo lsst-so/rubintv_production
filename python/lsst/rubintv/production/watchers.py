@@ -25,7 +25,7 @@ __all__ = ("RedisWatcher", "ButlerWatcher")
 import logging
 import sys
 from time import perf_counter, sleep
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Callable
 
 from lsst.daf.butler import Butler
 
@@ -66,7 +66,7 @@ class RedisWatcher:
         self.log = _LOG.getChild("redisWatcher")
         self.payload: Payload | None = None  # XXX that is this for?
 
-    def run(self, callback: Callable[[Payload], None], **kwargs: Any) -> None:
+    def run(self, callback: Callable[[Payload], None]) -> None:
         """Run forever, calling ``callback`` on each most recent Payload.
 
         Parameters

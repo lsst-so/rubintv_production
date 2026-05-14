@@ -436,7 +436,7 @@ def plotGantt(
         def sec2date(x: float) -> float:
             return shutterCloseNum + x / (24 * 60 * 60)
 
-        secax = ax.secondary_xaxis("bottom", functions=(date2sec, sec2date))
+        secax = ax.secondary_xaxis("bottom", functions=(date2sec, sec2date))  # type: ignore[arg-type]
         secax.set_xlabel("Time (seconds from shutter close)")
 
     fig.tight_layout()

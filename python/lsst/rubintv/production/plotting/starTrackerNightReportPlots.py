@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     import pandas as pd
 
     from ..locationConfig import LocationConfig
+    from ..uploaders import MultiUploader
 
 # any classes added to PLOT_FACTORIES will automatically be added to the night
 # report channel, with each being replotted for each image taken.
@@ -58,15 +59,15 @@ class RaDecAltAzOverTime(StarTrackerPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
+            s3Uploader=s3Uploader,
         )
 
     def plot(self, metadata: pd.DataFrame) -> bool:
@@ -124,15 +125,15 @@ class DeltasPlot(StarTrackerPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
+            s3Uploader=s3Uploader,
         )
 
     def plot(self, metadata: pd.DataFrame) -> bool:
@@ -188,15 +189,15 @@ class SourcesAndScatters(StarTrackerPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
+            s3Uploader=s3Uploader,
         )
 
     def plot(self, metadata: pd.DataFrame) -> bool:
@@ -246,15 +247,15 @@ class AltAzCoverageTopDown(StarTrackerPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
+            s3Uploader=s3Uploader,
         )
 
     def plot(self, metadata: pd.DataFrame) -> bool:
@@ -309,9 +310,9 @@ class AltAzCoverageTopDown(StarTrackerPlot):
             "Axial coverage - azimuth (theta) vs altitude(r)" "\n 'Top down' view with zenith at center",
             va="bottom",
         )
-        ax.set_theta_zero_location("N")
-        ax.set_theta_direction(-1)
-        ax.set_rlim(0, 90)
+        ax.set_theta_zero_location("N")  # type: ignore[attr-defined]
+        ax.set_theta_direction(-1)  # type: ignore[attr-defined]
+        ax.set_rlim(0, 90)  # type: ignore[attr-defined]
 
         ax.invert_yaxis()  # puts 90 (the zenith) at the center
         return True
@@ -324,15 +325,15 @@ class CameraPointingOffset(StarTrackerPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
+            s3Uploader=s3Uploader,
         )
 
     def plot(self, metadata: pd.DataFrame) -> bool:
@@ -376,15 +377,15 @@ class InterCameraOffset(StarTrackerPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
+            s3Uploader=s3Uploader,
         )
 
     def plot(self, metadata: pd.DataFrame) -> bool:
@@ -440,15 +441,15 @@ class CameraAzAltOffset(StarTrackerPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
+            s3Uploader=s3Uploader,
         )
 
     def plot(self, metadata: pd.DataFrame) -> bool:
@@ -490,15 +491,15 @@ class CameraAzAltOffsetPosition(StarTrackerPlot):
     def __init__(
         self,
         dayObs: int,
-        locationConfig: LocationConfig | None = None,
-        uploader: Any = None,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
     ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
+            s3Uploader=s3Uploader,
         )
 
     def plot(self, metadata: pd.DataFrame) -> bool:
