@@ -23,24 +23,14 @@ from __future__ import annotations
 
 import io
 import json
-import logging
 import os
-import time
 from contextlib import redirect_stdout
 from typing import TYPE_CHECKING, Any, Callable
 
-import numpy as np
 import pandas as pd
 
-import lsst.daf.butler as dafButler
 import lsst.summit.utils.butlerUtils as butlerUtils
-from lsst.meas.algorithms import LoadReferenceObjectsConfig, ReferenceObjectLoader
-from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
-from lsst.pipe.base import Instrument
-from lsst.pipe.tasks.calibrate import CalibrateConfig, CalibrateTask
-from lsst.pipe.tasks.characterizeImage import CharacterizeImageConfig, CharacterizeImageTask
-from lsst.pipe.tasks.postprocess import ConsolidateVisitSummaryTask, MakeCcdVisitTableTask
-from lsst.utils import getPackageDir
+from lsst.pipe.tasks.postprocess import MakeCcdVisitTableTask
 
 try:
     from lsst_efd_client import EfdClient  # noqa: F401 just check we have it, but don't use it
@@ -49,7 +39,6 @@ try:
 except ImportError:
     HAS_EFD_CLIENT = False
 
-from lsst.atmospec.utils import isDispersedExp
 from lsst.summit.utils import NightReport
 from lsst.summit.utils.dateTime import getCurrentDayObsInt
 
@@ -57,19 +46,15 @@ from .baseChannels import BaseButlerChannel
 from .parsers import NumpyEncoder
 from .plotting import latissNightReportPlots
 from .predicates import hasDayRolledOver, raiseIf
-from .shardIo import writeMetadataShard
 
 if TYPE_CHECKING:
-    from lsst.daf.butler import DataCoordinate, DimensionRecord
+    from lsst.daf.butler import DimensionRecord
 
     from .locationConfig import LocationConfig
 
 __all__ = [
-    "CalibrateCcdRunner",
     "NightReportChannel",
 ]
-
-_LOG = logging.getLogger(__name__)
 
 
 def _catchPrintOutput(functionToCall: Callable, *args: Any, **kwargs: Any) -> str:
@@ -82,366 +67,6 @@ def _catchPrintOutput(functionToCall: Callable, *args: Any, **kwargs: Any) -> st
     with redirect_stdout(f):
         functionToCall(*args, **kwargs)
     return f.getvalue()
-
-
-class CalibrateCcdRunner(BaseButlerChannel):
-    """Class for running CharacterizeImageTask and CalibrateTasks on images.
-
-    Runs these tasks and writes shards with various measured quantities for
-    upload to the table.
-
-    Parameters
-    ----------
-    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
-        The locationConfig containing the path configs.
-    embargo : `bool`, optional
-        Use the embargo repo?
-    doRaise : `bool`, optional
-        If True, raise exceptions instead of logging them as warnings.
-    """
-
-    def __init__(
-        self,
-        locationConfig: LocationConfig,
-        instrument: str,
-        *,
-        embargo: bool = False,
-        doRaise: bool = False,
-    ) -> None:
-        super().__init__(
-            locationConfig=locationConfig,
-            instrument=instrument,
-            # writeable true is required to define visits
-            butler=butlerUtils.makeDefaultLatissButler(
-                extraCollections=["refcats/DM-42295"], embargo=embargo, writeable=True
-            ),
-            detectors=0,
-            watcherType="file",
-            dataProduct="quickLookExp",
-            channelName="auxtel_calibrateCcd",
-            doRaise=doRaise,
-        )
-        self.detector = 0
-        # TODO DM-37272 need to get the collection name from a central place
-        self.outputRunName = "LATISS/runs/quickLook/1"
-
-        config = CharacterizeImageConfig()
-        basicConfig = CharacterizeImageConfig()
-        obs_lsst = getPackageDir("obs_lsst")
-        config.load(os.path.join(obs_lsst, "config", "characterizeImage.py"))
-        config.load(os.path.join(obs_lsst, "config", "latiss", "characterizeImage.py"))
-        config.measurement = basicConfig.measurement
-
-        config.doApCorr = False
-        config.doDeblend = False
-        self.charImage = CharacterizeImageTask(config=config)
-
-        config = CalibrateConfig()
-        config.load(os.path.join(obs_lsst, "config", "calibrate.py"))
-        config.load(os.path.join(obs_lsst, "config", "latiss", "calibrate.py"))
-
-        # restrict to basic set of plugins
-        config.measurement.plugins.names = [
-            "base_CircularApertureFlux",
-            "base_PsfFlux",
-            "base_NaiveCentroid",
-            "base_CompensatedGaussianFlux",
-            "base_LocalBackground",
-            "base_SdssCentroid",
-            "base_SdssShape",
-            "base_Variance",
-            "base_Jacobian",
-            "base_PixelFlags",
-            "base_GaussianFlux",
-            "base_SkyCoord",
-            "base_FPPosition",
-            "base_ClassificationSizeExtendedness",
-        ]
-        config.measurement.slots.shape = "base_SdssShape"
-        config.measurement.slots.psfShape = "base_SdssShape_psf"
-        # TODO DM-37426 add some more overrides to speed up runtime
-        config.doApCorr = False
-        config.doDeblend = False
-        config.astrometry.sourceSelector["science"].doRequirePrimary = False
-        config.astrometry.sourceSelector["science"].doIsolated = False
-
-        self.calibrate = CalibrateTask(config=config, icSourceSchema=self.charImage.schema)
-
-    def _getRefObjLoader(
-        self,
-        refcatName: str,
-        dataId: DataCoordinate | dict,
-        config: LoadReferenceObjectsConfig,
-    ) -> ReferenceObjectLoader:
-        """Construct a referenceObjectLoader for a given refcat
-
-        Parameters
-        ----------
-        refcatName : `str`
-            Name of the reference catalog to load.
-        dataId : `dict` or `lsst.daf.butler.DataCoordinate`
-            DataId to determine bounding box of sources to load.
-        config : `lsst.meas.algorithms.LoadReferenceObjectsConfig`
-            Configuration for the reference object loader.
-
-        Returns
-        -------
-        loader : `lsst.meas.algorithms.ReferenceObjectLoader`
-            The object loader.
-        """
-        refsQuery = self.butler.registry.queryDatasets(refcatName, dataId=dataId).expanded()
-        # generator not guaranteed to yield in the same order every iteration
-        # therefore critical to materialize a list before iterating twice
-        refs = list(refsQuery)
-        handles = [
-            dafButler.DeferredDatasetHandle(butler=self.butler, ref=ref, parameters=None) for ref in refs
-        ]
-        dataIds = [ref.dataId for ref in refs]
-
-        loader = ReferenceObjectLoader(dataIds, handles, name=refcatName, log=self.log, config=config)
-        return loader
-
-    def doProcessImage(self, expRecord: DimensionRecord) -> bool:
-        """Determine if we should skip this image.
-
-        Should take responsibility for logging the reason for skipping.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record.
-
-        Returns
-        -------
-        doProcess : `bool`
-            True if the image should be processed, False if we should skip it.
-        """
-        if expRecord.observation_type != "science":
-            if expRecord.science_program == "CWFS" and expRecord.exposure_time == 5:
-                self.log.info("Processing 5s post-CWFS image as a special case")
-                return True
-            self.log.info(f"Skipping non-science-type exposure {expRecord.observation_type}")
-            return False
-        return True
-
-    def callback(self, expRecord: DimensionRecord) -> None:
-        """Method called on each new expRecord as it is found in the repo.
-
-        Runs on the quickLookExp and writes shards with various measured
-        quantities, as calculated by the CharacterizeImageTask and
-        CalibrateTask.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record.
-        """
-        try:
-            if not self.doProcessImage(expRecord):
-                return
-
-            dataId = butlerUtils.updateDataId(expRecord.dataId, detector=self.detector)
-            # updateDataId preserves the input type; expRecord.dataId is a
-            # DataCoordinate, so the result is too.
-            assert isinstance(dataId, dafButler.DataCoordinate)
-            tStart = time.time()
-
-            self.log.info(f"Running Image Characterization for {dataId}")
-            exp = self._waitForDataProduct(dataId)
-
-            if not exp:
-                raise RuntimeError(f"Failed to get {self.dataProduct} for {dataId}")
-
-            # TODO DM-37427 dispersed images do not have a filter and fail
-            if isDispersedExp(exp):
-                self.log.info(f"Skipping dispersed image: {dataId}")
-                return
-
-            visitDataId = self.getVisitDataId(expRecord)
-            if not visitDataId:
-                self.defineVisit(expRecord)
-                visitDataId = self.getVisitDataId(expRecord)
-            if visitDataId is None:
-                raise RuntimeError(f"Failed to find or define a visit for {expRecord}")
-
-            loader = self._getRefObjLoader(
-                self.calibrate.config.connections.astromRefCat,
-                visitDataId,
-                config=self.calibrate.config.astromRefObjLoader,
-            )
-            self.calibrate.astrometry.setRefObjLoader(loader)
-            loader = self._getRefObjLoader(
-                self.calibrate.config.connections.photoRefCat,
-                visitDataId,
-                config=self.calibrate.config.photoRefObjLoader,
-            )
-            self.calibrate.photoCal.match.setRefObjLoader(loader)
-
-            charRes = self.charImage.run(exp)
-            tCharacterize = time.time()
-            self.log.info(f"Ran characterizeImageTask in {tCharacterize - tStart:.2f} seconds")
-
-            nSources = len(charRes.sourceCat)
-            dayObs = butlerUtils.getDayObs(expRecord)
-            seqNum = butlerUtils.getSeqNum(expRecord)
-            assert dayObs is not None, f"Expected a dayObs on {expRecord}"
-            assert seqNum is not None, f"Expected a seqNum on {expRecord}"
-            outputDict: dict[str, Any] = {"50-sigma source count": nSources}
-            # flag as measured to color the cells in the table
-            labels = {"_" + k: "measured" for k in outputDict.keys()}
-            outputDict.update(labels)
-
-            mdDict = {seqNum: outputDict}
-            writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, mdDict)
-
-            calibrateRes = self.calibrate.run(
-                charRes.exposure, background=charRes.background, icSourceCat=charRes.sourceCat
-            )
-            tCalibrate = time.time()
-            self.log.info(f"Ran calibrateTask in {tCalibrate - tCharacterize:.2f} seconds")
-
-            summaryStats = calibrateRes.outputExposure.getInfo().getSummaryStats()
-            pixToArcseconds = calibrateRes.outputExposure.getWcs().getPixelScale().asArcseconds()
-            SIGMA2FWHM = np.sqrt(8 * np.log(2))
-            e1 = (summaryStats.psfIxx - summaryStats.psfIyy) / (summaryStats.psfIxx + summaryStats.psfIyy)
-            e2 = 2 * summaryStats.psfIxy / (summaryStats.psfIxx + summaryStats.psfIyy)
-
-            outputDict = {
-                "5-sigma source count": len(calibrateRes.outputCat),
-                "PSF FWHM": summaryStats.psfSigma * SIGMA2FWHM * pixToArcseconds,
-                "PSF e1": e1,
-                "PSF e2": e2,
-                "Sky mean": summaryStats.skyBg,
-                "Sky RMS": summaryStats.skyNoise,
-                "Variance plane mean": summaryStats.meanVar,
-                "PSF star count": summaryStats.nPsfStar,
-                "Astrometric bias": summaryStats.astromOffsetMean,
-                "Astrometric scatter": summaryStats.astromOffsetStd,
-                "Zeropoint": summaryStats.zeroPoint,
-            }
-
-            # flag all these as measured items to color the cell
-            labels = {"_" + k: "measured" for k in outputDict.keys()}
-            outputDict.update(labels)
-
-            mdDict = {seqNum: outputDict}
-            writeMetadataShard(self.locationConfig.auxTelMetadataShardPath, dayObs, mdDict)
-            self.log.info(f"Wrote metadata shard. Putting preliminary_visit_image for {dataId}")
-            self.clobber(calibrateRes.outputExposure, "preliminary_visit_image", visitDataId)
-            tFinal = time.time()
-            self.log.info(f"Ran characterizeImage and calibrate in {tFinal - tStart:.2f} seconds")
-
-            tVisitInfoStart = time.time()
-            self.putVisitSummary(visitDataId)
-            self.log.info(f"Put the visit info summary in {time.time() - tVisitInfoStart:.2f} seconds")
-
-        except Exception as e:
-            raiseIf(self.doRaise, e, self.log)
-
-    def defineVisit(self, expRecord: DimensionRecord) -> None:
-        """Define a visit in the registry, given an expRecord.
-
-        Note that this takes about 9ms regardless of whether it exists, so it
-        is no quicker to check than just run the define call.
-
-        NB: butler must be writeable for this to work.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record to define the visit for.
-        """
-        instrumentName = self.butler.registry.defaults.dataId["instrument"]
-        assert isinstance(instrumentName, str), f"Expected instrument name as str, got {instrumentName!r}"
-        instr = Instrument.from_string(instrumentName, self.butler.registry)
-        config = DefineVisitsConfig()
-        instr.applyConfigOverrides(DefineVisitsTask._DefaultName, config)
-
-        task = DefineVisitsTask(config=config, butler=self.butler)
-
-        task.run([{"exposure": expRecord.id}], collections=self.butler.collections)
-
-    def getVisitDataId(self, expRecord: DimensionRecord) -> DataCoordinate | None:
-        """Lookup visitId for an expRecord or dataId containing an exposureId
-        or other uniquely identifying keys such as dayObs and seqNum.
-
-        Parameters
-        ----------
-        expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record for which to get the visit id.
-
-        Returns
-        -------
-        visitDataId : `lsst.daf.butler.DataCoordinate`
-            Data Id containing a visitId.
-        """
-        expIdDict = {"exposure": expRecord.id}
-        visitDataIdsQuery = self.butler.registry.queryDataIds(["visit", "detector"], dataId=expIdDict)
-        visitDataIds = list(set(visitDataIdsQuery))
-        if len(visitDataIds) == 1:
-            visitDataId = visitDataIds[0]
-            return visitDataId
-        else:
-            self.log.warning(
-                f"Failed to find visitId for {expIdDict}, got {visitDataIds}. Do you need to run"
-                " define-visits?"
-            )
-            return None
-
-    def clobber(self, object: Any, datasetType: str, visitDataId: DataCoordinate) -> None:
-        """Put object in the butler.
-
-        If there is one already there, remove it beforehand.
-
-        Parameters
-        ----------
-        object : `object`
-            Any object to put in the butler.
-        datasetType : `str`
-            Dataset type name to put it as.
-        visitDataId : `lsst.daf.butler.DataCoordinate`
-            The data coordinate record of the exposure to put. Must contain the
-            visit id.
-        """
-        self.butler.registry.registerRun(self.outputRunName)
-        if butlerUtils.datasetExists(self.butler, datasetType, visitDataId):
-            self.log.warning(f"Overwriting existing {datasetType} for {visitDataId}")
-            dRef = self.butler.registry.findDataset(datasetType, visitDataId)
-            assert dRef is not None, f"datasetExists said {datasetType} for {visitDataId} exists"
-            self.butler.pruneDatasets([dRef], disassociate=True, unstore=True, purge=True)
-        self.butler.put(object, datasetType, dataId=visitDataId, run=self.outputRunName)
-        self.log.info(f"Put {datasetType} for {visitDataId}")
-
-    def putVisitSummary(self, visitId: DataCoordinate) -> None:
-        """Create and butler.put the visitSummary for this visit.
-
-        Note that this only works like this while we have a single detector.
-
-        Note: the whole method takes ~0.25s so it is probably not worth
-        cluttering the class with the ConsolidateVisitSummaryTask at this
-        point, though it could be done.
-
-        Parameters
-        ----------
-        visitId : `lsst.daf.butler.DataCoordinate`
-            The visit id to create and put the visitSummary for.
-        """
-        dRefs = list(
-            self.butler.registry.queryDatasets(
-                "preliminary_visit_image", dataId=visitId, collections=self.outputRunName
-            ).expanded()
-        )
-        if len(dRefs) != 1:
-            raise RuntimeError(
-                f"Found {len(dRefs)} preliminary_visit_image for {visitId} and it should have exactly 1"
-            )
-
-        ddRef = self.butler.getDeferred(dRefs[0])
-        visit = ddRef.dataId["visit"]  # this is a raw int
-        consolidateTask = ConsolidateVisitSummaryTask()  # if this ctor is slow move to class
-        expCatalog = consolidateTask._combineExposureMetadata(visit, [ddRef])
-        self.clobber(expCatalog, "preliminary_visit_summary", visitId)
-        return
 
 
 class NightReportChannel(BaseButlerChannel):
