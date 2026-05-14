@@ -258,6 +258,8 @@ class CalibrateCcdRunner(BaseButlerChannel):
             if not visitDataId:
                 self.defineVisit(expRecord)
                 visitDataId = self.getVisitDataId(expRecord)
+            if visitDataId is None:
+                raise RuntimeError(f"Failed to find or define a visit for {expRecord}")
 
             loader = self._getRefObjLoader(
                 self.calibrate.config.connections.astromRefCat,
