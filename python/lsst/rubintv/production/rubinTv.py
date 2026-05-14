@@ -46,6 +46,7 @@ from .baseChannels import BaseButlerChannel
 from .parsers import NumpyEncoder
 from .plotting import latissNightReportPlots
 from .predicates import hasDayRolledOver, raiseIf
+from .uploaders import MultiUploader
 
 if TYPE_CHECKING:
     from lsst.daf.butler import DimensionRecord
@@ -106,6 +107,7 @@ class NightReportChannel(BaseButlerChannel):
             channelName="auxtel_night_reports",
             doRaise=doRaise,
         )
+        self.s3Uploader: MultiUploader = MultiUploader()
 
         # we update when the quickLookExp lands, but we scrape for everything,
         # updating the CcdVisitSummaryTable in the hope that the
