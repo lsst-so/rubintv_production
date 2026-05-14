@@ -21,7 +21,6 @@
 
 from .allSky import *
 from .baseChannels import *
-from .catchupService import *
 from .channels import *
 from .mountTorques import *
 from .pipelineRunning import *
