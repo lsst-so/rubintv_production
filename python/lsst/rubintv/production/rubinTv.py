@@ -189,10 +189,10 @@ class CalibrateCcdRunner(BaseButlerChannel):
         loader : `lsst.meas.algorithms.ReferenceObjectLoader`
             The object loader.
         """
-        refs = self.butler.registry.queryDatasets(refcatName, dataId=dataId).expanded()
+        refsQuery = self.butler.registry.queryDatasets(refcatName, dataId=dataId).expanded()
         # generator not guaranteed to yield in the same order every iteration
         # therefore critical to materialize a list before iterating twice
-        refs = list(refs)
+        refs = list(refsQuery)
         handles = [
             dafButler.DeferredDatasetHandle(butler=self.butler, ref=ref, parameters=None) for ref in refs
         ]
