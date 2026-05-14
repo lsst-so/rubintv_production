@@ -199,8 +199,12 @@ class PodFlavorToPodTypeTestCase(lsst.utils.tests.TestCase):
     }
 
     def test_everyPodFlavorMapsToExpectedPodType(self) -> None:
+        # subTest kwargs are serialised by pytest-xdist's execnet layer
+        # when running with ``-n auto`` (as CI does), and stdlib Enum
+        # instances aren't on execnet's allowlist — so pass the enum
+        # name as a plain string instead of the enum itself.
         for flavor, expectedType in self.EXPECTED.items():
-            with self.subTest(flavor=flavor):
+            with self.subTest(flavor=flavor.name):
                 self.assertEqual(podFlavorToPodType(flavor), expectedType)
 
     def test_mappingCoversEveryPodFlavor(self) -> None:
