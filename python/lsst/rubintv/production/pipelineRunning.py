@@ -161,8 +161,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         awaitsDataProduct: str | None,
         podDetails: PodDetails,
         *,
-        doRaise=False,
-    ):
+        doRaise: bool = False,
+    ) -> None:
         # pipeline running pods don't upload directly, so deliberately do
         # not create an s3Uploader on this class.
         super().__init__(
@@ -351,7 +351,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         )
         return builder, "", {}, butlerToReturn
 
-    def getCollections(self):
+    def getCollections(self) -> list[str]:
         """Get the collections to use for this payload.
 
         Returns the current output collection (the tip of the output chain)

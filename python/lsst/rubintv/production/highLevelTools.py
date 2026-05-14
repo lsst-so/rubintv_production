@@ -102,7 +102,7 @@ class QuicklookTableResults:
     """List of on-sky seq_nums with no inputs (n_inputs is None or 0)."""
 
 
-def getDaysWithDataForPlotting(path):
+def getDaysWithDataForPlotting(path: str) -> list[int]:
     """Get a list of the days for which we have data for prototyping plots.
 
     Parameters
@@ -134,7 +134,7 @@ def getDaysWithDataForPlotting(path):
     return list(days)
 
 
-def getPlottingArgs(butler, path, dayObs):
+def getPlottingArgs(butler: Butler, path: str, dayObs: int) -> tuple[Any, pd.DataFrame, Any]:
     """Get the args which are passed to a night report plot.
 
     Checks if the data is available for the specified ``dayObs`` at the
@@ -178,7 +178,7 @@ def getPlottingArgs(butler, path, dayObs):
     return report, mdTable, ccdVisitTable
 
 
-def getPlotSeqNumsForDayObs(channel, dayObs, bucket=None):
+def getPlotSeqNumsForDayObs(channel: str, dayObs: int, bucket: Any = None) -> list[int]:
     """Return the list of seqNums for which the plot exists in the bucket for
     the specified channel.
 
@@ -220,7 +220,14 @@ def getPlotSeqNumsForDayObs(channel, dayObs, bucket=None):
     return sorted(existing)
 
 
-def createChannelByName(location, instrument, channel, *, embargo=False, doRaise=False):
+def createChannelByName(
+    location: str,
+    instrument: str,
+    channel: str,
+    *,
+    embargo: bool = False,
+    doRaise: bool = False,
+) -> Any:
     """Create a RubinTV Channel object using the name of the channel.
 
     Parameters
@@ -289,7 +296,9 @@ def createChannelByName(location, instrument, channel, *, embargo=False, doRaise
             raise ValueError(f"Unrecognized channel {channel}.")
 
 
-def remakePlotByDataId(location, instrument, channel, dataId, embargo=False):
+def remakePlotByDataId(
+    location: str, instrument: str, channel: str, dataId: dict, embargo: bool = False
+) -> None:
     """Remake the plot for the given channel for a single dataId.
     Reproduces the plot regardless of whether it exists. Raises on error.
 
@@ -316,8 +325,16 @@ def remakePlotByDataId(location, instrument, channel, dataId, embargo=False):
 
 
 def remakeDay(
-    location, instrument, channel, dayObs, *, remakeExisting=False, notebook=True, logger=None, embargo=False
-):
+    location: str,
+    instrument: str,
+    channel: str,
+    dayObs: int,
+    *,
+    remakeExisting: bool = False,
+    notebook: bool = True,
+    logger: logging.Logger | None = None,
+    embargo: bool = False,
+) -> None:
     """Remake all the plots for a given day.
 
     Currently auxtel_metadata does not pull from the bucket to check what is
@@ -403,7 +420,7 @@ def remakeDay(
         tvChannel.callback(expRecord)
 
 
-def pushTestImageToCurrent(channel, bucketName, duration=15):
+def pushTestImageToCurrent(channel: str, bucketName: str, duration: float = 15) -> None:
     """Push a test image to a channel to see if it shows up automatically.
 
     Leaves the test image in the bucket for ``duration`` seconds and then
@@ -486,16 +503,16 @@ def pushTestImageToCurrent(channel, bucketName, duration=15):
 
 def remakeStarTrackerDay(
     *,
-    dayObs,
-    rootDataPath,
-    outputRoot,
-    metadataRoot,
-    astrometryNetRefCatRoot,
-    wide,
-    remakeExisting=False,
-    logger=None,
-    forceMaxNum=None,
-):
+    dayObs: int,
+    rootDataPath: str,
+    outputRoot: str,
+    metadataRoot: str,
+    astrometryNetRefCatRoot: str,
+    wide: bool,
+    remakeExisting: bool = False,
+    logger: logging.Logger | None = None,
+    forceMaxNum: int | None = None,
+) -> None:
     """Remake all the star tracker plots for a given day.
 
     TODO: This needs updating post-refactor, but can wait for another ticket

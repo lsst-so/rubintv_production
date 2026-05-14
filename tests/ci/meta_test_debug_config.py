@@ -1,7 +1,7 @@
 from metaToImport import TestClass
 
 
-def main():
+def main() -> None:
     test = TestClass()
     success = test.someFunction()
     if not success:

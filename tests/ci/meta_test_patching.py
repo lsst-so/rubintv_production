@@ -1,7 +1,7 @@
 from lsst.summit.utils.dateTime import getCurrentDayObsInt
 
 
-def main():
+def main() -> None:
     # Check if the function is patched correctly
     mocked_value = getCurrentDayObsInt()
     print(f"Mock function output via patched getCurrentDayObsInt: {mocked_value}")

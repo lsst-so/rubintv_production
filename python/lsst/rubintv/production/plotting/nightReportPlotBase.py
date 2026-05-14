@@ -22,8 +22,15 @@
 import logging
 import os
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
+
+if TYPE_CHECKING:
+    import pandas as pd
+
+    from ..locationConfig import LocationConfig
+    from ..uploaders import MultiUploader
 
 __all__ = ["BasePlot", "LatissPlot", "StarTrackerPlot"]
 
@@ -51,13 +58,13 @@ class BasePlot(ABC):
     def __init__(
         self,
         *,
-        dayObs,
-        plotName,
-        plotGroup,
-        channelName=None,
-        locationConfig=None,
-        s3Uploader=None,
-    ):
+        dayObs: int,
+        plotName: str,
+        plotGroup: str,
+        channelName: str | None = None,
+        locationConfig: LocationConfig | None = None,
+        s3Uploader: MultiUploader | None = None,
+    ) -> None:
         self.dayObs = dayObs
         self.plotName = plotName
         self.plotGroup = plotGroup
@@ -66,7 +73,7 @@ class BasePlot(ABC):
         self.s3Uploader = s3Uploader
         self.log = logging.getLogger(f"lsst.rubintv.production.nightReportPlots.{plotName}")
 
-    def getSaveFilename(self):
+    def getSaveFilename(self) -> str:
         """Get the filename to save the plot to.
 
         Calculated from the locationConfig, the channel name and the plot name.
@@ -80,7 +87,7 @@ class BasePlot(ABC):
         return os.path.join(self.locationConfig.nightReportPath, f"{self.channelName}-{self.plotName}.png")
 
     @abstractmethod
-    def plot(self, nightReport, metadata, ccdVisitTable):
+    def plot(self, nightReport: Any, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> bool:
         """Subclasses must implement this method.
 
         Parameters
@@ -100,7 +107,7 @@ class BasePlot(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def createAndUpload(self, *args):
+    def createAndUpload(self, *args: Any) -> None:
         """Create the plot defined in ``plot`` and upload it.
 
         This is the method called by the Night Report channel to create the
@@ -135,12 +142,12 @@ class LatissPlot(BasePlot):
     def __init__(
         self,
         *,
-        dayObs,
-        plotName,
-        plotGroup,
-        locationConfig,
-        s3Uploader,
-    ):
+        dayObs: int,
+        plotName: str,
+        plotGroup: str,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
+    ) -> None:
 
         super().__init__(
             dayObs=dayObs,
@@ -151,7 +158,7 @@ class LatissPlot(BasePlot):
             s3Uploader=s3Uploader,
         )
 
-    def createAndUpload(self, nightReport, metadata, ccdVisitTable):
+    def createAndUpload(self, nightReport: Any, metadata: pd.DataFrame, ccdVisitTable: pd.DataFrame) -> None:
         """Create the plot defined in ``plot`` and upload it.
 
         This is the method called by the Night Report channel to create the
@@ -219,12 +226,12 @@ class StarTrackerPlot(BasePlot):
     def __init__(
         self,
         *,
-        dayObs,
-        plotName,
-        plotGroup,
-        locationConfig,
-        s3Uploader,
-    ):
+        dayObs: int,
+        plotName: str,
+        plotGroup: str,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
+    ) -> None:
 
         super().__init__(
             dayObs=dayObs,
@@ -235,7 +242,7 @@ class StarTrackerPlot(BasePlot):
             s3Uploader=s3Uploader,
         )
 
-    def createAndUpload(self, tableData):
+    def createAndUpload(self, tableData: pd.DataFrame) -> None:
         """Create the plot defined in ``plot`` and upload it.
 
         This is the method called by the Night Report channel to create the

@@ -1853,7 +1853,7 @@ class CameraControlConfig:
         """
         return sum(self._detectorStates.values())
 
-    def getEnabledDetIds(self, excludeCwfs=False) -> list[int]:
+    def getEnabledDetIds(self, excludeCwfs: bool = False) -> list[int]:
         """Get the detectorIds of the enabled sensors.
 
         Returns

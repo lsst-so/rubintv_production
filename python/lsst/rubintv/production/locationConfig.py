@@ -41,6 +41,7 @@ import os
 import sys
 from dataclasses import dataclass
 from functools import cached_property
+from typing import Any
 
 import yaml
 
@@ -129,11 +130,11 @@ class LocationConfig:
             raise RuntimeError(f"Could not find file {filename} at {expanded}")
 
     @cached_property
-    def _config(self):
+    def _config(self) -> dict[str, Any]:
         return _loadConfigFile(self.location)
 
     @cached_property
-    def dimensionUniverseFile(self):
+    def dimensionUniverseFile(self) -> str:
         file = self._config["dimensionUniverseFile"]
         return file
 
@@ -143,69 +144,69 @@ class LocationConfig:
         return self._config["scratchPath"]
 
     @cached_property
-    def auxtelButlerPath(self):
+    def auxtelButlerPath(self) -> str:
         return self._config["auxtelButlerPath"]
 
     @cached_property
-    def ts8ButlerPath(self):
+    def ts8ButlerPath(self) -> str:
         file = self._config["ts8ButlerPath"]
         self._checkFile(file)
         return file
 
     @cached_property
-    def botButlerPath(self):
+    def botButlerPath(self) -> str:
         file = self._config["botButlerPath"]
         self._checkFile(file)
         return file
 
     @cached_property
-    def metadataPath(self):
+    def metadataPath(self) -> str:
         directory = self._config["metadataPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
-    def auxTelMetadataPath(self):
+    def auxTelMetadataPath(self) -> str:
         directory = self._config["auxTelMetadataPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
-    def auxTelMetadataShardPath(self):
+    def auxTelMetadataShardPath(self) -> str:
         directory = self._config["auxTelMetadataShardPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
-    def ts8MetadataPath(self):
+    def ts8MetadataPath(self) -> str:
         directory = self._config["ts8MetadataPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
-    def ts8MetadataShardPath(self):
+    def ts8MetadataShardPath(self) -> str:
         directory = self._config["ts8MetadataShardPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
-    def plotPath(self):
+    def plotPath(self) -> str:
         directory = self._config["plotPath"]
         self._checkDir(directory)
         return directory
 
     @cached_property
-    def bucketName(self):
+    def bucketName(self) -> str:
         if self._config["bucketName"] == "":
             raise RuntimeError("Bucket name not set in config file")
         return self._config["bucketName"]
 
     @cached_property
-    def binning(self):
+    def binning(self) -> int:
         return self._config["binning"]
 
     @cached_property
-    def consDBURL(self):
+    def consDBURL(self) -> str:
         return self._config["consDBURL"]
 
     # start of the summit migration stuff:
@@ -470,7 +471,7 @@ def getAutomaticLocationConfig() -> LocationConfig:
     return LocationConfig(location.lower())
 
 
-def _loadConfigFile(site: str) -> dict[str, str]:
+def _loadConfigFile(site: str) -> dict[str, Any]:
     """Get the site configuration, given a site name.
 
     Parameters

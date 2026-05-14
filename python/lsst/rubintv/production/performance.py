@@ -263,7 +263,7 @@ def makeWhere(task: TaskNode, record: DimensionRecord) -> str:
         return f"exposure={record.id}"
 
 
-def getTaskTime(logs: ButlerLogRecords, method="first-last") -> float:
+def getTaskTime(logs: ButlerLogRecords, method: str = "first-last") -> float:
     """
     Calculate the time taken by a task from its logs.
 
@@ -320,9 +320,9 @@ def plotGantt(
     taskResults: list[TaskResult],
     ignoreTasks: list[str] | None = None,
     timings: list[str] | None = None,
-    figsize=(10, 6),
-    barHeight=0.6,
-):
+    figsize: tuple[float, float] = (10, 6),
+    barHeight: float = 0.6,
+) -> Figure:
     """
     Plot a Gantt chart of task results.
 
@@ -430,10 +430,10 @@ def plotGantt(
             ax.axvline(x=t, color="gray", linestyle=":", alpha=0.4, lw=0.5)
             t += stepDays
 
-        def date2sec(x):
+        def date2sec(x: float) -> float:
             return (x - shutterCloseNum) * 24 * 60 * 60
 
-        def sec2date(x):
+        def sec2date(x: float) -> float:
             return shutterCloseNum + x / (24 * 60 * 60)
 
         secax = ax.secondary_xaxis("bottom", functions=(date2sec, sec2date))
@@ -814,7 +814,7 @@ class PerformanceBrowser:
         for who in people:
             self.taskDict.update(self.pipelines[who].getTasks())
 
-    def loadData(self, expRecord: DimensionRecord, reload=False) -> None:
+    def loadData(self, expRecord: DimensionRecord, reload: bool = False) -> None:
         """
         Load data for the given exposure record.
 
@@ -924,7 +924,7 @@ class PerformanceBrowser:
         fig = plotGantt(expRecord, taskResults, ignoreTasks=ignoreTasks, timings=textItems)
         return fig
 
-    def printLogs(self, expRecord: DimensionRecord, full=False, reload=False) -> None:
+    def printLogs(self, expRecord: DimensionRecord, full: bool = False, reload: bool = False) -> None:
         """
         Print logs for the given exposure record.
 
@@ -1052,7 +1052,7 @@ class PerformanceMonitor(BaseButlerChannel):
         instrument: str,
         podDetails: PodDetails,
         *,
-        doRaise=False,
+        doRaise: bool = False,
     ) -> None:
         super().__init__(
             locationConfig=locationConfig,
@@ -1309,7 +1309,7 @@ def getButlerIngestTimes(butler: Butler, record: DimensionRecord) -> dict[int, f
 def getIngestTimingOods(
     client: EfdClient,
     expRecord: DimensionRecord,
-    key="private_kafkaStamp",
+    key: str = "private_kafkaStamp",
 ) -> tuple[dict[int, float], dict[int, float]]:
     """
     Get ingestion times for wavefront and science sensors, as seconds since the
@@ -2081,7 +2081,7 @@ def makeNightSummaryPlot(
     axHist.grid(False)
 
     # --- modal-bin markers + labels (sorted by value; top = largest) ---
-    def modeFromHist(counts, binEdges):
+    def modeFromHist(counts: np.ndarray, binEdges: np.ndarray) -> float:
         maxIdx = int(np.argmax(counts))
         return float((binEdges[maxIdx] + binEdges[maxIdx + 1]) / 2)
 

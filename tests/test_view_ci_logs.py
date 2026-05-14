@@ -401,7 +401,7 @@ class TestMemory(lsst.utils.tests.MemoryTestCase):
     pass
 
 
-def setup_module(module):  # type: ignore[no-untyped-def]
+def setup_module(module: object) -> None:
     lsst.utils.tests.init()
 
 

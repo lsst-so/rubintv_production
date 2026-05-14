@@ -47,7 +47,7 @@ class TestS3Uploader(unittest.TestCase):
         self._mock_aws.stop()
 
     @staticmethod
-    def get_file_content(filePath) -> str:
+    def get_file_content(filePath: str) -> str:
         content = ""
         with open(filePath, "r") as file:
             content = file.read()
@@ -120,7 +120,7 @@ class TestS3Uploader(unittest.TestCase):
             "Tried to upload non-metadata file to metadata channel:" + f"{channel}, {filename}",
         )
 
-    def is_correct_check_uploaded_file(self, uploadedFile, file_content) -> None:
+    def is_correct_check_uploaded_file(self, uploadedFile: str, file_content: str) -> None:
         """Support method to check that the file uploaded is correct"""
         # Verify that the file was uploaded to the S3 bucket
         with tempfile.NamedTemporaryFile() as temp_file:

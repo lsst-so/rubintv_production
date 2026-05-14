@@ -1,7 +1,7 @@
 import time
 
 
-def main():
+def main() -> None:
     while True:
         time.sleep(1)
 

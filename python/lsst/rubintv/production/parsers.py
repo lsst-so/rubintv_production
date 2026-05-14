@@ -39,6 +39,8 @@ import numpy as np
 from lsst.daf.butler import DimensionConfig, DimensionRecord, DimensionUniverse
 
 if TYPE_CHECKING:
+    from lsst.daf.butler import Butler
+
     from .locationConfig import LocationConfig
 
 
@@ -53,7 +55,7 @@ __all__ = [
 
 
 class NumpyEncoder(json.JSONEncoder):
-    def default(self, obj):
+    def default(self, obj: Any) -> Any:
         if isinstance(obj, np.integer):
             return int(obj)
         elif isinstance(obj, np.floating):
@@ -144,7 +146,7 @@ def safeJsonOpen(filename: str, timeout: float = 0.3) -> Any:
     raise RuntimeError(f"Failed to load data from {filename} after {timeout}s")
 
 
-def writeDimensionUniverseFile(butler, locationConfig: LocationConfig) -> None:
+def writeDimensionUniverseFile(butler: Butler, locationConfig: LocationConfig) -> None:
     """Run on butler watcher startup.
 
     This assumes that all repos in a give location are on the same version, but

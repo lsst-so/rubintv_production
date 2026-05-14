@@ -163,7 +163,7 @@ class StarTrackerWatcher:
 
     cadence = 1  # in seconds
 
-    def __init__(self, *, rootDataPath: str, camera: StarTrackerCamera):
+    def __init__(self, *, rootDataPath: str, camera: StarTrackerCamera) -> None:
         self.rootDataPath = rootDataPath
         self.camera = camera
         self.s3Uploader = MultiUploader()

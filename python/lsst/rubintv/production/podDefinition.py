@@ -63,7 +63,7 @@ class PodFlavor(Enum):
     HEAD_NODE = auto()
 
     @classmethod
-    def validate_values(cls):
+    def validate_values(cls) -> None:
         for item in cls:
             if "-" in item.name:
                 raise ValueError(f"Invalid PodFlavor: value with dash: {item.name}")
@@ -152,12 +152,12 @@ class PodDetails:
             depth=self.depth,
         )
 
-    def __lt__(self, other) -> bool:
+    def __lt__(self, other: object) -> bool:
         if not isinstance(other, PodDetails):
             raise NotImplementedError(f"Cannot compare PodDetails with {type(other)}")
         return self.queueName < other.queueName
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"PodDetails({self.instrument}-{self.podFlavor}, depth={self.depth},"
             f" detNum={self.detectorNumber})"
@@ -170,7 +170,7 @@ class PodDetails:
         # here anyway.
         return hash(self.queueName)
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, PodDetails):
             raise NotImplementedError(f"Cannot compare PodDetails with {type(other)}")
         return all(

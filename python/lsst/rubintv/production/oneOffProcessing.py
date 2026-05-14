@@ -127,7 +127,7 @@ class OneOffProcessor(BaseButlerChannel):
         shardsDirectory: str,
         processingStage: str,
         *,
-        doRaise=False,
+        doRaise: bool = False,
     ) -> None:
         super().__init__(
             locationConfig=locationConfig,
@@ -814,7 +814,7 @@ class OneOffProcessor(BaseButlerChannel):
 
 class OneOffProcessorAuxTel(OneOffProcessor):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
     def runAuxTelProcessing(self, exp: Exposure, expRecord: DimensionRecord) -> None:

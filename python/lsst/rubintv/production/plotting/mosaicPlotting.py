@@ -75,7 +75,7 @@ class Plotter:
         locationConfig: LocationConfig,
         instrument: str,
         podDetails: PodDetails,
-        doRaise=False,
+        doRaise: bool = False,
     ) -> None:
         self.locationConfig: LocationConfig = locationConfig
         self.butler: Butler = butler

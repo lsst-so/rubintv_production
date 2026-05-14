@@ -67,7 +67,7 @@ from lsst.rubintv.production.redisKeys import (
 from lsst.rubintv.production.redisUtils import RedisHelper
 
 
-def _makeFakeRedis(*args, **kwargs) -> fakeredis.FakeStrictRedis:
+def _makeFakeRedis(*args: object, **kwargs: object) -> fakeredis.FakeStrictRedis:
     """Drop-in for `redis.Redis(...)` that returns a fresh fakeredis client.
 
     Ignores the host/password/port the real constructor takes — a
@@ -645,7 +645,7 @@ class TestMemory(lsst.utils.tests.MemoryTestCase):
     pass
 
 
-def setup_module(module):
+def setup_module(module: object) -> None:
     lsst.utils.tests.init()
 
 

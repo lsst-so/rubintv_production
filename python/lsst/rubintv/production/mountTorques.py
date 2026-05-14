@@ -39,6 +39,7 @@ except ImportError:
 if TYPE_CHECKING:
     from logging import Logger
 
+    import pandas as pd
     from lsst_efd_client import EfdClient
     from matplotlib.pyplot import Figure
 
@@ -56,7 +57,7 @@ MOUNT_IMAGE_WARNING_LEVEL = 0.25  # this determines the colouring of the cells i
 MOUNT_IMAGE_BAD_LEVEL = 0.4  # and red for this
 
 
-def _getEfdData(client: EfdClient, dataSeries: str, startTime: Time, endTime: Time):
+def _getEfdData(client: EfdClient, dataSeries: str, startTime: Time, endTime: Time) -> pd.DataFrame:
     """A synchronous warpper for geting the data from the EFD.
 
     This exists so that the top level functions don't all have to be async def.

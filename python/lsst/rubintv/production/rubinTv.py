@@ -27,7 +27,7 @@ import logging
 import os
 import time
 from contextlib import redirect_stdout
-from typing import Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import pandas as pd
@@ -59,6 +59,11 @@ from .plotting import latissNightReportPlots
 from .predicates import hasDayRolledOver, raiseIf
 from .shardIo import writeMetadataShard
 
+if TYPE_CHECKING:
+    from lsst.daf.butler import DataCoordinate, DimensionRecord
+
+    from .locationConfig import LocationConfig
+
 __all__ = [
     "CalibrateCcdRunner",
     "NightReportChannel",
@@ -67,7 +72,7 @@ __all__ = [
 _LOG = logging.getLogger(__name__)
 
 
-def _catchPrintOutput(functionToCall: Callable, *args, **kwargs) -> str:
+def _catchPrintOutput(functionToCall: Callable, *args: Any, **kwargs: Any) -> str:
     """Capture stdout from a function call into a string.
 
     Used by `NightReportChannel` to grab the printed output of helper
@@ -95,7 +100,14 @@ class CalibrateCcdRunner(BaseButlerChannel):
         If True, raise exceptions instead of logging them as warnings.
     """
 
-    def __init__(self, locationConfig, instrument, *, embargo=False, doRaise=False):
+    def __init__(
+        self,
+        locationConfig: LocationConfig,
+        instrument: str,
+        *,
+        embargo: bool = False,
+        doRaise: bool = False,
+    ) -> None:
         super().__init__(
             locationConfig=locationConfig,
             instrument=instrument,
@@ -155,7 +167,9 @@ class CalibrateCcdRunner(BaseButlerChannel):
 
         self.calibrate = CalibrateTask(config=config, icSourceSchema=self.charImage.schema)
 
-    def _getRefObjLoader(self, refcatName, dataId, config):
+    def _getRefObjLoader(
+        self, refcatName: str, dataId: DataCoordinate | dict, config: Any
+    ) -> ReferenceObjectLoader:
         """Construct a referenceObjectLoader for a given refcat
 
         Parameters
@@ -184,7 +198,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
         loader = ReferenceObjectLoader(dataIds, handles, name=refcatName, log=self.log, config=config)
         return loader
 
-    def doProcessImage(self, expRecord):
+    def doProcessImage(self, expRecord: DimensionRecord) -> bool:
         """Determine if we should skip this image.
 
         Should take responsibility for logging the reason for skipping.
@@ -207,7 +221,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
             return False
         return True
 
-    def callback(self, expRecord):
+    def callback(self, expRecord: DimensionRecord) -> None:
         """Method called on each new expRecord as it is found in the repo.
 
         Runs on the quickLookExp and writes shards with various measured
@@ -314,7 +328,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
         except Exception as e:
             raiseIf(self.doRaise, e, self.log)
 
-    def defineVisit(self, expRecord):
+    def defineVisit(self, expRecord: DimensionRecord) -> None:
         """Define a visit in the registry, given an expRecord.
 
         Note that this takes about 9ms regardless of whether it exists, so it
@@ -337,7 +351,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
 
         task.run([{"exposure": expRecord.id}], collections=self.butler.collections)
 
-    def getVisitDataId(self, expRecord):
+    def getVisitDataId(self, expRecord: DimensionRecord) -> DataCoordinate | None:
         """Lookup visitId for an expRecord or dataId containing an exposureId
         or other uniquely identifying keys such as dayObs and seqNum.
 
@@ -364,7 +378,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
             )
             return None
 
-    def clobber(self, object, datasetType, visitDataId):
+    def clobber(self, object: Any, datasetType: str, visitDataId: DataCoordinate) -> None:
         """Put object in the butler.
 
         If there is one already there, remove it beforehand.
@@ -387,7 +401,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
         self.butler.put(object, datasetType, dataId=visitDataId, run=self.outputRunName)
         self.log.info(f"Put {datasetType} for {visitDataId}")
 
-    def putVisitSummary(self, visitId):
+    def putVisitSummary(self, visitId: DataCoordinate) -> None:
         """Create and butler.put the visitSummary for this visit.
 
         Note that this only works like this while we have a single detector.
@@ -437,7 +451,15 @@ class NightReportChannel(BaseButlerChannel):
         If True, raise exceptions instead of logging them as warnings.
     """
 
-    def __init__(self, locationConfig, instrument, *, dayObs=None, embargo=False, doRaise=False):
+    def __init__(
+        self,
+        locationConfig: LocationConfig,
+        instrument: str,
+        *,
+        dayObs: int | None = None,
+        embargo: bool = False,
+        doRaise: bool = False,
+    ) -> None:
         super().__init__(
             locationConfig=locationConfig,
             instrument=instrument,
@@ -473,7 +495,7 @@ class NightReportChannel(BaseButlerChannel):
         else:  # otherwise start a new report from scratch
             self.report = NightReport(self.butler, self.dayObs)
 
-    def finalizeDay(self):
+    def finalizeDay(self) -> None:
         """Perform the end of day actions and roll the day over.
 
         Creates a final version of the plots at the end of the day, starts a
@@ -490,10 +512,10 @@ class NightReportChannel(BaseButlerChannel):
         self.report = NightReport(self.butler, self.dayObs)
         return
 
-    def getSaveFile(self):
+    def getSaveFile(self) -> str:
         return os.path.join(self.locationConfig.nightReportPath, f"report_{self.dayObs}.pickle")
 
-    def getMetadataTableContents(self):
+    def getMetadataTableContents(self) -> pd.DataFrame | None:
         """Get the measured data for the current night.
 
         Returns
@@ -517,7 +539,7 @@ class NightReportChannel(BaseButlerChannel):
 
         return mdTable
 
-    def createCcdVisitTable(self, dayObs):
+    def createCcdVisitTable(self, dayObs: int) -> pd.DataFrame | None:
         """Make the consolidated visit summary table for the given dayObs.
 
         Parameters
@@ -546,7 +568,7 @@ class NightReportChannel(BaseButlerChannel):
         table = task.run(ddRefs)
         return table.outputCatalog
 
-    def createPlotsAndUpload(self):
+    def createPlotsAndUpload(self) -> None:
         """Create and upload all plots defined in nightReportPlots.
 
         All plots defined in __all__ in nightReportPlots are discovered,
@@ -577,7 +599,7 @@ class NightReportChannel(BaseButlerChannel):
                 self.log.exception(f"Failed to create plot {plotName}")
                 continue
 
-    def callback(self, expRecord, doCheckDay=True):
+    def callback(self, expRecord: DimensionRecord, doCheckDay: bool = True) -> None:
         """Method called on each new expRecord as it is found in the repo.
 
         Parameters

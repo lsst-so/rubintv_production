@@ -11,7 +11,7 @@ from test_rapid_analysis import TestConfig
 from lsst.rubintv.production.predicates import getDoRaise
 
 
-def check_redis_process(expect_running=False):
+def check_redis_process(expect_running: bool = False) -> bool:
     """Check if redis-server is running using pgrep."""
     try:
         # Run pgrep to find redis-server processes
@@ -35,7 +35,7 @@ def check_redis_process(expect_running=False):
         return False
 
 
-def start_test_redis():
+def start_test_redis() -> tuple[subprocess.Popen, str, str, str]:
     """Start a Redis server for testing."""
     # Get Redis configuration
     config = TestConfig()
@@ -74,7 +74,7 @@ def start_test_redis():
     return redis_process, host, port, password
 
 
-def check_redis_connection(host, port, password):
+def check_redis_connection(host: str, port: str, password: str) -> bool:
     """Check if Redis connection works."""
     try:
         r = redis.Redis(host=host, port=int(port), password=password)
@@ -98,7 +98,7 @@ def check_redis_connection(host, port, password):
         return False
 
 
-def stop_redis(process):
+def stop_redis(process: subprocess.Popen | None) -> None:
     """Stop the Redis server."""
     if process:
         process.terminate()
@@ -106,7 +106,7 @@ def stop_redis(process):
         print(f"Terminated Redis process PID: {process.pid}")
 
 
-def main():
+def main() -> None:
     failures: list[str] = []  # Collect specific failures
 
     def fail(msg: str) -> None:

@@ -32,7 +32,7 @@ from .watchers import RedisWatcher
 if TYPE_CHECKING:
     from logging import Logger
 
-    from lsst.daf.butler import Butler, DataCoordinate, LimitedButler
+    from lsst.daf.butler import Butler, DataCoordinate, DimensionRecord, LimitedButler
 
     from .locationConfig import LocationConfig
     from .podDefinition import PodDetails
@@ -81,7 +81,7 @@ class BaseChannel(ABC):
         self.doRaise: bool = doRaise
 
     @abstractmethod
-    def callback(self, arg, /):
+    def callback(self, arg: Any, /) -> None:
         """The callback function, called as each new value of arg is found.
 
         ``arg`` is usually an exposure record, but can be, for example, a
@@ -146,7 +146,7 @@ class BaseButlerChannel(BaseChannel):
         self.dataProduct: str | None = None
 
     @abstractmethod
-    def callback(self, expRecord):
+    def callback(self, expRecord: DimensionRecord) -> None:
         raise NotImplementedError()
 
     def _waitForDataProduct(

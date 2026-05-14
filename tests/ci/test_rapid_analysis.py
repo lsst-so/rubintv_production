@@ -22,7 +22,7 @@ import yaml
 
 
 # Disable logging.basicConfig to avoid interference with log capture
-def do_nothing(*args, **kwargs):
+def do_nothing(*args: object, **kwargs: object) -> None:
     pass
 
 
@@ -50,24 +50,31 @@ class MockUploader:
     """A mock uploader that doesn't actually attempt to upload files but
     records calls."""
 
-    def __init__(self, *args, **kwargs):
-        self.uploaded_files = []
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        self.uploaded_files: list[tuple[str, str]] = []
         self.log = logging.getLogger("MockUploader")
         self.log.info("Created MockUploader")
 
-    def checkAccess(self, *args, **kwargs):
+    def checkAccess(self, *args: object, **kwargs: object) -> bool:
         """Always report access as successful."""
         return True
 
-    def upload(self, destinationFilename, sourceFilename):
+    def upload(self, destinationFilename: str, sourceFilename: str) -> str:
         """Record attempted upload without actually uploading."""
         self.uploaded_files.append((destinationFilename, sourceFilename))
         self.log.info(f"Mock upload: {sourceFilename} to {destinationFilename}")
         return destinationFilename
 
     def uploadNightReportData(
-        self, instrument, dayObs, filename, uploadAs, plotGroup=None, *, isMetadataFile=False
-    ):
+        self,
+        instrument: str,
+        dayObs: int,
+        filename: str,
+        uploadAs: str,
+        plotGroup: str | None = None,
+        *,
+        isMetadataFile: bool = False,
+    ) -> str:
         """Mock implementation of uploadNightReportData."""
         dayObsStr = str(dayObs)
         baseName = f"{instrument}/{dayObsStr}/night_report"
@@ -81,7 +88,9 @@ class MockUploader:
         self.log.info(f"Mock uploadNightReportData: {filename} to {destName}")
         return destName
 
-    def uploadPerSeqNumPlot(self, instrument, plotName, dayObs, seqNum, filename):
+    def uploadPerSeqNumPlot(
+        self, instrument: str, plotName: str, dayObs: int, seqNum: int, filename: str
+    ) -> str:
         """Mock implementation of uploadPerSeqNumPlot."""
         dayObsStr = str(dayObs)
         paddedSeqNum = f"{seqNum:06}"
@@ -94,7 +103,7 @@ class MockUploader:
         self.log.info(f"Mock uploadPerSeqNumPlot: {filename} to {uploadAs}")
         return uploadAs
 
-    def uploadMovie(self, instrument, dayObs, filename, seqNum=None):
+    def uploadMovie(self, instrument: str, dayObs: int, filename: str, seqNum: int | None = None) -> str:
         """Mock implementation of uploadMovie."""
         dayObsStr = str(dayObs)
         ext = os.path.splitext(filename)[1]
@@ -106,11 +115,11 @@ class MockUploader:
         self.log.info(f"Mock uploadMovie: {filename} to {uploadAs}")
         return uploadAs
 
-    def uploadAllSkyStill(self, *args, **kwargs):
+    def uploadAllSkyStill(self, *args: object, **kwargs: object) -> str:
         """Mock implementation of uploadAllSkyStill."""
         return "mock_all_sky_still_path"
 
-    def uploadMetdata(self, channel, dayObs, filename):
+    def uploadMetdata(self, channel: str, dayObs: int, filename: str) -> str:
         """Mock implementation of uploadMetdata."""
         dayObsStr = str(dayObs)
         uploadAs = f"{channel}/{dayObsStr}/metadata.json"
@@ -118,14 +127,14 @@ class MockUploader:
         self.log.info(f"Mock uploadMetdata: {filename} to {uploadAs}")
         return uploadAs
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "MockUploader()"
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__str__()
 
 
-def setup_mock_uploaders():
+def setup_mock_uploaders() -> list:
     """Set up mock uploaders for testing."""
     # Patch uploader creation functions
     s3_uploader_patch = patch(
@@ -139,7 +148,7 @@ def setup_mock_uploaders():
     remote_uploader_patch.start()
 
     # Create mock MultiUploader init that doesn't try to connect
-    def mock_multi_uploader_init(self, allowNoRemote=False):
+    def mock_multi_uploader_init(self: object, allowNoRemote: bool = False) -> None:
         self.localUploader = MockUploader()
         self.remoteUploader = MockUploader()
         self.log = logging.getLogger("MockMultiUploader")
@@ -855,10 +864,10 @@ class ProcessManager:
         # Check for any missing script outputs
         self._check_missing_outputs(scripts, reported_outputs)
 
-    def _exec_script(self, test_script: TestScript, output_queue) -> None:
+    def _exec_script(self, test_script: TestScript, output_queue: multiprocessing.Queue) -> None:
         """Execute a test script in a separate process and capture output."""
 
-        def termination_handler(signum, frame, test_script=test_script) -> None:
+        def termination_handler(signum: int, frame: object, test_script: TestScript = test_script) -> None:
             print(f"Termination signal received for {test_script}, exiting...")
             raise KeyboardInterrupt()
 
@@ -891,7 +900,7 @@ class ProcessManager:
             import ciutils  # type: ignore
             import lsstDebug  # type: ignore
 
-            def getConnection():
+            def getConnection() -> dict[str, object]:
                 return {"port": 4444, "addr": "127.0.0.1"}
 
             ciutils.getConnection = getConnection
@@ -941,7 +950,12 @@ class ProcessManager:
             root_logger.removeHandler(log_handler)
             log_handler.close()
 
-    def _collect_outputs_from_queue(self, queue, reported_outputs, timeout=0) -> int:
+    def _collect_outputs_from_queue(
+        self,
+        queue: multiprocessing.Queue,
+        reported_outputs: set,
+        timeout: float = 0,
+    ) -> int:
         """Collect outputs from the queue without blocking indefinitely."""
         collected = 0
         try:
@@ -960,7 +974,7 @@ class ProcessManager:
 
         return collected
 
-    def _terminate_processes(self, output_queue, reported_outputs) -> None:
+    def _terminate_processes(self, output_queue: multiprocessing.Queue, reported_outputs: set) -> None:
         """Terminate all running processes and collect their outputs."""
         # Give processes a chance to finish naturally
         self._collect_outputs_from_queue(output_queue, reported_outputs, timeout=2)
@@ -1002,7 +1016,7 @@ class ProcessManager:
 
         self._collect_outputs_from_queue(output_queue, reported_outputs, timeout=5)
 
-    def _check_missing_outputs(self, scripts, reported_outputs) -> None:
+    def _check_missing_outputs(self, scripts: list[TestScript], reported_outputs: set) -> None:
         """Check for any scripts that didn't report output."""
         missing_scripts = set(scripts) - reported_outputs
         if missing_scripts:
@@ -1058,7 +1072,7 @@ class ResultCollector:
     def _check_log_capture(self, process_manager: ProcessManager) -> bool:
         """Verify log capture is working correctly."""
 
-        def get_log_capture_scripts():
+        def get_log_capture_scripts() -> list:
             scripts = [
                 s for s in process_manager.exit_codes.keys() if "meta_test_logging_capture.py" in s.path
             ]

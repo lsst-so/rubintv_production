@@ -44,7 +44,7 @@ class WorkerSet:
     name: str
     log: logging.Logger = field(init=False, repr=False, compare=False)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.log = logging.getLogger(__name__)
         for pod in self.pods:
             if pod.instrument != self.instrument:

@@ -71,9 +71,8 @@ from .aosUtils import (
     extractWavefrontData,
     makeDataframeFromZernikes,
 )
-
-from .formatters import getRubinTvInstrumentName, makePlotFile
 from .consdbUtils import ConsDBPopulator
+from .formatters import getRubinTvInstrumentName, makePlotFile
 from .redisUtils import RedisHelper, _extractExposureIds
 from .shardIo import writeExpRecordMetadataShard, writeMetadataShard
 from .timing import logDuration
@@ -171,7 +170,7 @@ class DonutLauncher:
         self.runningProcesses = {}  # dict of running processes keyed by PID
         self.lock = threading.Lock()
 
-    def checkSetup(self):
+    def checkSetup(self) -> None:
         try:
             import batoid  # noqa: F401
             import danish  # noqa: F401
@@ -184,7 +183,7 @@ class DonutLauncher:
             else:
                 raise RuntimeError("Missing dependencies - can't launch donut pipelines like this")
 
-    def _run_command(self, command):
+    def _run_command(self, command: list[str]) -> None:
         """Run a command as a subprocess.
 
         Runs the specified command as a subprocess, storing the process on the
@@ -212,7 +211,7 @@ class DonutLauncher:
             self.log.error(f"Command failed with return code {retcode}")
         self.log.info(f"Command completed in {duration:.2f} seconds with return code {retcode}")
 
-    def launchDonutProcessing(self, exposureBytes, doRegister=False):
+    def launchDonutProcessing(self, exposureBytes: bytes, doRegister: bool = False) -> None:
         """Launches the donut processing for a pair of donut exposures.
 
         Parameters:
@@ -281,7 +280,7 @@ class DonutLauncher:
             mdDict = {expRecord.seq_num: {"Focus Z": focus}}
             writeMetadataShard(self.metadataShardPath, expRecord.day_obs, mdDict)
 
-    def run(self):
+    def run(self) -> None:
         """Start the event loop, listening for data and launching processing.
 
         This method continuously checks for exposure pairs in the queue and
@@ -789,7 +788,7 @@ class FocusSweepAnalysis:
         self.fig = Figure(figsize=(12, 9))
         self.fig, self.axes = makeFigureAndAxes()
 
-    def makePlot(self, visitIds) -> None:
+    def makePlot(self, visitIds: list[int]) -> None:
         """Make and upload a focus-sweep parabola plot for a set of visits.
 
         Parameters
