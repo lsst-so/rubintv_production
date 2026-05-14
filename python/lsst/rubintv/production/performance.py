@@ -2056,6 +2056,7 @@ def makeNightSummaryPlot(
         linewidth=1.5,
         color=calcColor,
     )
+    assert isinstance(nZern, np.ndarray)
     binEdgesList = binEdges.tolist()
     nDeliv, _, _ = axHist.hist(
         delivF,
@@ -2065,6 +2066,7 @@ def makeNightSummaryPlot(
         linewidth=1.5,
         color=deliveryColor,
     )
+    assert isinstance(nDeliv, np.ndarray)
     nIsr, _, _ = axHist.hist(
         isrF,
         bins=binEdgesList,
@@ -2073,6 +2075,7 @@ def makeNightSummaryPlot(
         linewidth=1.5,
         color=isrColor,
     )
+    assert isinstance(nIsr, np.ndarray)
 
     # make it look "attached"
     axHist.tick_params(axis="y", left=False, labelleft=False)
