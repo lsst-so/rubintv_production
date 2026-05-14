@@ -351,9 +351,9 @@ class CalibrateCcdRunner(BaseButlerChannel):
         expRecord : `lsst.daf.butler.DimensionRecord`
             The exposure record to define the visit for.
         """
-        instr = Instrument.from_string(
-            self.butler.registry.defaults.dataId["instrument"], self.butler.registry
-        )
+        instrumentName = self.butler.registry.defaults.dataId["instrument"]
+        assert isinstance(instrumentName, str), f"Expected instrument name as str, got {instrumentName!r}"
+        instr = Instrument.from_string(instrumentName, self.butler.registry)
         config = DefineVisitsConfig()
         instr.applyConfigOverrides(DefineVisitsTask._DefaultName, config)
 
