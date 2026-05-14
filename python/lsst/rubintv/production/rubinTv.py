@@ -407,6 +407,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
         if butlerUtils.datasetExists(self.butler, datasetType, visitDataId):
             self.log.warning(f"Overwriting existing {datasetType} for {visitDataId}")
             dRef = self.butler.registry.findDataset(datasetType, visitDataId)
+            assert dRef is not None, f"datasetExists said {datasetType} for {visitDataId} exists"
             self.butler.pruneDatasets([dRef], disassociate=True, unstore=True, purge=True)
         self.butler.put(object, datasetType, dataId=visitDataId, run=self.outputRunName)
         self.log.info(f"Put {datasetType} for {visitDataId}")
