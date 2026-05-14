@@ -37,11 +37,10 @@ from astropy.table import Column, MaskedColumn, Table
 from tqdm import tqdm
 
 from lsst.daf.butler import Butler, DatasetNotFoundError, DimensionRecord
-from lsst.summit.utils.butlerUtils import getExpRecordFromDataId, getSeqNumsForDayObs, makeDefaultLatissButler
 from lsst.summit.utils.consdbClient import getCcdVisitTableForDay, getWideQuicklookTableForDay
 from lsst.summit.utils.dateTime import calcPreviousDay, dayObsIntToString, getCurrentDayObsInt
 from lsst.summit.utils.efdUtils import getEfdData
-from lsst.summit.utils.utils import computeCcdExposureId, setupLogging
+from lsst.summit.utils.utils import computeCcdExposureId
 from lsst.utils import getPackageDir
 from lsst.utils.iteration import sequence_to_string
 
@@ -63,14 +62,10 @@ if TYPE_CHECKING:
 
     from lsst.summit.utils import ConsDbClient, NightReport
 
-    from .baseChannels import BaseButlerChannel
     from .uploaders import MultiUploader
 
 __all__ = [
     "getPlotSeqNumsForDayObs",
-    "createChannelByName",
-    "remakePlotByDataId",
-    "remakeDay",
     "pushTestImageToCurrent",
     "remakeStarTrackerDay",
     "getDaysWithDataForPlotting",
@@ -221,206 +216,6 @@ def getPlotSeqNumsForDayObs(channel: str, dayObs: int, bucket: Bucket | None = N
     blobs = list(bucket.list_blobs(prefix=prefix))
     existing = [int(b.name.split(f"{prefix}_seqNum_")[1].replace(".png", "")) for b in blobs]
     return sorted(existing)
-
-
-def createChannelByName(
-    location: str,
-    instrument: str,
-    channel: str,
-    *,
-    embargo: bool = False,
-    doRaise: bool = False,
-) -> BaseButlerChannel:
-    """Create a RubinTV Channel object using the name of the channel.
-
-    Parameters
-    ----------
-    location : `str`
-        The location, for use with LocationConfig.
-    instrument : `str`
-        The instrument, e.g. 'LATISS' or 'LSSTComCam'.
-    channel : `str`
-        The name of the channel, as found in lsst.rubintv.production.CHANNELS.
-    embargo : `bool`, optional
-        If True, use the embargo repo.
-    doRaise : `bool`, optional
-        Have the channel ``raise`` if errors are encountered while it runs.
-
-    Returns
-    -------
-    channel : `lsst.rubintv.production.<Channel>`
-        The lsst.rubintv.production Channel object.
-
-    Raises
-    ------
-    ValueError:
-        Raised if the channel is unknown, or creating by name is not supported
-        for the channel in question.
-    """
-    from .rubinTv import (
-        ImExaminerChannel,
-        MetadataCreator,
-        MonitorChannel,
-        MountTorqueChannel,
-        SpecExaminerChannel,
-    )
-
-    if channel not in CHANNELS:
-        raise ValueError(f"Channel {channel} not in {CHANNELS}.")
-
-    locationConfig = LocationConfig(location)
-
-    match channel:
-        case "summit_imexam":
-            return ImExaminerChannel(
-                locationConfig=locationConfig, instrument=instrument, embargo=embargo, doRaise=doRaise
-            )
-        case "summit_specexam":
-            return SpecExaminerChannel(
-                locationConfig=locationConfig, instrument=instrument, embargo=embargo, doRaise=doRaise
-            )
-        case "auxtel_mount_torques":
-            return MountTorqueChannel(
-                locationConfig=locationConfig, instrument=instrument, embargo=embargo, doRaise=doRaise
-            )
-        case "auxtel_monitor":
-            return MonitorChannel(
-                locationConfig=locationConfig, instrument=instrument, embargo=embargo, doRaise=doRaise
-            )
-        case "auxtel_metadata":
-            return MetadataCreator(
-                locationConfig=locationConfig, instrument=instrument, embargo=embargo, doRaise=doRaise
-            )
-        case "all_sky_current":
-            raise ValueError(f"{channel} is not a creatable by name.")
-        case "all_sky_movies":
-            raise ValueError(f"{channel} is not a creatable by name.")
-        case _:
-            raise ValueError(f"Unrecognized channel {channel}.")
-
-
-def remakePlotByDataId(
-    location: str, instrument: str, channel: str, dataId: dict, embargo: bool = False
-) -> None:
-    """Remake the plot for the given channel for a single dataId.
-    Reproduces the plot regardless of whether it exists. Raises on error.
-
-    This method is very slow and inefficient for bulk processing, as it
-    creates a Channel object for each plot - do *not* use in loops, use
-    remakeDay() or write a custom scripts for bulk remaking.
-
-    Parameters
-    ----------
-    location : `str`
-        The location, for use with LocationConfig.
-    instrument : `str`
-        The instrument, e.g. 'LATISS' or 'LSSTComCam'.
-    channel : `str`
-        The name of the channel.
-    dataId : `dict`
-        The dataId.
-    embargo : `bool`, optional
-        Use the embargo repo?
-    """
-    tvChannel = createChannelByName(location, instrument, channel, embargo=embargo, doRaise=True)
-    expRecord = getExpRecordFromDataId(tvChannel.butler, dataId)
-    tvChannel.callback(expRecord)
-
-
-def remakeDay(
-    location: str,
-    instrument: str,
-    channel: str,
-    dayObs: int,
-    *,
-    remakeExisting: bool = False,
-    notebook: bool = True,
-    logger: logging.Logger | None = None,
-    embargo: bool = False,
-) -> None:
-    """Remake all the plots for a given day.
-
-    Currently auxtel_metadata does not pull from the bucket to check what is
-    in there, so remakeExisting is not supported.
-
-    Parameters
-    ----------
-    location : `str`
-        The location, for use with LocationConfig.
-    instrument : `str`
-        The instrument, e.g. 'LATISS' or 'LSSTComCam'.
-    channel : `str`
-        The name of the lsst.rubintv.production channel. The actual channel
-        object is created internally.
-    dayObs : `int`
-        The dayObs.
-    remakeExisting : `bool`, optional
-        Remake all plots, regardless of whether they already exist in the
-        bucket?
-    notebook : `bool`, optional
-        Is the code being run from within a notebook? Needed to correctly nest
-        asyncio event loops in notebook-type environments.
-    logger : `logging.Logger`, optional
-        The logger to use, created if not provided.
-    embargo : `bool`, optional
-        Use the embargoed repo?
-
-    Raises
-    ------
-    ValueError:
-        Raised if the channel is unknown.
-        Raised if remakeExisting is False and channel is auxtel_metadata.
-    """
-    if not logger:
-        logger = logging.getLogger(__name__)
-
-    from google.cloud import storage
-
-    if channel not in CHANNELS:
-        raise ValueError(f"Channel {channel} not in {CHANNELS}")
-
-    if remakeExisting is False and channel in ["auxtel_metadata"]:
-        raise ValueError(
-            f"Channel {channel} can currently only remake everything or nothing. "
-            "If you would like to remake everything, please explicitly pass "
-            "remakeExisting=True."
-        )
-
-    if notebook:
-        # notebooks have their own eventloops, so this is necessary if the
-        # function is being run from within a notebook type environment
-        import nest_asyncio
-
-        nest_asyncio.apply()
-        setupLogging()
-
-    client = storage.Client()
-    locationConfig = LocationConfig(location)
-    bucket = client.get_bucket(locationConfig.bucketName)
-    butler = makeDefaultLatissButler(embargo=embargo)
-
-    allSeqNums = set(getSeqNumsForDayObs(butler, dayObs))
-    logger.info(f"Found {len(allSeqNums)} seqNums to potentially create plots for.")
-    existing = set()
-    if not remakeExisting:
-        existing = set(getPlotSeqNumsForDayObs(channel, dayObs, bucket=bucket))
-        nToMake = len(allSeqNums) - len(existing)
-        logger.info(
-            f"Found {len(existing)} in the bucket which will be skipped, " f"leaving {nToMake} to create."
-        )
-
-    toMake = sorted(allSeqNums - existing)
-    if not toMake:
-        logger.info(f"Nothing to do for {channel} on {dayObs}")
-        return
-
-    # doRaise is False because during bulk plot remaking we expect many fails
-    # due to image types, short exposures, etc.
-    tvChannel = createChannelByName(location, instrument, channel, doRaise=False, embargo=embargo)
-    for seqNum in toMake:
-        dataId = {"day_obs": dayObs, "seq_num": seqNum, "detector": 0}
-        expRecord = getExpRecordFromDataId(butler, dataId)
-        tvChannel.callback(expRecord)
 
 
 def pushTestImageToCurrent(channel: str, bucketName: str, duration: float = 15) -> None:
