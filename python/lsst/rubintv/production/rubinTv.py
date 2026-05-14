@@ -29,7 +29,6 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import pandas as pd
 
-import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.pipe.tasks.postprocess import MakeCcdVisitTableTask
 
 try:
@@ -49,9 +48,10 @@ from .predicates import hasDayRolledOver, raiseIf
 from .uploaders import MultiUploader
 
 if TYPE_CHECKING:
-    from lsst.daf.butler import DimensionRecord
+    from lsst.daf.butler import Butler, DimensionRecord
 
     from .locationConfig import LocationConfig
+    from .podDefinition import PodDetails
 
 __all__ = [
     "NightReportChannel",
@@ -71,19 +71,24 @@ def _catchPrintOutput(functionToCall: Callable, *args: Any, **kwargs: Any) -> st
 
 
 class NightReportChannel(BaseButlerChannel):
-    """Class for running the AuxTel Night Report channel on RubinTV.
+    """Class for running the AuxTel Night Report channel on the rapid analysis
+    backend.
 
     Parameters
     ----------
     locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
         The locationConfig containing the path configs.
+    butler : `lsst.daf.butler.Butler`
+        The Butler to use for data access.
+    instrument : `str`
+        The instrument name.
+    podDetails : `lsst.rubintv.production.podDefinition.PodDetails`
+        The pod details identifying this worker.
     dayObs : `int`, optional
         The dayObs. If not provided, will be calculated from the current time.
         This should be supplied manually if running catchup or similar, but
         when running live it will be set automatically so that the current day
         is processed.
-    embargo : `bool`, optional
-        Use the embargo repo?
     doRaise : `bool`, optional
         If True, raise exceptions instead of logging them as warnings.
     """
@@ -91,22 +96,20 @@ class NightReportChannel(BaseButlerChannel):
     def __init__(
         self,
         locationConfig: LocationConfig,
+        butler: Butler,
         instrument: str,
+        podDetails: PodDetails,
         *,
         dayObs: int | None = None,
-        embargo: bool = False,
         doRaise: bool = False,
     ) -> None:
         super().__init__(
             locationConfig=locationConfig,
-            instrument=instrument,
-            butler=butlerUtils.makeDefaultLatissButler(embargo=embargo),
-            detectors=0,
-            watcherType="file",
-            dataProduct="quickLookExp",
-            channelName="auxtel_night_reports",
+            butler=butler,
+            podDetails=podDetails,
             doRaise=doRaise,
         )
+        self.instrument = instrument
         self.s3Uploader: MultiUploader = MultiUploader()
 
         # we update when the quickLookExp lands, but we scrape for everything,

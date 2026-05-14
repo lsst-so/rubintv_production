@@ -21,7 +21,9 @@
 
 import sys
 
+import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.rubintv.production.locationConfig import LocationConfig
+from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
 from lsst.rubintv.production.rubinTv import NightReportChannel
 from lsst.summit.utils.utils import setupLogging
 
@@ -29,9 +31,20 @@ setupLogging()
 location = "summit" if len(sys.argv) < 2 else sys.argv[1]
 locationConfig = LocationConfig(location)
 
-print(f"Running night reporter at {location}...")
+instrument = "LATISS"
+butler = butlerUtils.makeDefaultLatissButler()
+podDetails = PodDetails(
+    instrument=instrument,
+    podFlavor=PodFlavor.NIGHT_REPORT_WORKER,
+    detectorNumber=None,
+    depth=None,
+)
+
+print(f"Running night reporter at {location}, consuming from {podDetails.queueName}...")
 nightReport = NightReportChannel(
     locationConfig=locationConfig,
-    instrument="LATISS",
+    butler=butler,
+    instrument=instrument,
+    podDetails=podDetails,
 )
 nightReport.run()
