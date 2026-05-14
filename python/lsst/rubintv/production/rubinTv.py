@@ -437,7 +437,7 @@ class CalibrateCcdRunner(BaseButlerChannel):
             )
 
         ddRef = self.butler.getDeferred(dRefs[0])
-        visit = ddRef.dataId.byName()["visit"]  # this is a raw int
+        visit = ddRef.dataId["visit"]  # this is a raw int
         consolidateTask = ConsolidateVisitSummaryTask()  # if this ctor is slow move to class
         expCatalog = consolidateTask._combineExposureMetadata(visit, [ddRef])
         self.clobber(expCatalog, "preliminary_visit_summary", visitId)
