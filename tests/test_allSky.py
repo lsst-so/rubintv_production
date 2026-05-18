@@ -26,14 +26,13 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock
 
-import lsst.utils.tests
 from lsst.rubintv.production.allSky import DayAnimator
 from lsst.rubintv.production.uploaders import MultiUploader, Uploader
 
 TEST_DATA_DIR = os.path.join(os.path.dirname(__file__), "data", "all_sky")
 
 
-class AllSkyPipelineTestCase(lsst.utils.tests.TestCase):
+class AllSkyPipelineTestCase(unittest.TestCase):
     """End-to-end test of the all-sky still-frame and movie pipeline.
 
     Drives ``DayAnimator(historical=True)`` on two real JPEG fixtures -- the
@@ -98,14 +97,5 @@ class AllSkyPipelineTestCase(lsst.utils.tests.TestCase):
             self.assertEqual(callKwargs["filename"], movieFile)
 
 
-class TestMemory(lsst.utils.tests.MemoryTestCase):
-    pass
-
-
-def setup_module(module):
-    lsst.utils.tests.init()
-
-
 if __name__ == "__main__":
-    lsst.utils.tests.init()
     unittest.main()
