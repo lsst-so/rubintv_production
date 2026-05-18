@@ -35,18 +35,21 @@ Expected clean output: `Success: no issues found in N source files`.
 
 ### 2. Unit tests (targeted, then broad if needed)
 
-Start with the tests most likely to exercise what you changed:
+Start with the tests most likely to exercise what you changed. For a
+single file or single test, serial is fine:
 
 ```bash
 source ~/stack.sh && . ~/setup_packages.sh && pytest tests/test_<module>.py -q
 ```
 
 If your change is cross-cutting (touched `redisUtils`, `payloads`,
-`podDefinition`, `processingControl`, or anything imported widely), run the
-full unit suite:
+`podDefinition`, `processingControl`, or anything imported widely), run
+the full unit suite — and always parallelise it with `-n logical` (one
+worker per logical CPU, via pytest-xdist, which is baked into the
+image):
 
 ```bash
-source ~/stack.sh && . ~/setup_packages.sh && pytest tests/ -q
+source ~/stack.sh && . ~/setup_packages.sh && pytest tests/ -q -n logical
 ```
 
 Tests that need a live Butler (see the table in

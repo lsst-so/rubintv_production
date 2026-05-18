@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shlex
 import subprocess
 import time
 from time import sleep
@@ -117,32 +118,49 @@ def dayObsFromDirName(fullDirName: str, logger: Logger) -> tuple[int, str] | tup
         return None, None
 
 
-def getUbuntuFontPath(logger: Logger | None = None) -> str | None:
-    """Get the path to the Ubuntu font, if available.
+def getAnnotateFontPath(logger: Logger | None = None) -> str | None:
+    """Get a TTF font path suitable for ImageMagick's ``-annotate`` operator.
+
+    Prefers Ubuntu-Bold (to keep the look of the legacy all-sky output) but
+    falls back to any TTF that matplotlib can discover. Without the fallback,
+    `_convertAndAnnotate` breaks on hosts where the Ubuntu font isn't
+    installed but other system fonts are -- ImageMagick's compiled-in
+    default font path isn't guaranteed to exist on macOS Homebrew builds or
+    on minimal RHEL/AlmaLinux images, so passing no ``-font`` at all is not
+    a safe fallback.
 
     Parameters
     ----------
-    logger : `logging.logger`
+    logger : `logging.logger`, optional
         The logger.
 
     Returns
     -------
-    ubuntuBoldPath : `str`
-        The path to the Ubuntu bold font, or ``None`` if not found.
+    fontPath : `str` or `None`
+        The path to a usable TTF font, or ``None`` if no TTF fonts are
+        discoverable at all.
     """
-    fontPaths = matplotlib.font_manager.findSystemFonts(fontpaths=None, fontext="ttf")
+    if not logger:
+        logger = _LOG.getChild("getAnnotateFontPath")
 
-    ubuntuBoldPath = [f for f in fontPaths if f.find("Ubuntu-B.") != -1]
-    if not ubuntuBoldPath:
-        if not logger:  # only create if needed
-            logger = _LOG.getChild("getUbuntuFontPath")
-        logger.warning("Warning - cound not fund Ubuntu bold font!")
+    fontPaths = matplotlib.font_manager.findSystemFonts(fontpaths=None, fontext="ttf")
+    if not fontPaths:
+        logger.warning("No TTF fonts discoverable via matplotlib; ImageMagick -annotate will likely fail")
         return None
-    if len(ubuntuBoldPath) != 1:
-        if not logger:  # only create if needed
-            logger = _LOG.getChild("getUbuntuFontPath")
-        logger.warning("Warning - found multiple fonts for Ubuntu bold, picking the first!")
-    return ubuntuBoldPath[0]
+
+    ubuntuBold = sorted(f for f in fontPaths if "Ubuntu-B." in f)
+    if ubuntuBold:
+        if len(ubuntuBold) > 1:
+            logger.warning("Found multiple Ubuntu-Bold candidates, picking the first: %s", ubuntuBold[0])
+        return ubuntuBold[0]
+
+    fallback = sorted(fontPaths)[0]
+    logger.warning(
+        "Ubuntu-Bold font not found; falling back to %s for ImageMagick -annotate. "
+        "The all-sky still annotations will not match the legacy look.",
+        fallback,
+    )
+    return fallback
 
 
 def getDateTimeFromExif(filename: str, logger: Logger | None = None) -> tuple[str, str]:
@@ -202,8 +220,11 @@ def _convertAndAnnotate(inFilename: str, outFilename: str, textItems: Iterable[s
         "-contrast-stretch .5%x.5%",  # approximately the same as 99.5% scale in ds9
     ]
 
-    fontPath = getUbuntuFontPath()
-    fontStr = f"-font {fontPath} " if fontPath else ""  # note the trailing space so it add cleanly
+    fontPath = getAnnotateFontPath()
+    # shlex.quote so font paths with spaces (e.g. macOS "Arial Unicode.ttf")
+    # survive the shell=True invocation below. Trailing space so the chunk
+    # concatenates cleanly into the annotation command strings.
+    fontStr = f"-font {shlex.quote(fontPath)} " if fontPath else ""
 
     if textItems:
         textItems = ensure_iterable(textItems)
@@ -451,7 +472,7 @@ class DayAnimator:
         channel: str,
         bucketName: str,
         historical: bool = False,
-    ):
+    ) -> None:
         self.dayObsInt = dayObsInt
         self.todaysDataDir = todaysDataDir
         self.outputImageDir = outputImageDir

@@ -28,6 +28,13 @@ for, add an `[mypy-<package>]` block with `ignore_missing_imports = True` to
 Run with pytest. Some tests require a live Butler connection (only available on
 `staff-rsp` or `rubin-devl` hosts) and are skipped otherwise.
 
+Run the full suite in parallel via pytest-xdist (one worker per logical CPU);
+serial is only worth it when you're running a single targeted file:
+
+```bash
+source ~/stack.sh && . ~/setup_packages.sh && pytest tests/ -q -n logical
+```
+
 ### Test Files
 
 | File | What it tests | Butler needed? |
