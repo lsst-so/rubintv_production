@@ -12,7 +12,7 @@ ENV GID=73006
 ARG drp_pipe_ref="w.2026.18"
 ARG summit_utils_ref="1485dcbc10ad7637a845ee7e9a5a29d0f1da7680"
 ARG summit_extras_ref="w.2026.18"
-ARG ts_wep_ref="v17.1.0"
+ARG ts_wep_ref="v17.2.0"
 ARG donut_viz_ref="v4.1.0"
 ARG tarts_ref="fa6acd31400a278a0b9bc0e537dee5c9afd5c0de"
 ARG ts_ofc_ref="5245ded9c985c7707232f53f130a8cb6a402f7e1"
@@ -62,7 +62,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     rubin-env-rsp \
     redis-py \
     batoid \
-    danish=1.0.0 \
+    danish=1.1.0 \
     rubin-libradtran \
     timm \
     peft \
