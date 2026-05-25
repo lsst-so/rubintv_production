@@ -30,12 +30,13 @@ from utils import getUserRunCollectionName  # type: ignore[import]
 
 import lsst.utils.tests
 from lsst.daf.butler import Butler, DimensionRecord
+from lsst.pipe.base import PipelineGraph
 from lsst.pipe.base.quantum_graph import PredictedQuantumGraph
-from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
+from lsst.rubintv.production.locationConfig import LocationConfig, getAutomaticLocationConfig
 from lsst.rubintv.production.payloads import Payload
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.processingControl import buildPipelines
+from lsst.rubintv.production.processingControl import PipelineComponents, buildPipelines
 from lsst.summit.utils.utils import getSite
 
 _LOG = logging.getLogger("lsst.rubintv.production.tests.test_pipelines")
@@ -98,17 +99,44 @@ EXPECTED_AOS_NON_FAM_PIPELINES = [
 
 @unittest.skipIf(not HAS_BUTLER, SKIP_NO_BUTLER_REASON)
 class TestPipelineGeneration(lsst.utils.tests.TestCase):
-    def _makeMinimalButler(self) -> Butler:
+    # Declared on the class body so mypy can see attributes that are
+    # actually assigned in setUpClass via `cls.foo = ...`.
+    locationConfig: LocationConfig
+    instrument: str
+    minimalButler: Butler
+    graphs: list[PipelineGraph]
+    pipelines: dict[str, PipelineComponents]
+    records: dict[str, DimensionRecord]
+    intraDetector: int
+    extraDetector: int
+    scienceDetector: int
+    podDetails: PodDetails
+    step1aRunner: SingleCorePipelineRunner
+    step1bRunner: SingleCorePipelineRunner
+
+    @classmethod
+    def _makeMinimalButler(cls) -> Butler:
         butler = Butler.from_config(
-            self.locationConfig.lsstCamButlerPath,
-            instrument=self.instrument,
+            cls.locationConfig.lsstCamButlerPath,
+            instrument=cls.instrument,
             collections=[
-                f"{self.instrument}/defaults",
+                f"{cls.instrument}/defaults",
             ],
         )
         return butler
 
     def _makeButler(self, pipelineName: str) -> Butler:
+        # A fresh, writeable Butler is built per pipeline at the point of use
+        # because each pipeline needs its own per-user RUN collection to ensure
+        # that we're starting afresh, and outputs from previous runs can't be
+        # used (otherwise failing tests might look like they passed, because of
+        # picking up previous outputs from sucessful runs), and that name
+        # varies by pipeline. The minimalButler held on the class only carries
+        # the defaults collection and is read-only, so it cannot be reused
+        # here. Pre-building a butler per pipeline in setUpClass would require
+        # enumerating every known pipeline name twice and is brittle, so we
+        # lazily construct one each time runTest dispatches to a pipeline and
+        # patch it onto the runner.
         runCollection = getUserRunCollectionName(pipelineName)
         butler = Butler.from_config(
             self.locationConfig.lsstCamButlerPath,
@@ -122,12 +150,66 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         )
         return butler
 
-    def setUp(self) -> None:
-        self.locationConfig = getAutomaticLocationConfig()
-        self.instrument = "LSSTCam"
-        self.minimalButler = self._makeMinimalButler()
-        self.graphs, self.pipelines = buildPipelines("LSSTCam", self.locationConfig, self.minimalButler)
+    # All fixture construction lives in setUpClass rather than setUp because
+    # buildPipelines() takes ~20s and its output is identical for every test
+    # method in this class. Running it once per class instead of once per
+    # test method cuts the wall-clock for this file roughly 3x. The runner
+    # objects are also held on the class because constructing them is non-
+    # trivial; runTest mutates runner.butler/runner.runCollection at the
+    # point of use, which is safe in a single process (tests run serially
+    # within a worker) and equally safe under pytest-xdist (each worker is
+    # its own process with its own copy of the class).
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls.locationConfig = getAutomaticLocationConfig()
+        cls.instrument = "LSSTCam"
+        cls.minimalButler = cls._makeMinimalButler()
+        cls.graphs, cls.pipelines = buildPipelines("LSSTCam", cls.locationConfig, cls.minimalButler)
 
+        where = "exposure.day_obs=20251115 AND exposure.seq_num in (226..228,436) AND instrument='LSSTCam'"
+        records = cls.minimalButler.query_dimension_records("exposure", where=where)
+        assert len(records) == 4, f"Expected 4 fixture exposure records, got {len(records)}"
+        rd = {r.seq_num: r for r in records}
+        cls.records = {}
+        cls.records["inFocus"] = rd[226]
+        cls.records["intra"] = rd[227]
+        cls.records["extra"] = rd[228]
+        cls.records["dark"] = rd[436]
+        cls.intraDetector = 192
+        cls.extraDetector = 191
+        cls.scienceDetector = 94
+        cls.podDetails = PodDetails(
+            instrument="FAKE_INSTRUMENT", podFlavor=PodFlavor.SFM_WORKER, detectorNumber=0, depth=0
+        )
+
+        cls.step1aRunner = SingleCorePipelineRunner(
+            butler=cls.minimalButler,
+            locationConfig=cls.locationConfig,
+            instrument=cls.instrument,
+            step="step1a",
+            awaitsDataProduct="raw",
+            podDetails=cls.podDetails,
+            doRaise=False,
+        )
+        cls.step1bRunner = SingleCorePipelineRunner(
+            butler=cls.minimalButler,
+            locationConfig=cls.locationConfig,
+            instrument=cls.instrument,
+            step="step1b",
+            awaitsDataProduct=None,
+            podDetails=cls.podDetails,
+            doRaise=False,
+        )
+
+    def testExpectedPipelinesArePresent(self) -> None:
+        """Check that exactly the expected set of pipelines was built.
+
+        Asserts both that every name in ``EXPECTED_PIPELINES`` is present
+        and that no unexpected pipelines slipped in, so that adding or
+        renaming a pipeline elsewhere in the code fails loudly here until
+        ``EXPECTED_PIPELINES`` is updated to match.
+        """
         for pipelineName in EXPECTED_PIPELINES:
             self.assertIn(pipelineName, self.pipelines)
 
@@ -135,41 +217,6 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         # that we're testing all the ones we know about.
         for pipelineName in self.pipelines.keys():
             self.assertIn(pipelineName, EXPECTED_PIPELINES, f"Unexpected pipeline {pipelineName} found")
-
-        where = "exposure.day_obs=20251115 AND exposure.seq_num in (226..228,436) AND instrument='LSSTCam'"
-        records = self.minimalButler.query_dimension_records("exposure", where=where)
-        self.assertEqual(len(records), 4)
-        rd = {r.seq_num: r for r in records}
-        self.records: dict[str, DimensionRecord] = {}
-        self.records["inFocus"] = rd[226]
-        self.records["intra"] = rd[227]
-        self.records["extra"] = rd[228]
-        self.records["dark"] = rd[436]
-        self.intraDetector = 192
-        self.extraDetector = 191
-        self.scienceDetector = 94
-        self.podDetails = PodDetails(
-            instrument="FAKE_INSTRUMENT", podFlavor=PodFlavor.SFM_WORKER, detectorNumber=0, depth=0
-        )
-
-        self.step1aRunner = SingleCorePipelineRunner(
-            butler=self.minimalButler,
-            locationConfig=self.locationConfig,
-            instrument=self.instrument,
-            step="step1a",
-            awaitsDataProduct="raw",
-            podDetails=self.podDetails,
-            doRaise=False,
-        )
-        self.step1bRunner = SingleCorePipelineRunner(
-            butler=self.minimalButler,
-            locationConfig=self.locationConfig,
-            instrument=self.instrument,
-            step="step1b",
-            awaitsDataProduct=None,
-            podDetails=self.podDetails,
-            doRaise=False,
-        )
 
     def testCalibPipelines(self) -> None:
         # calib pipelines run the verify<product>Isr tasks but the quanta that
