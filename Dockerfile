@@ -62,7 +62,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     rubin-env-rsp \
     redis-py \
     batoid \
-    danish=1.1.0 \
+    danish=1.1.1 \
     rubin-libradtran \
     timm \
     peft \
