@@ -117,7 +117,7 @@ class ButlerWatcher:
     """
 
     # look for new images every ``cadence`` seconds
-    cadence = 1
+    cadence = 0.2  # this pod runs as a singleton (per instrument), so this level of hammering is fine
 
     def __init__(
         self,
