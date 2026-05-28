@@ -50,6 +50,7 @@ lists rather than silently passing.
 
 from __future__ import annotations
 
+import glob
 import os
 import tempfile
 import unittest
@@ -59,8 +60,10 @@ import lsst.utils.tests
 from lsst.rubintv.production import locationConfig as locationConfigModule
 from lsst.rubintv.production.locationConfig import (
     LocationConfig,
+    findMissingConfigKeys,
     getAutomaticLocationConfig,
 )
+from lsst.utils import getPackageDir
 
 # These three directory accessors call _checkDir(createIfMissing=False)
 # and so the test must precreate them. Every other dir accessor will
@@ -350,6 +353,31 @@ class GetAutomaticLocationConfigTestCase(lsst.utils.tests.TestCase):
         with patch.object(locationConfigModule.sys, "argv", ["scriptname"]):
             with self.assertRaises(RuntimeError):
                 getAutomaticLocationConfig()
+
+
+class ConfigYamlKeyConsistencyTestCase(lsst.utils.tests.TestCase):
+    """The on-disk per-site config files must share the same top-level keys.
+
+    `LocationConfig` accessors assume every key they read is present in
+    every site's YAML — adding a key to one config and forgetting another
+    fails only at runtime in that location's pod. This is the same check
+    the CI suite runs at startup, lifted into a unit test so it fails at
+    development time instead.
+    """
+
+    def test_allConfigFilesHaveIdenticalTopLevelKeys(self) -> None:
+        packageDir = getPackageDir("rubintv_production")
+        configDir = os.path.join(packageDir, "config")
+        yamlFiles = sorted(glob.glob(os.path.join(configDir, "config_*.yaml")))
+        self.assertTrue(yamlFiles, f"no config_*.yaml files found under {configDir}")
+
+        missing = findMissingConfigKeys(yamlFiles)
+        if missing:
+            lines = ["config files have inconsistent top-level keys:"]
+            for filename, keys in sorted(missing.items()):
+                rel = os.path.relpath(filename, packageDir)
+                lines.append(f"  {rel} is missing: {sorted(keys)}")
+            self.fail("\n".join(lines))
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

@@ -49,6 +49,7 @@ from lsst.utils import getPackageDir
 
 __all__ = [
     "LocationConfig",
+    "findMissingConfigKeys",
     "getAutomaticLocationConfig",
 ]
 
@@ -469,6 +470,36 @@ def getAutomaticLocationConfig() -> LocationConfig:
     if not location:
         raise RuntimeError("No location was supplied on the command line or via RAPID_ANALYSIS_LOCATION.")
     return LocationConfig(location.lower())
+
+
+def findMissingConfigKeys(yamlFiles: list[str]) -> dict[str, set[str]]:
+    """Find top-level keys missing from each YAML file vs. the union of keys.
+
+    For each YAML file in ``yamlFiles``, compute the set of top-level keys
+    that file is missing relative to the union of top-level keys across all
+    the files. Files whose key set already matches the union are omitted
+    from the returned mapping, so an empty result means every file has the
+    same set of top-level keys.
+
+    Parameters
+    ----------
+    yamlFiles : `list` [`str`]
+        Absolute paths to the YAML config files to compare.
+
+    Returns
+    -------
+    missingKeys : `dict` [`str`, `set` [`str`]]
+        Mapping of filename to the set of keys that file is missing. Empty
+        when all files contain the same set of top-level keys.
+    """
+    fileKeys: dict[str, set[str]] = {}
+    for filename in yamlFiles:
+        with open(filename, "rb") as f:
+            data = yaml.safe_load(f)
+        fileKeys[filename] = set(data.keys()) if data else set()
+
+    allKeys: set[str] = set().union(*fileKeys.values()) if fileKeys else set()
+    return {filename: allKeys - keys for filename, keys in fileKeys.items() if allKeys - keys}
 
 
 def _loadConfigFile(site: str) -> dict[str, Any]:

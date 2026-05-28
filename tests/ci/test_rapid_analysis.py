@@ -18,7 +18,6 @@ from typing import Any
 from unittest.mock import patch
 
 import redis
-import yaml
 
 
 # Disable logging.basicConfig to avoid interference with log capture
@@ -39,7 +38,7 @@ CliLog.initLog = do_nothing  # type: ignore
 from ciutils import Check, TestScript, conditional_redirect  # type: ignore # noqa: E402
 
 # Only import from lsst packages after logging is configured
-from lsst.rubintv.production.locationConfig import LocationConfig  # noqa: E402
+from lsst.rubintv.production.locationConfig import LocationConfig, findMissingConfigKeys  # noqa: E402
 from lsst.rubintv.production.predicates import getDoRaise, runningCI  # noqa: E402
 from lsst.rubintv.production.redisUtils import RedisHelper  # noqa: E402
 from lsst.rubintv.production.resources import getBasePath, listDir, rmtree  # noqa: E402
@@ -1136,32 +1135,8 @@ class ResultCollector:
 
     def check_yaml_files(self, yaml_files: list[str]) -> bool:
         """Check YAML files for consistent keys."""
-        # Dictionary to hold the keys for each file
-        file_keys = {}
+        missing_keys_report = findMissingConfigKeys(yaml_files)
 
-        # Load all YAML files
-        for filename in yaml_files:
-            with open(filename, "r") as file:
-                try:
-                    data = yaml.safe_load(file)
-                    if data:
-                        file_keys[filename] = set(data.keys())
-                    else:
-                        file_keys[filename] = set()
-                except yaml.YAMLError as exc:
-                    print(f"Error loading {filename}: {exc}")
-
-        # Get the set of all keys across all files
-        all_keys = set().union(*file_keys.values())
-
-        # Prepare the report of missing keys
-        missing_keys_report = {}
-        for filename, keys in file_keys.items():
-            missing_keys = all_keys - keys
-            if missing_keys:
-                missing_keys_report[filename] = missing_keys
-
-        # Print the report
         if missing_keys_report:
             print("Missing Keys Report:")
             package_dir = os.path.dirname(yaml_files[0]).split("/config")[0]
