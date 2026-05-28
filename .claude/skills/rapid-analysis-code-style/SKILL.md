@@ -89,6 +89,17 @@ def myFunction(param1: int, param2: str | None = None) -> bool:
 Note the backticks around types, the `, optional` suffix for `| None`
 parameters, and the named return value (`result`).
 
+## Writing tests
+
+This skill's rules (naming, formatting, type annotations, function
+docstrings) all still apply when writing a test, but tests also have
+their own comment conventions on top — module/class docstrings that
+name the regression the file catches, and per-test comments where the
+test name alone doesn't say what's being pinned. That convention
+overrides the general "default to no comments" rule. See the
+`rapid-analysis-testing` skill ("Writing tests: make the regression
+visible in the source") for the rules and worked examples.
+
 ## Tooling
 
 - **flake8** — linter; runs automatically via pre-commit.
