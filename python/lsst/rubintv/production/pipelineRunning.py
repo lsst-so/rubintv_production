@@ -622,8 +622,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                         instrument=self.instrument, visit=visitRecord.id, universe=self.butler.dimensions
                     )
                     self._dispatchToPlotter(visitDataCoord, PodFlavor.PSF_PLOTTER)
-                    self.log.info(f"Sending {visitRecord.id} for fwhm plotting")
-                    self._dispatchToPlotter(visitDataCoord, PodFlavor.FWHM_PLOTTER)
+                    self.log.info(f"Sending {visitRecord.id} for four panel image IQ focal plane plotting")
+                    self._dispatchToPlotter(visitDataCoord, PodFlavor.FOURPANELFOCALPLANE_PLOTTER)
                     self._dispatchToPlotter(visitDataCoord, PodFlavor.ZERNIKE_PREDICTED_FWHM_PLOTTER)
             if self.step == "nightlyRollup":
                 self.redisHelper.reportNightLevelFinished(self.instrument, who=who)

@@ -77,7 +77,7 @@ type, optional depth, and optional detector number.
 - `ONE_OFF_POSTISR_WORKER` - post-ISR mosaics
 - `ONE_OFF_VISITIMAGE_WORKER` - visit image mosaics
 - `PSF_PLOTTER` - PSF shape plots
-- `FWHM_PLOTTER` - per-visit FWHM focal-plane plot
+- `FOURPANELFOCALPLANE_PLOTTER` - per-visit four panel image IQ focal-plane plot
 - `ZERNIKE_PREDICTED_FWHM_PLOTTER` - predicted FWHM from Zernikes
 - `RADIAL_PLOTTER` - radial diagnostic plotter
 - `PERFORMANCE_MONITOR` - timing metrics
@@ -401,9 +401,9 @@ calls `dispatchGatherSteps()` for each one every loop iteration.
 After step1b completes on a worker, the worker itself triggers further
 downstream processing via Redis:
 - SFM step1b completion picks one free pod of each plotter flavor
-  (`PSF_PLOTTER`, `FWHM_PLOTTER`, `ZERNIKE_PREDICTED_FWHM_PLOTTER`) via
-  `RedisHelper.getSingleWorker()` and enqueues a visit-level `Payload`
-  on that pod's queue
+  (`PSF_PLOTTER`, `FOURPANELFOCALPLANE_PLOTTER`,
+  `ZERNIKE_PREDICTED_FWHM_PLOTTER`) via `RedisHelper.getSingleWorker()`
+  and enqueues a visit-level `Payload` on that pod's queue
 - AOS step1b completion reports the Zernike count to MTAOS
 
 ### PostISR Mosaic Dispatch
