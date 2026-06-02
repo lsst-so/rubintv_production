@@ -33,3 +33,6 @@ ci_logs/*
 # which is checked-in, team-shared tooling.
 .claude/*
 !.claude/skills/
+
+# Editor / IDE local settings
+.vscode/
