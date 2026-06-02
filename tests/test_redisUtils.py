@@ -42,6 +42,7 @@ from typing import cast
 from unittest.mock import patch
 
 import fakeredis
+from utils import getSampleExpRecord
 
 import lsst.utils.tests
 from lsst.daf.butler import Butler
@@ -255,8 +256,6 @@ class PayloadQueueTestCase(_RedisHelperTestBase):
         return PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.SFM_WORKER, detectorNumber=94, depth=0)
 
     def _payload(self, who: str = "SFM") -> Payload:
-        from utils import getSampleExpRecord  # type: ignore[import]
-
         record = getSampleExpRecord()
         return Payload(
             dataId=record.dataId,
@@ -440,8 +439,6 @@ class ButlerWatcherListTestCase(_RedisHelperTestBase):
     """pushToButlerWatcherList / checkButlerWatcherList round-trip."""
 
     def test_pushAndCheckRoundTrip(self) -> None:
-        from utils import getSampleExpRecord  # type: ignore[import]
-
         record = getSampleExpRecord()
         # Initially: not seen.
         self.assertFalse(self.helper.checkButlerWatcherList("LATISS", record))

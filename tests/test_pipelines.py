@@ -26,7 +26,7 @@ import unittest
 from contextlib import contextmanager
 from typing import Iterator
 
-from utils import getUserRunCollectionName  # type: ignore[import]
+from utils import getUserRunCollectionName
 
 import lsst.utils.tests
 from lsst.daf.butler import Butler, DimensionRecord

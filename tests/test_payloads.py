@@ -23,7 +23,7 @@ import json
 import unittest
 from typing import cast
 
-from utils import getSampleExpRecord  # type: ignore[import]
+from utils import getSampleExpRecord
 
 import lsst.daf.butler as dafButler
 import lsst.utils.tests

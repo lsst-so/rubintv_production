@@ -80,6 +80,28 @@ source ~/stack.sh && . ~/setup_packages.sh && pytest tests/ -q -n logical
   `tests/test_redisUtils.py` for the fixture pattern. The CI suite still
   uses a real Redis server for end-to-end coverage.
 
+### Import Style
+
+Put **all** imports at the top of the test module — do **not** defer them
+into function or method bodies unless it is absolutely unavoidable (e.g. a
+genuine import cycle that has no other fix). This applies even to imports
+that only a couple of tests use, and even to ones that pull in heavy
+machinery (a Butler, the dimension universe, sample-data fixtures) and so
+add to import time.
+
+The reasoning is deliberate: if an import can ever fail at runtime — a
+missing data fixture, a moved symbol, a broken transitive dependency — we
+want that failure surfaced **upfront, at collection time**, where it is
+loud and unambiguous, rather than hidden inside the one test that happens
+to exercise it. A module-level import that breaks fails the whole file
+immediately and obviously; a deferred import that breaks looks like a test
+failure in a single unrelated-looking test. The increased import time is a
+price worth paying for that early, honest failure.
+
+(For example, `getSampleExpRecord` in `test_redisUtils.py` is imported at
+module scope even though only two tests use it — see the third-party
+import group at the top of that file.)
+
 ## CI Integration Suite (`tests/ci/`)
 
 The CI suite is a custom test framework (not pytest) that spins up a real Redis
