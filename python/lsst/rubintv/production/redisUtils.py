@@ -289,10 +289,6 @@ class ExposureProcessingInfo:
         """Check if step1b has finished for ``who``."""
         return self.step1bFinished.get(who, False)
 
-    def markStep1aDispatched(self, who: str) -> None:
-        """Mark the step1a gather as dispatched (Python-side only)."""
-        self.step1aDispatched[who] = True
-
     def getBinnedIsrProduced(self) -> set[int]:
         """Get the set of detectors that have produced a binned post-ISR
         image (pipeline-agnostic).
@@ -314,10 +310,6 @@ class ExposureProcessingInfo:
     def isMosaicDispatched(self) -> bool:
         """Check if the post-ISR focal-plane mosaic has been dispatched."""
         return self.mosaicDispatched
-
-    def markMosaicDispatched(self) -> None:
-        """Mark the post-ISR mosaic as dispatched (Python-side only)."""
-        self.mosaicDispatched = True
 
     def allGathersDispatched(self) -> bool:
         """Check if all whos with expected detectors have been dispatched.

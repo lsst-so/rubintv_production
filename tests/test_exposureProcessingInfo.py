@@ -264,24 +264,6 @@ class Step1bAndPipelineConfigParsingTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(info.getExpectedDetectors("lowercase"), set())
 
 
-class MutatorTestCase(lsst.utils.tests.TestCase):
-    """The Python-side mutator helpers — used by the head node when it
-    has just dispatched something but doesn't want to re-read the hash
-    just to know that."""
-
-    def test_markStep1aDispatched(self) -> None:
-        info = ExposureProcessingInfo.fromRedisHash(42, {})
-        self.assertFalse(info.isStep1aDispatched("SFM"))
-        info.markStep1aDispatched("SFM")
-        self.assertTrue(info.isStep1aDispatched("SFM"))
-
-    def test_markMosaicDispatched(self) -> None:
-        info = ExposureProcessingInfo.fromRedisHash(42, {})
-        self.assertFalse(info.isMosaicDispatched())
-        info.markMosaicDispatched()
-        self.assertTrue(info.isMosaicDispatched())
-
-
 class ReprAndStrTestCase(lsst.utils.tests.TestCase):
     """Smoke tests on __repr__ and __str__ — they're consumed by the
     head-node logging, so a None-attribute regression must not silently
