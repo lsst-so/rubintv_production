@@ -18,9 +18,11 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+"""Test cases for pipeline building and running."""
+
 from __future__ import annotations
 
-"""Test cases for utils."""
 import logging
 import unittest
 from contextlib import contextmanager

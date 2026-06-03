@@ -18,9 +18,11 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+"""Test cases for pod definitions."""
+
 from __future__ import annotations
 
-"""Test cases for utils."""
 import unittest
 
 import lsst.utils.tests
