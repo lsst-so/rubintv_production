@@ -6,3 +6,12 @@ known_first_party = ["lsst", "tests"]
 [tool.black]
 line-length = 110
 target-version = ["py311"]
+
+# Ruff is not part of the pre-commit gate (that's flake8/isort/black), but
+# editors run it. Mirror the flake8 settings from setup.cfg here so what is
+# clean on the command line is also clean in the IDE, and vice versa. Notably
+# the __init__.py exclude keeps ruff from flagging the intentional `import *`
+# namespace flattening that flake8 already skips.
+[tool.ruff]
+line-length = 110
+extend-exclude = ["**/__init__.py", "**/version.py", "bin", "doc"]
