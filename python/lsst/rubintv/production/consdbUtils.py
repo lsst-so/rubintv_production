@@ -209,6 +209,10 @@ class ConsDBPopulator:
             ``True`` if an insert/update was attempted and succeeded; ``False``
             if skipped due to location.
         """
+        if not values:
+            logger.warning(f"No values to insert into consDB for {instrument}.{table} with obsId {obsId}")
+            return False
+
         if not self._shouldInsert():  # called here again for safety
             location = self.locationConfig.location
             logger.info(f"Skipping consDB insert at {location} for {instrument}.{table} for {obsId}")
