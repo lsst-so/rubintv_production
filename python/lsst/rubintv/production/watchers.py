@@ -28,6 +28,7 @@ from time import perf_counter, sleep
 from typing import TYPE_CHECKING, Callable
 
 from lsst.daf.butler import Butler
+from lsst.summit.utils.dateTime import getCurrentDayObsInt, offsetDayObs
 
 from .locationConfig import LocationConfig
 from .payloads import isRestartPayload
@@ -117,7 +118,7 @@ class ButlerWatcher:
     """
 
     # look for new images every ``cadence`` seconds
-    cadence = 1
+    cadence = 0.2  # this pod runs as a singleton (per instrument), so this level of hammering is fine
 
     def __init__(
         self,
@@ -141,20 +142,38 @@ class ButlerWatcher:
         expRecord : `lsst.daf.butler.DimensionRecord`
             The most recent exposure record, sorted by ``timespan.end``.
         """
-        # runtime is ~200ms on the summit. If the dayObs were added and the
-        # results and then sorted in python this would bring this to ~30ms, but
-        # the change would then need to deal with the change in behaviour when
-        # the list is empty
-        records = self.butler.query_dimension_records("exposure", order_by="-exposure.timespan.end", limit=1)
+        # Restricting the query to today's dayObs and sorting in Python brings
+        # this from ~280ms to ~30ms on the summit. Around day rollover today's
+        # query returns nothing yet, so fall back to yesterday's dayObs. If
+        # there has been no data taken for multiple consecutive days both
+        # queries come back empty, so fall back to the original unbounded
+        # query as a safety net rather than crashing the pod.
+        today = getCurrentDayObsInt()
+        records = self.butler.query_dimension_records(
+            "exposure",
+            where=f"instrument='{self.instrument}' and exposure.day_obs={today}",
+            explain=False,
+        )
+        if not records:
+            yesterday = offsetDayObs(today, -1)
+            records = self.butler.query_dimension_records(
+                "exposure",
+                where=f"instrument='{self.instrument}' and exposure.day_obs={yesterday}",
+                explain=False,
+            )
+        if not records:
+            records = self.butler.query_dimension_records(
+                "exposure", order_by="-exposure.timespan.end", limit=1
+            )
+            if not records:
+                raise RuntimeError(f"Found no exposure records for {self.instrument}")
 
         # we must sort using the timespan because:
         # we can't use exposure.id because it is calculated differently
         # for different instruments, e.g. TS8 is 10x bigger than AuxTel
         # and also C-controller data has expIds like 3YYYMMDDNNNNN so would
         # always be the "most recent".
-        if len(records) != 1:
-            raise RuntimeError(f"Found {len(records)} records for 'raw', expected 1")
-        return records[0]
+        return max(records, key=lambda r: r.timespan.end)
 
     def run(self) -> None:
         lastSeen = None
