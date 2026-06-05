@@ -269,7 +269,7 @@ class PreBinnedImageSource:
         self.tempDir = tempDir
 
     def getCcdImage(
-        self, det: Detector, imageFactory: Any, binSize: int, *args, **kwargs
+        self, det: Detector, imageFactory: Any, binSize: int, *args: Any, **kwargs: Any
     ) -> tuple[Image, Detector]:
         """Call signature is required by camGeom.utils.showCamera(imageSource),
         but we don't use the arguments, e.g. imageFactory.
@@ -578,10 +578,10 @@ def renderMosaicImage(
         match scalingOption:
             case "asinh":
 
-                def _forward(x):
+                def _forward(x: np.ndarray) -> np.ndarray:
                     return np.arcsinh(x)
 
-                def _inverse(x):
+                def _inverse(x: np.ndarray) -> np.ndarray:
                     return np.sinh(x)
 
                 norm = colors.FuncNorm((_forward, _inverse))

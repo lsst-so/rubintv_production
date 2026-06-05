@@ -104,7 +104,7 @@ class TimedMetadataServerTestCase(lsst.utils.tests.TestCase):
             # Build server with a no-op uploader injected directly so the
             # test never tries to talk to S3 (and never needs a real site).
             class _NoopUploader:
-                def uploadMetdata(self, *args, **kwargs):
+                def uploadMetdata(self, *args: object, **kwargs: object) -> None:
                     return
 
             server = TimedMetadataServer(
@@ -191,7 +191,7 @@ class TestMemory(lsst.utils.tests.MemoryTestCase):
     pass
 
 
-def setup_module(module):
+def setup_module(module: object) -> None:
     lsst.utils.tests.init()
 
 

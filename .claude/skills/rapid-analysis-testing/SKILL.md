@@ -1,6 +1,6 @@
 ---
 name: rapid-analysis-testing
-description: Validate Python changes in the rapid analysis backend before declaring a task done. Neither pre-commit nor CI runs mypy or the unit tests in this repo, so validation is manual and easy to skip — this skill is the checklist. Use this skill whenever you have finished editing Python under python/lsst/rubintv/production/, scripts/, or tests/ and are about to hand the task back to the user; when the user asks to "run the tests", "type check", "run mypy", "validate", or "check my changes"; or when you are about to stage a commit of Python changes. Does NOT cover the CI integration suite as a routine step — that is a heavier separate command, only run when explicitly asked.
+description: Validate Python changes in the rapid analysis backend before declaring a task done, and write new tests with their intent visible in the source. Neither pre-commit nor CI runs mypy or the unit tests in this repo, so validation is manual and easy to skip — this skill is the checklist. Use this skill whenever you have finished editing Python under python/lsst/rubintv/production/, scripts/, or tests/ and are about to hand the task back to the user; when the user asks to "run the tests", "type check", "run mypy", "validate", or "check my changes"; when you are about to stage a commit of Python changes; or when you are adding a new test or test case. Does NOT cover the CI integration suite as a routine step — that is a heavier separate command, only run when explicitly asked.
 ---
 
 # Rapid Analysis: Validating Python Changes
@@ -69,6 +69,70 @@ minutes and is heavier than the unit suite. Only run it when:
 
 For routine edits, the mypy + pytest loop above is the right gate. Do not
 default to running the CI suite.
+
+## Writing tests: make the regression visible in the source
+
+In this repo, the *why* of a test belongs in the test file, not in the
+commit message. Commit messages are read once; the test is read every
+time it fails. A reader who hits a failing test should be able to
+answer "what kind of bug did I just introduce?" from the test source
+alone, without `git log` or `git blame`.
+
+This is the deliberate house style, and it overrides the more general
+default of "don't comment code." For tests, lean toward more comments
+than you would in production code.
+
+### What to put where
+
+- **Module docstring** — name the kinds of regression this whole file
+  catches. "These tests catch (1) accessor key drift between code and
+  YAML, (2) new accessors added without validation, (3) validation
+  rule drift." A reader scanning the file should learn the threat
+  model before reading any specific assertion.
+- **Class docstring** — for grouped tests, summarise the contract
+  being pinned (e.g. "argv[1] wins, env var is fallback, missing both
+  raises") rather than just "tests for X".
+- **Test-level comment** — one short comment at the top of each test
+  saying what regression it catches and, if non-obvious, *why* the
+  current behaviour matters. "Production guard against a silently-
+  misconfigured bucket name — empty bucketName previously meant the
+  YAML key was set but blank" is far more useful than "test empty
+  bucket name raises".
+- **Explicit lists (`_FOO_KEYS = (...)`)** — when a test iterates over
+  a hand-maintained list, say in a nearby comment that the list is
+  the bug-catching mechanism: a new accessor that bypasses validation
+  should surface as a missing entry rather than a silent pass.
+
+### What this looks like in practice
+
+Don't write tests whose only documentation is the test name:
+
+```python
+# bad — reader has to reverse-engineer the intent from the assertion
+def test_emptyBucketNameRaises(self) -> None:
+    cfgDict["bucketName"] = ""
+    with self.assertRaises(RuntimeError):
+        cfg.bucketName
+```
+
+Write tests that explain themselves:
+
+```python
+# good — reader knows what bug this pins and why it matters
+def test_emptyBucketNameRaises(self) -> None:
+    # Production guard: an empty bucketName has previously meant the
+    # YAML key was added but never set for this site. The accessor
+    # must raise rather than hand back "", which would later show up
+    # as silently-failing S3 uploads.
+    cfgDict["bucketName"] = ""
+    with self.assertRaises(RuntimeError):
+        cfg.bucketName
+```
+
+When in doubt, ask: "if this test fails six months from now and someone
+who didn't write it has to fix it, do they have what they need from
+the file alone?" If the answer is "they'd have to read the commit that
+added the test," the comment is missing.
 
 ## Reporting results
 

@@ -67,6 +67,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     timm \
     peft \
     imagemagick \
+    fakeredis \
     && conda clean -afy
 
 USER saluser
@@ -196,6 +197,19 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     setup tarts -t saluser
 
 WORKDIR /repos/rubintv_production
+
+# The `git clone` above leaves the lsst-so/main working tree under
+# /repos/rubintv_production. The COPY below overlays the PR sources on
+# top, but COPY only overwrites — it does not delete files that the
+# clone had but the PR removed. That makes deleted files silently
+# reappear inside the image: mypy + pytest then run against the wrong
+# code (e.g. ``catchupService.py`` after we removed it, or scripts
+# pointing at long-gone classes). The .git directory is excluded from
+# the build context by .dockerignore (kept for layer cache stability),
+# so the clone is the only source of .git here — we have to preserve
+# it for the eups declare / git remote set-url steps below. Wipe the
+# clone's working tree but keep .git intact.
+RUN find . -mindepth 1 -maxdepth 1 -not -name .git -exec rm -rf {} +
 
 COPY . /repos/rubintv_production
 

@@ -37,11 +37,10 @@ from astropy.table import Column, MaskedColumn, Table
 from tqdm import tqdm
 
 from lsst.daf.butler import Butler, DatasetNotFoundError, DimensionRecord
-from lsst.summit.utils.butlerUtils import getExpRecordFromDataId, getSeqNumsForDayObs, makeDefaultLatissButler
 from lsst.summit.utils.consdbClient import getCcdVisitTableForDay, getWideQuicklookTableForDay
 from lsst.summit.utils.dateTime import calcPreviousDay, dayObsIntToString, getCurrentDayObsInt
 from lsst.summit.utils.efdUtils import getEfdData
-from lsst.summit.utils.utils import computeCcdExposureId, setupLogging
+from lsst.summit.utils.utils import computeCcdExposureId
 from lsst.utils import getPackageDir
 from lsst.utils.iteration import sequence_to_string
 
@@ -59,15 +58,14 @@ except ImportError:
     HAS_EFD_CLIENT = False
 
 if TYPE_CHECKING:
-    from lsst.summit.utils import ConsDbClient
+    from google.cloud.storage.bucket import Bucket
+
+    from lsst.summit.utils import ConsDbClient, NightReport
 
     from .uploaders import MultiUploader
 
 __all__ = [
     "getPlotSeqNumsForDayObs",
-    "createChannelByName",
-    "remakePlotByDataId",
-    "remakeDay",
     "pushTestImageToCurrent",
     "remakeStarTrackerDay",
     "getDaysWithDataForPlotting",
@@ -88,10 +86,10 @@ class QuicklookTableResults:
     """The full table from ConsDB."""
     nEntries: int
     """Number of entries in the table."""
-    minSeqNum: int
-    """Minimum seq_num in the table."""
-    maxSeqNum: int
-    """Maximum seq_num in the table."""
+    minSeqNum: int | None
+    """Minimum seq_num in the table, or ``None`` if the table is empty."""
+    maxSeqNum: int | None
+    """Maximum seq_num in the table, or ``None`` if the table is empty."""
     exceedsButler: bool
     """Whether the max seq_num exceeds the butler's last seq_num."""
     missingSeqNums: list[int]
@@ -102,7 +100,7 @@ class QuicklookTableResults:
     """List of on-sky seq_nums with no inputs (n_inputs is None or 0)."""
 
 
-def getDaysWithDataForPlotting(path):
+def getDaysWithDataForPlotting(path: str) -> list[int]:
     """Get a list of the days for which we have data for prototyping plots.
 
     Parameters
@@ -134,7 +132,7 @@ def getDaysWithDataForPlotting(path):
     return list(days)
 
 
-def getPlottingArgs(butler, path, dayObs):
+def getPlottingArgs(butler: Butler, path: str, dayObs: int) -> tuple[NightReport, pd.DataFrame, Any]:
     """Get the args which are passed to a night report plot.
 
     Checks if the data is available for the specified ``dayObs`` at the
@@ -178,7 +176,7 @@ def getPlottingArgs(butler, path, dayObs):
     return report, mdTable, ccdVisitTable
 
 
-def getPlotSeqNumsForDayObs(channel, dayObs, bucket=None):
+def getPlotSeqNumsForDayObs(channel: str, dayObs: int, bucket: Bucket | None = None) -> list[int]:
     """Return the list of seqNums for which the plot exists in the bucket for
     the specified channel.
 
@@ -220,190 +218,7 @@ def getPlotSeqNumsForDayObs(channel, dayObs, bucket=None):
     return sorted(existing)
 
 
-def createChannelByName(location, instrument, channel, *, embargo=False, doRaise=False):
-    """Create a RubinTV Channel object using the name of the channel.
-
-    Parameters
-    ----------
-    location : `str`
-        The location, for use with LocationConfig.
-    instrument : `str`
-        The instrument, e.g. 'LATISS' or 'LSSTComCam'.
-    channel : `str`
-        The name of the channel, as found in lsst.rubintv.production.CHANNELS.
-    embargo : `bool`, optional
-        If True, use the embargo repo.
-    doRaise : `bool`, optional
-        Have the channel ``raise`` if errors are encountered while it runs.
-
-    Returns
-    -------
-    channel : `lsst.rubintv.production.<Channel>`
-        The lsst.rubintv.production Channel object.
-
-    Raises
-    ------
-    ValueError:
-        Raised if the channel is unknown, or creating by name is not supported
-        for the channel in question.
-    """
-    from .rubinTv import (
-        ImExaminerChannel,
-        MetadataCreator,
-        MonitorChannel,
-        MountTorqueChannel,
-        SpecExaminerChannel,
-    )
-
-    if channel not in CHANNELS:
-        raise ValueError(f"Channel {channel} not in {CHANNELS}.")
-
-    locationConfig = LocationConfig(location)
-
-    match channel:
-        case "summit_imexam":
-            return ImExaminerChannel(
-                locationConfig=locationConfig, instrument=instrument, embargo=embargo, doRaise=doRaise
-            )
-        case "summit_specexam":
-            return SpecExaminerChannel(
-                locationConfig=locationConfig, instrument=instrument, embargo=embargo, doRaise=doRaise
-            )
-        case "auxtel_mount_torques":
-            return MountTorqueChannel(
-                locationConfig=locationConfig, instrument=instrument, embargo=embargo, doRaise=doRaise
-            )
-        case "auxtel_monitor":
-            return MonitorChannel(
-                locationConfig=locationConfig, instrument=instrument, embargo=embargo, doRaise=doRaise
-            )
-        case "auxtel_metadata":
-            return MetadataCreator(
-                locationConfig=locationConfig, instrument=instrument, embargo=embargo, doRaise=doRaise
-            )
-        case "all_sky_current":
-            raise ValueError(f"{channel} is not a creatable by name.")
-        case "all_sky_movies":
-            raise ValueError(f"{channel} is not a creatable by name.")
-        case _:
-            raise ValueError(f"Unrecognized channel {channel}.")
-
-
-def remakePlotByDataId(location, instrument, channel, dataId, embargo=False):
-    """Remake the plot for the given channel for a single dataId.
-    Reproduces the plot regardless of whether it exists. Raises on error.
-
-    This method is very slow and inefficient for bulk processing, as it
-    creates a Channel object for each plot - do *not* use in loops, use
-    remakeDay() or write a custom scripts for bulk remaking.
-
-    Parameters
-    ----------
-    location : `str`
-        The location, for use with LocationConfig.
-    instrument : `str`
-        The instrument, e.g. 'LATISS' or 'LSSTComCam'.
-    channel : `str`
-        The name of the channel.
-    dataId : `dict`
-        The dataId.
-    embargo : `bool`, optional
-        Use the embargo repo?
-    """
-    tvChannel = createChannelByName(location, instrument, channel, embargo=embargo, doRaise=True)
-    expRecord = getExpRecordFromDataId(tvChannel.butler, dataId)
-    tvChannel.callback(expRecord)
-
-
-def remakeDay(
-    location, instrument, channel, dayObs, *, remakeExisting=False, notebook=True, logger=None, embargo=False
-):
-    """Remake all the plots for a given day.
-
-    Currently auxtel_metadata does not pull from the bucket to check what is
-    in there, so remakeExisting is not supported.
-
-    Parameters
-    ----------
-    location : `str`
-        The location, for use with LocationConfig.
-    instrument : `str`
-        The instrument, e.g. 'LATISS' or 'LSSTComCam'.
-    channel : `str`
-        The name of the lsst.rubintv.production channel. The actual channel
-        object is created internally.
-    dayObs : `int`
-        The dayObs.
-    remakeExisting : `bool`, optional
-        Remake all plots, regardless of whether they already exist in the
-        bucket?
-    notebook : `bool`, optional
-        Is the code being run from within a notebook? Needed to correctly nest
-        asyncio event loops in notebook-type environments.
-    logger : `logging.Logger`, optional
-        The logger to use, created if not provided.
-    embargo : `bool`, optional
-        Use the embargoed repo?
-
-    Raises
-    ------
-    ValueError:
-        Raised if the channel is unknown.
-        Raised if remakeExisting is False and channel is auxtel_metadata.
-    """
-    if not logger:
-        logger = logging.getLogger(__name__)
-
-    from google.cloud import storage
-
-    if channel not in CHANNELS:
-        raise ValueError(f"Channel {channel} not in {CHANNELS}")
-
-    if remakeExisting is False and channel in ["auxtel_metadata"]:
-        raise ValueError(
-            f"Channel {channel} can currently only remake everything or nothing. "
-            "If you would like to remake everything, please explicitly pass "
-            "remakeExisting=True."
-        )
-
-    if notebook:
-        # notebooks have their own eventloops, so this is necessary if the
-        # function is being run from within a notebook type environment
-        import nest_asyncio
-
-        nest_asyncio.apply()
-        setupLogging()
-
-    client = storage.Client()
-    locationConfig = LocationConfig(location)
-    bucket = client.get_bucket(locationConfig.bucketName)
-    butler = makeDefaultLatissButler(embargo=embargo)
-
-    allSeqNums = set(getSeqNumsForDayObs(butler, dayObs))
-    logger.info(f"Found {len(allSeqNums)} seqNums to potentially create plots for.")
-    existing = set()
-    if not remakeExisting:
-        existing = set(getPlotSeqNumsForDayObs(channel, dayObs, bucket=bucket))
-        nToMake = len(allSeqNums) - len(existing)
-        logger.info(
-            f"Found {len(existing)} in the bucket which will be skipped, " f"leaving {nToMake} to create."
-        )
-
-    toMake = sorted(allSeqNums - existing)
-    if not toMake:
-        logger.info(f"Nothing to do for {channel} on {dayObs}")
-        return
-
-    # doRaise is False because during bulk plot remaking we expect many fails
-    # due to image types, short exposures, etc.
-    tvChannel = createChannelByName(location, instrument, channel, doRaise=False, embargo=embargo)
-    for seqNum in toMake:
-        dataId = {"day_obs": dayObs, "seq_num": seqNum, "detector": 0}
-        expRecord = getExpRecordFromDataId(butler, dataId)
-        tvChannel.callback(expRecord)
-
-
-def pushTestImageToCurrent(channel, bucketName, duration=15):
+def pushTestImageToCurrent(channel: str, bucketName: str, duration: float = 15) -> None:
     """Push a test image to a channel to see if it shows up automatically.
 
     Leaves the test image in the bucket for ``duration`` seconds and then
@@ -463,8 +278,8 @@ def pushTestImageToCurrent(channel, bucketName, duration=15):
 
     # names are like
     # 'auxtel_monitor/auxtel-monitor_dayObs_2021-07-06_seqNum_100.png'
-    days = set([b.name.split(f"{prefix}_dayObs_")[1].split("_seqNum")[0] for b in blobs])
-    days = [int(d.replace("-", "")) for d in days]  # days are like 2022-01-02
+    dayStrs = set([b.name.split(f"{prefix}_dayObs_")[1].split("_seqNum")[0] for b in blobs])
+    days = [int(d.replace("-", "")) for d in dayStrs]  # days are like 2022-01-02
     recentDay = max(days)
 
     seqNums = getPlotSeqNumsForDayObs(channel, recentDay, bucket)
@@ -486,16 +301,16 @@ def pushTestImageToCurrent(channel, bucketName, duration=15):
 
 def remakeStarTrackerDay(
     *,
-    dayObs,
-    rootDataPath,
-    outputRoot,
-    metadataRoot,
-    astrometryNetRefCatRoot,
-    wide,
-    remakeExisting=False,
-    logger=None,
-    forceMaxNum=None,
-):
+    dayObs: int,
+    rootDataPath: str,
+    outputRoot: str,
+    metadataRoot: str,
+    astrometryNetRefCatRoot: str,
+    wide: bool,
+    remakeExisting: bool = False,
+    logger: logging.Logger | None = None,
+    forceMaxNum: int | None = None,
+) -> None:
     """Remake all the star tracker plots for a given day.
 
     TODO: This needs updating post-refactor, but can wait for another ticket
@@ -761,12 +576,17 @@ def checkVisitQuicklookTable(
     hasInputsSeqNums = set(tableOnSky[hasInputs]["seq_num"].tolist())
     missingOnSkyInputs = sorted(onSkySeqNums - hasInputsSeqNums)
 
+    # seqNums is empty when ConsDB has no entries for the day at all, in which
+    # case min/max are undefined.
+    minSeqNum = int(min(seqNums)) if seqNums else None
+    maxSeqNum = int(max(seqNums)) if seqNums else None
+
     return QuicklookTableResults(
         table=table,
         nEntries=len(table),
-        minSeqNum=int(min(seqNums)),
-        maxSeqNum=int(max(seqNums)),
-        exceedsButler=bool(table["seq_num"].max() > lastSeqNum),
+        minSeqNum=minSeqNum,
+        maxSeqNum=maxSeqNum,
+        exceedsButler=bool(maxSeqNum is not None and maxSeqNum > lastSeqNum),
         missingSeqNums=missingSeqNums,
         emptyColumns=emptyColumns,
         missingOnSkyInputs=missingOnSkyInputs,
@@ -805,12 +625,17 @@ def checkCcdVisitQuicklookTable(
     # same as missingSeqNums for the ccdvisit table
     missingOnSkyInputs = missingSeqNums
 
+    # seqNums is empty on nights with no on-sky images, since the ccdvisit
+    # tables are only populated for on-sky data, so min/max are undefined then.
+    minSeqNum = int(min(seqNums)) if seqNums else None
+    maxSeqNum = int(max(seqNums)) if seqNums else None
+
     return QuicklookTableResults(
         table=table,
         nEntries=len(table),
-        minSeqNum=int(min(seqNums)),
-        maxSeqNum=int(max(seqNums)),
-        exceedsButler=bool(max(seqNums) > lastSeqNum),
+        minSeqNum=minSeqNum,
+        maxSeqNum=maxSeqNum,
+        exceedsButler=bool(maxSeqNum is not None and maxSeqNum > lastSeqNum),
         missingSeqNums=missingSeqNums,
         emptyColumns=emptyColumns,
         missingOnSkyInputs=missingOnSkyInputs,
@@ -852,10 +677,8 @@ def checkConsDbContents(butler: Butler, client: ConsDbClient, dayObs: int, verbo
 
     vResults = checkVisitQuicklookTable(client, dayObs, onSkySeqNumsButler, lastSeqNum)
     if verbose:
-        print(
-            f"visit1_quicklook table: {vResults.nEntries} entries from "
-            f"{vResults.minSeqNum}-{vResults.maxSeqNum}"
-        )
+        seqRange = f" from {vResults.minSeqNum}-{vResults.maxSeqNum}" if vResults.nEntries else ""
+        print(f"visit1_quicklook table: {vResults.nEntries} entries{seqRange}")
     if vResults.exceedsButler:
         print(f"🤯 ConsDB has max seq_num {vResults.maxSeqNum} greater than the butler's for {dayObs}!")
     if vResults.missingSeqNums and verbose:
@@ -872,10 +695,8 @@ def checkConsDbContents(butler: Butler, client: ConsDbClient, dayObs: int, verbo
 
     cResults = checkCcdVisitQuicklookTable(client, dayObs, onSkySeqNumsButler, lastSeqNum)
     if verbose:
-        print(
-            f"\nccdvisit1_quicklook table: {cResults.nEntries} entries from seqNum "
-            f"{cResults.minSeqNum}-{cResults.maxSeqNum}"
-        )
+        seqRange = f" from seqNum {cResults.minSeqNum}-{cResults.maxSeqNum}" if cResults.nEntries else ""
+        print(f"\nccdvisit1_quicklook table: {cResults.nEntries} entries{seqRange}")
     if cResults.missingSeqNums:  # always enter this - it needs to print and set dayIsOk=False
         missing = cResults.missingSeqNums
         print(f"❌ Missing within that range (all dets): ({len(missing)}): {sequence_to_string(missing)}")

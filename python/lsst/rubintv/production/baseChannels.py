@@ -81,7 +81,7 @@ class BaseChannel(ABC):
         self.doRaise: bool = doRaise
 
     @abstractmethod
-    def callback(self, arg, /):
+    def callback(self, arg: Any, /) -> None:
         """The callback function, called as each new value of arg is found.
 
         ``arg`` is usually an exposure record, but can be, for example, a
@@ -146,7 +146,7 @@ class BaseButlerChannel(BaseChannel):
         self.dataProduct: str | None = None
 
     @abstractmethod
-    def callback(self, expRecord):
+    def callback(self, arg: Any, /) -> None:
         raise NotImplementedError()
 
     def _waitForDataProduct(

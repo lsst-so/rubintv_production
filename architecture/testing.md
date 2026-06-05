@@ -53,6 +53,12 @@ source ~/stack.sh && . ~/setup_packages.sh && pytest tests/ -q -n logical
 | `test_clusterManagement.py` | Dataclasses in `clusterManagement.py` | No |
 | `test_workerSets.py` | `WorkerSet` registry helpers | No |
 | `test_pipelines.py` | Full pipeline graph generation and validation | Yes |
+| `test_locationConfig.py` | `LocationConfig` accessors and dispatch helpers, against a fixture YAML dict | No |
+| `test_resources.py` | `getBasePath` per-site URI / endpoint selection | No |
+| `test_shardIo.py` | Shard write / read / delete helpers (uses `tmp_path`) | No |
+| `test_timedServices.py` | `deep_update` recursive dict merge | No |
+| `test_exposureProcessingInfo.py` | `ExposureProcessingInfo.fromRedisHash` parsing and predicates | No |
+| `test_redisUtils.py` | `RedisHelper` lifecycle / queueing / tracking, against `fakeredis` | No |
 
 ### Test Data
 
@@ -67,8 +73,34 @@ source ~/stack.sh && . ~/setup_packages.sh && pytest tests/ -q -n logical
 - **HTTP**: `responses` library (`@responses.activate`) for REST API mocking
 - **Butler**: conditional skip with `@unittest.skipIf(NO_BUTLER, ...)` when
   Butler is not available
-- **No Redis mocking in unit tests**: Redis-dependent code is tested in the
-  CI suite instead
+- **Redis**: `fakeredis` (`fakeredis.FakeStrictRedis()`) for in-memory Redis
+  in unit tests. Patch `lsst.rubintv.production.redisUtils.redis.Redis` with
+  a side-effect that returns a fakeredis client, then construct
+  `RedisHelper(butler=None, locationConfig=None)` — see
+  `tests/test_redisUtils.py` for the fixture pattern. The CI suite still
+  uses a real Redis server for end-to-end coverage.
+
+### Import Style
+
+Put **all** imports at the top of the test module — do **not** defer them
+into function or method bodies unless it is absolutely unavoidable (e.g. a
+genuine import cycle that has no other fix). This applies even to imports
+that only a couple of tests use, and even to ones that pull in heavy
+machinery (a Butler, the dimension universe, sample-data fixtures) and so
+add to import time.
+
+The reasoning is deliberate: if an import can ever fail at runtime — a
+missing data fixture, a moved symbol, a broken transitive dependency — we
+want that failure surfaced **upfront, at collection time**, where it is
+loud and unambiguous, rather than hidden inside the one test that happens
+to exercise it. A module-level import that breaks fails the whole file
+immediately and obviously; a deferred import that breaks looks like a test
+failure in a single unrelated-looking test. The increased import time is a
+price worth paying for that early, honest failure.
+
+(For example, `getSampleExpRecord` in `test_redisUtils.py` is imported at
+module scope even though only two tests use it — see the third-party
+import group at the top of that file.)
 
 ## CI Integration Suite (`tests/ci/`)
 

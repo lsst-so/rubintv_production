@@ -1,7 +1,7 @@
-from metaToImport import TestClass
+from metaToImport import TestClass  # type: ignore[import-not-found]
 
 
-def main():
+def main() -> None:
     test = TestClass()
     success = test.someFunction()
     if not success:

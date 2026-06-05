@@ -1,7 +1,7 @@
 import logging
 
 
-def main():
+def main() -> None:
     print("This is in stdout")
     logger = logging.getLogger()
     logger.info("logger at info level")

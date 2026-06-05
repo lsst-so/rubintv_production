@@ -145,7 +145,7 @@ class Payload:
         json_dict["dataId"] = dict(self.dataId.required)
         return json.dumps(json_dict)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"Payload(dataId={[self.dataId]}, run={self.run}, who={self.who},"
             " pipelineGraphBytes=<the bytes>)"

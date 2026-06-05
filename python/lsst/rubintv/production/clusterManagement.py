@@ -869,7 +869,7 @@ class ClusterManager:
             self.log.info(message)
             self._lastLoggedActiveExposures = current
 
-    def run(self):
+    def run(self) -> None:
         """Main loop to monitor and manage the cluster.
 
         Takes a snapshot of the cluster status, executes RubinTV commands,

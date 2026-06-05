@@ -1,5 +1,5 @@
 class TestClass:
-    def someFunction(self):
+    def someFunction(self) -> bool:
         import lsstDebug
 
         remoteConnection = lsstDebug.Info("ciutils").getConnection()

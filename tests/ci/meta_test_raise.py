@@ -1,7 +1,7 @@
 import time
 
 
-def main():
+def main() -> None:
     time.sleep(1)
     raise RuntimeError("This is a test runtime error, raising as it should do.")
 

@@ -19,12 +19,22 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import matplotlib.pyplot as plt
 import numpy as np
 
 from lsst.utils.plotting.limits import calculate_safe_plotting_limits
 
 from .nightReportPlotBase import StarTrackerPlot
+
+if TYPE_CHECKING:
+    import pandas as pd
+
+    from ..locationConfig import LocationConfig
+    from ..uploaders import MultiUploader
 
 # any classes added to PLOT_FACTORIES will automatically be added to the night
 # report channel, with each being replotted for each image taken.
@@ -48,16 +58,21 @@ class RaDecAltAzOverTime(StarTrackerPlot):
     _PlotName = "ra-dec-alt-az-vs-time"
     _PlotGroup = "Time-Series"
 
-    def __init__(self, dayObs, locationConfig=None, uploader=None):
+    def __init__(
+        self,
+        dayObs: int,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
+    ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
+            s3Uploader=s3Uploader,
         )
 
-    def plot(self, metadata):
+    def plot(self, metadata: pd.DataFrame) -> bool:
         """Create a sample plot using data from the StarTracker page tables.
 
         Parameters
@@ -109,16 +124,21 @@ class DeltasPlot(StarTrackerPlot):
     _PlotName = "delta-ra-dec-alt-az-rot-vs-time"
     _PlotGroup = "Time-Series"
 
-    def __init__(self, dayObs, locationConfig=None, uploader=None):
+    def __init__(
+        self,
+        dayObs: int,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
+    ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
+            s3Uploader=s3Uploader,
         )
 
-    def plot(self, metadata):
+    def plot(self, metadata: pd.DataFrame) -> bool:
         """Create a sample plot using data from the StarTracker page tables.
 
         Parameters
@@ -168,16 +188,21 @@ class SourcesAndScatters(StarTrackerPlot):
     _PlotName = "sourceCount-and-astrometric-scatter-vs-time"
     _PlotGroup = "Time-Series"
 
-    def __init__(self, dayObs, locationConfig=None, uploader=None):
+    def __init__(
+        self,
+        dayObs: int,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
+    ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
+            s3Uploader=s3Uploader,
         )
 
-    def plot(self, metadata):
+    def plot(self, metadata: pd.DataFrame) -> bool:
         """Create a sample plot using data from the StarTracker page tables.
 
         Parameters
@@ -221,16 +246,21 @@ class AltAzCoverageTopDown(StarTrackerPlot):
     _PlotName = "Alt-Az-top-down"
     _PlotGroup = "Coverage"
 
-    def __init__(self, dayObs, locationConfig=None, uploader=None):
+    def __init__(
+        self,
+        dayObs: int,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
+    ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
+            s3Uploader=s3Uploader,
         )
 
-    def plot(self, metadata):
+    def plot(self, metadata: pd.DataFrame) -> bool:
         """Create a sample plot using data from the StarTracker page tables.
 
         Parameters
@@ -282,9 +312,9 @@ class AltAzCoverageTopDown(StarTrackerPlot):
             "Axial coverage - azimuth (theta) vs altitude(r)" "\n 'Top down' view with zenith at center",
             va="bottom",
         )
-        ax.set_theta_zero_location("N")
-        ax.set_theta_direction(-1)
-        ax.set_rlim(0, 90)
+        ax.set_theta_zero_location("N")  # type: ignore[attr-defined]
+        ax.set_theta_direction(-1)  # type: ignore[attr-defined]
+        ax.set_rlim(0, 90)  # type: ignore[attr-defined]
 
         ax.invert_yaxis()  # puts 90 (the zenith) at the center
         return True
@@ -294,16 +324,21 @@ class CameraPointingOffset(StarTrackerPlot):
     _PlotName = "CameraPointingOffset"
     _PlotGroup = "Analysis"
 
-    def __init__(self, dayObs, locationConfig=None, uploader=None):
+    def __init__(
+        self,
+        dayObs: int,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
+    ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
+            s3Uploader=s3Uploader,
         )
 
-    def plot(self, metadata):
+    def plot(self, metadata: pd.DataFrame) -> bool:
         """Create a sample plot using data from the StarTracker page tables.
 
         Parameters
@@ -341,16 +376,21 @@ class InterCameraOffset(StarTrackerPlot):
     _PlotName = "InterCameraOffset"
     _PlotGroup = "Analysis"
 
-    def __init__(self, dayObs, locationConfig=None, uploader=None):
+    def __init__(
+        self,
+        dayObs: int,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
+    ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
+            s3Uploader=s3Uploader,
         )
 
-    def plot(self, metadata):
+    def plot(self, metadata: pd.DataFrame) -> bool:
         """Create a sample plot using data from the StarTracker page tables.
 
         Parameters
@@ -400,16 +440,21 @@ class CameraAzAltOffset(StarTrackerPlot):
     _PlotName = "CameraAzAltOffset"
     _PlotGroup = "Analysis"
 
-    def __init__(self, dayObs, locationConfig=None, uploader=None):
+    def __init__(
+        self,
+        dayObs: int,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
+    ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
+            s3Uploader=s3Uploader,
         )
 
-    def plot(self, metadata):
+    def plot(self, metadata: pd.DataFrame) -> bool:
         """Create a sample plot using data from the StarTracker page tables.
 
         Parameters
@@ -445,16 +490,21 @@ class CameraAzAltOffsetPosition(StarTrackerPlot):
     _PlotName = "CameraAzAltOffsetPosition"
     _PlotGroup = "Analysis"
 
-    def __init__(self, dayObs, locationConfig=None, uploader=None):
+    def __init__(
+        self,
+        dayObs: int,
+        locationConfig: LocationConfig,
+        s3Uploader: MultiUploader,
+    ) -> None:
         super().__init__(
             dayObs=dayObs,
             plotName=self._PlotName,
             plotGroup=self._PlotGroup,
             locationConfig=locationConfig,
-            uploader=uploader,
+            s3Uploader=s3Uploader,
         )
 
-    def plot(self, metadata):
+    def plot(self, metadata: pd.DataFrame) -> bool:
         """Create a sample plot using data from the StarTracker page tables.
 
         Parameters

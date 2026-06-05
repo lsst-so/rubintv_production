@@ -50,6 +50,7 @@ class PodFlavor(Enum):
     ONE_OFF_POSTISR_WORKER = auto()
     ONE_OFF_VISITIMAGE_WORKER = auto()
     PERFORMANCE_MONITOR = auto()
+    NIGHT_REPORT_WORKER = auto()
     GUIDER_WORKER = auto()
     BACKLOG_WORKER = auto()
     # FOCUS_SWEEP_ANALYZER and DONUT_LAUNCHER consume from OCS-pushed
@@ -63,7 +64,7 @@ class PodFlavor(Enum):
     HEAD_NODE = auto()
 
     @classmethod
-    def validate_values(cls):
+    def validate_values(cls) -> None:
         for item in cls:
             if "-" in item.name:
                 raise ValueError(f"Invalid PodFlavor: value with dash: {item.name}")
@@ -91,6 +92,7 @@ def podFlavorToPodType(podFlavor: PodFlavor) -> PodType:
         PodFlavor.ONE_OFF_POSTISR_WORKER: PodType.PER_INSTRUMENT,  # hard codes a detector number
         PodFlavor.ONE_OFF_VISITIMAGE_WORKER: PodType.PER_INSTRUMENT,  # hard codes a detector number
         PodFlavor.PERFORMANCE_MONITOR: PodType.PER_INSTRUMENT_SINGLETON,  # only one of these I think, for now
+        PodFlavor.NIGHT_REPORT_WORKER: PodType.PER_INSTRUMENT_SINGLETON,
         PodFlavor.GUIDER_WORKER: PodType.PER_INSTRUMENT,  # each worker does all eight guider detectors
         # BACKLOG_WORKER can run any step1 workload, no detector affinity, just
         # a depth
@@ -152,12 +154,12 @@ class PodDetails:
             depth=self.depth,
         )
 
-    def __lt__(self, other) -> bool:
+    def __lt__(self, other: object) -> bool:
         if not isinstance(other, PodDetails):
             raise NotImplementedError(f"Cannot compare PodDetails with {type(other)}")
         return self.queueName < other.queueName
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"PodDetails({self.instrument}-{self.podFlavor}, depth={self.depth},"
             f" detNum={self.detectorNumber})"
@@ -170,7 +172,7 @@ class PodDetails:
         # here anyway.
         return hash(self.queueName)
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, PodDetails):
             raise NotImplementedError(f"Cannot compare PodDetails with {type(other)}")
         return all(

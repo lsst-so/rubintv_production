@@ -233,7 +233,7 @@ class GuiderWorker(BaseButlerChannel):
         instrument: str,
         podDetails: PodDetails,
         *,
-        doRaise=False,
+        doRaise: bool = False,
     ) -> None:
         super().__init__(
             locationConfig=locationConfig,

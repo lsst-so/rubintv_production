@@ -28,7 +28,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
 from time import perf_counter
-from typing import TYPE_CHECKING, Callable, Deque, Iterator
+from typing import TYPE_CHECKING, Any, Callable, Deque, Iterator
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -98,9 +98,9 @@ def timeFunction(logger: Logger) -> Callable:
         The logger to use for logging the duration of the function call.
     """
 
-    def decorate(func):
+    def decorate(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             start = perf_counter()
             try:
                 return func(*args, **kwargs)
@@ -138,7 +138,7 @@ class BoxCarTimer:
         is started.
     """
 
-    def __init__(self, length: int | None, *, clock: Callable[[], float] = time.time):
+    def __init__(self, length: int | None, *, clock: Callable[[], float] = time.time) -> None:
         self._buffer: Deque[float] = deque(maxlen=length)
         self._clock = clock
         self.lastTime: float | None = None

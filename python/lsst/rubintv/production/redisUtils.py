@@ -289,10 +289,6 @@ class ExposureProcessingInfo:
         """Check if step1b has finished for ``who``."""
         return self.step1bFinished.get(who, False)
 
-    def markStep1aDispatched(self, who: str) -> None:
-        """Mark the step1a gather as dispatched (Python-side only)."""
-        self.step1aDispatched[who] = True
-
     def getBinnedIsrProduced(self) -> set[int]:
         """Get the set of detectors that have produced a binned post-ISR
         image (pipeline-agnostic).
@@ -314,10 +310,6 @@ class ExposureProcessingInfo:
     def isMosaicDispatched(self) -> bool:
         """Check if the post-ISR focal-plane mosaic has been dispatched."""
         return self.mosaicDispatched
-
-    def markMosaicDispatched(self) -> None:
-        """Mark the post-ISR mosaic as dispatched (Python-side only)."""
-        self.mosaicDispatched = True
 
     def allGathersDispatched(self) -> bool:
         """Check if all whos with expected detectors have been dispatched.
@@ -750,7 +742,7 @@ class RedisHelper:
 
         return allWorkers
 
-    def getFreeWorkers(self, instrument, podFlavor: PodFlavor) -> list[PodDetails]:
+    def getFreeWorkers(self, instrument: str, podFlavor: PodFlavor) -> list[PodDetails]:
         """Get the list of workers that are currently free.
 
         Parameters
@@ -805,7 +797,7 @@ class RedisHelper:
         self.log.warning(f"No free workers available for {podFlavor=}, sending work to {busyWorker=}")
         return busyWorker
 
-    def pushToButlerWatcherList(self, instrument, expRecord: DimensionRecord) -> None:
+    def pushToButlerWatcherList(self, instrument: str, expRecord: DimensionRecord) -> None:
         """Keep a record of what's been found by the butler watcher for all
         time.
 
@@ -818,7 +810,7 @@ class RedisHelper:
         self.redis.lpush(getButlerWatcherListKey(instrument), expRecordJson)
 
     def reportTaskFinished(
-        self, instrument: str, taskName: str, dataId: DataCoordinate, failed=False
+        self, instrument: str, taskName: str, dataId: DataCoordinate, failed: bool = False
     ) -> None:
         """Report that a task has finished, be that a real DM Task or simply
         that something has happened which needs to be triggered on.
@@ -904,7 +896,7 @@ class RedisHelper:
                 " did not exist when removal was attempted"
             )
 
-    def reportVisitLevelFinished(self, instrument: str, step: str, who: str, failed=False) -> None:
+    def reportVisitLevelFinished(self, instrument: str, step: str, who: str, failed: bool = False) -> None:
         """Count the number of times a visit-level pipeline has finished.
 
         Parameters
@@ -946,7 +938,7 @@ class RedisHelper:
         key = getVisitFinishedCounterKey(instrument, step, who)
         return int(self.redis.get(key) or 0)
 
-    def reportNightLevelFinished(self, instrument: str, who: str, failed=False) -> None:
+    def reportNightLevelFinished(self, instrument: str, who: str, failed: bool = False) -> None:
         """Count the number of times a night-level pipeline has finished.
 
         Parameters
@@ -1045,7 +1037,9 @@ class RedisHelper:
         # landed in that time
         self.redis.expire(announcementKey, CONSDB_ANNOUNCE_EXPIRY_TIME)
 
-    def waitForResultInConsDb(self, instrument: str, table: str, obsId: int, timeout=None) -> bool:
+    def waitForResultInConsDb(
+        self, instrument: str, table: str, obsId: int, timeout: float | None = None
+    ) -> bool:
         """Wait for an item to be available in consDB.
 
         NB: this function is only appropriate for items less than 2 days old,
@@ -1715,7 +1709,7 @@ class RedisHelper:
             will be ignored. Default is ``None``.
         """
 
-        def _isPayload(jsonData) -> bool:
+        def _isPayload(jsonData: str | bytes) -> bool:
             try:
                 loaded = json.loads(jsonData)
                 _ = loaded["dataId"]
@@ -1724,7 +1718,7 @@ class RedisHelper:
                 pass
             return False
 
-        def _isExpRecord(jsonData) -> bool:
+        def _isExpRecord(jsonData: str | bytes) -> bool:
             try:
                 loaded = json.loads(jsonData)
                 _ = loaded["definition"]
@@ -1733,11 +1727,11 @@ class RedisHelper:
                 pass
             return False
 
-        def getPayloadDataId(jsonData) -> str:
+        def getPayloadDataId(jsonData: str | bytes) -> str:
             loaded = json.loads(jsonData)
             return f"{loaded['dataId']}, run={loaded['run']}"
 
-        def getExpRecordDataId(jsonData) -> str:
+        def getExpRecordDataId(jsonData: str | bytes) -> str:
             loaded = json.loads(jsonData)
             expRecordStr = f"{loaded['record']['instrument']}, {loaded['record']['id']}"
             return expRecordStr

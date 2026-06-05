@@ -1297,10 +1297,15 @@ class HeadProcessController:
                             self.instrument, intraId, numZernikesFinished
                         )
 
-            # Mark this who's gather as dispatched and check if all are done
-            self.redisHelper.markStep1aDispatched(self.instrument, expId, who)  # update the real version
-            info.markStep1aDispatched(who)  # update the local version for the check below
-            if info.allGathersDispatched():
+            # Mark this who's gather as dispatched and check if all are done.
+            # Re-read the tracking hash so the completion check sees Redis as
+            # the single source of truth (the write above plus any concurrent
+            # worker updates) rather than a locally-patched snapshot. The
+            # hash can have TTL'd out between the two calls, hence the None
+            # guard.
+            self.redisHelper.markStep1aDispatched(self.instrument, expId, who)
+            info = self.redisHelper.getExposureProcessingInfo(self.instrument, expId)
+            if info is not None and info.allGathersDispatched():
                 self.redisHelper.completeExposure(self.instrument, expId)
 
             # never dispatch this incomplete because it relies on a specific
@@ -1379,12 +1384,15 @@ class HeadProcessController:
             self.log.info(f"Dispatching complete {dataProduct} mosaic for expId={expId}")
             self.redisHelper.enqueuePayload(payload, worker)
             self.redisHelper.markMosaicDispatched(self.instrument, expId)
-            info.markMosaicDispatched()
 
             (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoord)
             self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
 
-            if info.allGathersDispatched():
+            # Re-read so the completion check reflects Redis (the mosaic write
+            # above plus any concurrent step1a dispatches), not a locally
+            # patched snapshot. None-guarded in case the hash TTL'd out.
+            info = self.redisHelper.getExposureProcessingInfo(self.instrument, expId)
+            if info is not None and info.allGathersDispatched():
                 self.redisHelper.completeExposure(self.instrument, expId)
 
     def regulateLoopSpeed(self) -> None:
@@ -1853,7 +1861,7 @@ class CameraControlConfig:
         """
         return sum(self._detectorStates.values())
 
-    def getEnabledDetIds(self, excludeCwfs=False) -> list[int]:
+    def getEnabledDetIds(self, excludeCwfs: bool = False) -> list[int]:
         """Get the detectorIds of the enabled sensors.
 
         Returns

@@ -18,13 +18,20 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+"""Test cases for pod definitions."""
+
 from __future__ import annotations
 
-"""Test cases for utils."""
 import unittest
 
 import lsst.utils.tests
-from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor, PodType
+from lsst.rubintv.production.podDefinition import (
+    PodDetails,
+    PodFlavor,
+    PodType,
+    podFlavorToPodType,
+)
 
 
 class PodDefinitionTestCase(lsst.utils.tests.TestCase):
@@ -162,11 +169,73 @@ class PodDefinitionTestCase(lsst.utils.tests.TestCase):
             PodDetails.fromQueueName(newName)
 
 
+class PodFlavorToPodTypeTestCase(lsst.utils.tests.TestCase):
+    """Pin every PodFlavor to its expected PodType.
+
+    The lookup in `podFlavorToPodType` is exhaustive by intent — adding a
+    new PodFlavor without registering its PodType raises a KeyError at
+    runtime. This pins both that exhaustiveness and the actual mapping.
+    """
+
+    EXPECTED: dict[PodFlavor, PodType] = {
+        PodFlavor.HEAD_NODE: PodType.PER_INSTRUMENT_SINGLETON,
+        PodFlavor.SFM_WORKER: PodType.PER_DETECTOR,
+        PodFlavor.AOS_WORKER: PodType.PER_DETECTOR,
+        PodFlavor.PSF_PLOTTER: PodType.PER_INSTRUMENT,
+        PodFlavor.FWHM_PLOTTER: PodType.PER_INSTRUMENT,
+        PodFlavor.ZERNIKE_PREDICTED_FWHM_PLOTTER: PodType.PER_INSTRUMENT,
+        PodFlavor.RADIAL_PLOTTER: PodType.PER_INSTRUMENT,
+        PodFlavor.NIGHTLYROLLUP_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.STEP1B_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.STEP1B_AOS_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.MOSAIC_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.ONE_OFF_EXPRECORD_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.ONE_OFF_POSTISR_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.ONE_OFF_VISITIMAGE_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.PERFORMANCE_MONITOR: PodType.PER_INSTRUMENT_SINGLETON,
+        PodFlavor.NIGHT_REPORT_WORKER: PodType.PER_INSTRUMENT_SINGLETON,
+        PodFlavor.GUIDER_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.BACKLOG_WORKER: PodType.PER_INSTRUMENT,
+        PodFlavor.FOCUS_SWEEP_ANALYZER: PodType.PER_INSTRUMENT_SINGLETON,
+        PodFlavor.DONUT_LAUNCHER: PodType.PER_INSTRUMENT_SINGLETON,
+    }
+
+    def test_everyPodFlavorMapsToExpectedPodType(self) -> None:
+        # subTest kwargs are serialised by pytest-xdist's execnet layer
+        # when running with ``-n auto`` (as CI does), and stdlib Enum
+        # instances aren't on execnet's allowlist — so pass the enum
+        # name as a plain string instead of the enum itself.
+        for flavor, expectedType in self.EXPECTED.items():
+            with self.subTest(flavor=flavor.name):
+                self.assertEqual(podFlavorToPodType(flavor), expectedType)
+
+    def test_mappingCoversEveryPodFlavor(self) -> None:
+        # If a new PodFlavor is added, this test fails until the EXPECTED
+        # table is updated — which forces a deliberate decision about
+        # which PodType the new flavor belongs to.
+        self.assertEqual(set(self.EXPECTED.keys()), set(PodFlavor))
+
+    def test_unknownFlavorRaises(self) -> None:
+        # Defensive: passing something that isn't a real PodFlavor falls
+        # through the dict lookup and raises KeyError.
+        with self.assertRaises(KeyError):
+            podFlavorToPodType("HEAD_NODE")  # type: ignore[arg-type]
+
+
+class PodFlavorValuesTestCase(lsst.utils.tests.TestCase):
+
+    def test_noDashesInFlavorNames(self) -> None:
+        # validate_values is invoked at import time; this confirms that
+        # the underlying check is sensitive to the property it claims.
+        for flavor in PodFlavor:
+            self.assertNotIn("-", flavor.name)
+
+
 class TestMemory(lsst.utils.tests.MemoryTestCase):
     pass
 
 
-def setup_module(module):
+def setup_module(module: object) -> None:
     lsst.utils.tests.init()
 
 

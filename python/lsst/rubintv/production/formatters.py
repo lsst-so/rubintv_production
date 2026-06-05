@@ -82,12 +82,15 @@ class FakeExposureRecord:
     seq_num: int
     day_obs: int
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{{day_obs={self.day_obs}, seq_num={self.seq_num}}}"
 
 
 def expRecordToUploadFilename(
-    channel: str, expRecord: DimensionRecord | FakeExposureRecord, extension=".png", zeroPad=False
+    channel: str,
+    expRecord: DimensionRecord | FakeExposureRecord,
+    extension: str = ".png",
+    zeroPad: bool = False,
 ) -> str:
     """Convert an expRecord to a filename, for use when uploading to a channel.
 
