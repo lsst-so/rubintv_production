@@ -86,10 +86,10 @@ class QuicklookTableResults:
     """The full table from ConsDB."""
     nEntries: int
     """Number of entries in the table."""
-    minSeqNum: int
-    """Minimum seq_num in the table."""
-    maxSeqNum: int
-    """Maximum seq_num in the table."""
+    minSeqNum: int | None
+    """Minimum seq_num in the table, or ``None`` if the table is empty."""
+    maxSeqNum: int | None
+    """Maximum seq_num in the table, or ``None`` if the table is empty."""
     exceedsButler: bool
     """Whether the max seq_num exceeds the butler's last seq_num."""
     missingSeqNums: list[int]
@@ -576,12 +576,17 @@ def checkVisitQuicklookTable(
     hasInputsSeqNums = set(tableOnSky[hasInputs]["seq_num"].tolist())
     missingOnSkyInputs = sorted(onSkySeqNums - hasInputsSeqNums)
 
+    # seqNums is empty when ConsDB has no entries for the day at all, in which
+    # case min/max are undefined.
+    minSeqNum = int(min(seqNums)) if seqNums else None
+    maxSeqNum = int(max(seqNums)) if seqNums else None
+
     return QuicklookTableResults(
         table=table,
         nEntries=len(table),
-        minSeqNum=int(min(seqNums)),
-        maxSeqNum=int(max(seqNums)),
-        exceedsButler=bool(table["seq_num"].max() > lastSeqNum),
+        minSeqNum=minSeqNum,
+        maxSeqNum=maxSeqNum,
+        exceedsButler=bool(maxSeqNum is not None and maxSeqNum > lastSeqNum),
         missingSeqNums=missingSeqNums,
         emptyColumns=emptyColumns,
         missingOnSkyInputs=missingOnSkyInputs,
@@ -620,12 +625,17 @@ def checkCcdVisitQuicklookTable(
     # same as missingSeqNums for the ccdvisit table
     missingOnSkyInputs = missingSeqNums
 
+    # seqNums is empty on nights with no on-sky images, since the ccdvisit
+    # tables are only populated for on-sky data, so min/max are undefined then.
+    minSeqNum = int(min(seqNums)) if seqNums else None
+    maxSeqNum = int(max(seqNums)) if seqNums else None
+
     return QuicklookTableResults(
         table=table,
         nEntries=len(table),
-        minSeqNum=int(min(seqNums)),
-        maxSeqNum=int(max(seqNums)),
-        exceedsButler=bool(max(seqNums) > lastSeqNum),
+        minSeqNum=minSeqNum,
+        maxSeqNum=maxSeqNum,
+        exceedsButler=bool(maxSeqNum is not None and maxSeqNum > lastSeqNum),
         missingSeqNums=missingSeqNums,
         emptyColumns=emptyColumns,
         missingOnSkyInputs=missingOnSkyInputs,
@@ -667,10 +677,8 @@ def checkConsDbContents(butler: Butler, client: ConsDbClient, dayObs: int, verbo
 
     vResults = checkVisitQuicklookTable(client, dayObs, onSkySeqNumsButler, lastSeqNum)
     if verbose:
-        print(
-            f"visit1_quicklook table: {vResults.nEntries} entries from "
-            f"{vResults.minSeqNum}-{vResults.maxSeqNum}"
-        )
+        seqRange = f" from {vResults.minSeqNum}-{vResults.maxSeqNum}" if vResults.nEntries else ""
+        print(f"visit1_quicklook table: {vResults.nEntries} entries{seqRange}")
     if vResults.exceedsButler:
         print(f"🤯 ConsDB has max seq_num {vResults.maxSeqNum} greater than the butler's for {dayObs}!")
     if vResults.missingSeqNums and verbose:
@@ -687,10 +695,8 @@ def checkConsDbContents(butler: Butler, client: ConsDbClient, dayObs: int, verbo
 
     cResults = checkCcdVisitQuicklookTable(client, dayObs, onSkySeqNumsButler, lastSeqNum)
     if verbose:
-        print(
-            f"\nccdvisit1_quicklook table: {cResults.nEntries} entries from seqNum "
-            f"{cResults.minSeqNum}-{cResults.maxSeqNum}"
-        )
+        seqRange = f" from seqNum {cResults.minSeqNum}-{cResults.maxSeqNum}" if cResults.nEntries else ""
+        print(f"\nccdvisit1_quicklook table: {cResults.nEntries} entries{seqRange}")
     if cResults.missingSeqNums:  # always enter this - it needs to print and set dayIsOk=False
         missing = cResults.missingSeqNums
         print(f"❌ Missing within that range (all dets): ({len(missing)}): {sequence_to_string(missing)}")
