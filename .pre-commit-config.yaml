@@ -23,3 +23,29 @@ repos:
     rev: 7.3.0
     hooks:
       - id: flake8
+
+  # mypy-coverage (https://github.com/mfisherlevine/mypy_coverage) gates the
+  # package's annotation coverage at 100% so a newly-added unannotated callable
+  # can't silently land. It runs mypy under the hood, which needs the lsst.*
+  # stack importable, so this is a `system` hook that uses whatever
+  # mypy-coverage is on PATH in the committer's stack-sourced shell -- it can't
+  # run in an isolated pre-commit venv (the same reason plain mypy isn't a
+  # pre-commit hook here). `pass_filenames: false` so it measures the whole
+  # project via mypy.ini's `files=`, not just the staged files; the `files`
+  # filter only decides whether the hook runs at all on a given commit.
+  - repo: local
+    hooks:
+      - id: mypy-coverage
+        name: mypy annotation coverage (gate 100%)
+        entry: mypy-coverage
+        language: system
+        pass_filenames: false
+        files: \.py$
+        args:
+          - --threshold
+          - "100"
+          - --threshold-metric
+          - fully-typed
+          - --config
+          - mypy.ini
+          - --no-include-excluded
