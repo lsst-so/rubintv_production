@@ -1,14 +1,16 @@
 name: "mypy coverage"
 
 # Runs https://github.com/mfisherlevine/mypy_coverage on every PR and on
-# pushes to main. Currently informational only (no threshold), so it can
-# never block a merge -- the value is the inline annotations on the PR
-# diff for unannotated / partially annotated definitions, plus the
-# markdown coverage report posted as a sticky PR comment.
+# pushes to main. Gates annotation coverage at 100% (``--threshold 100``
+# on the fully-typed metric): the job fails if any callable in the tree
+# is not fully annotated. This mirrors the local mypy-coverage pre-commit
+# hook, so the 100% floor is enforced both before commit and on the
+# server. The job also surfaces inline annotations on the PR diff for
+# unannotated / partially annotated definitions, plus a markdown coverage
+# report posted as a sticky PR comment.
 #
-# To gate on a coverage floor in the future, add ``threshold: 85`` (or
-# whatever) under ``with:`` and add the job's name to the required
-# status checks for ``main`` in the branch protection settings.
+# Note: a failing run only *blocks* a merge once this job is added to the
+# required status checks for ``main`` in the branch protection settings.
 
 "on":
   pull_request:
@@ -38,6 +40,11 @@ jobs:
         with:
           version: "0.2.3"
           format: github
+          # Gate at 100% on the fully-typed metric, matching the local
+          # mypy-coverage pre-commit hook. This step (and so the job)
+          # fails if coverage drops below the threshold.
+          threshold: "100"
+          threshold-metric: fully-typed
           # Use the repo's mypy.ini directly so we pick up the same
           # exclude pattern, files=, and mypy_path= as the local mypy run.
           config: mypy.ini
