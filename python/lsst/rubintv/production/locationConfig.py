@@ -473,7 +473,7 @@ def findMissingConfigKeys(yamlFiles: list[str]) -> dict[str, set[str]]:
     return {filename: allKeys - keys for filename, keys in fileKeys.items() if allKeys - keys}
 
 
-def _expandEnvVars(node):
+def _expandEnvVars(node: Any) -> Any:
     """Recursively expand ``${VAR}`` / ``$VAR`` references in YAML strings."""
     if isinstance(node, str):
         return os.path.expandvars(node)
