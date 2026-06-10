@@ -9,6 +9,7 @@ FROM ghcr.io/lsst/scipipe:al9-${STACK_TAG}
 ENV UID=73006
 ENV GID=73006
 
+<<<<<<< HEAD
 ARG drp_pipe_ref="5ddbe8d90cd2b6878e2e8a7a70b920bb8786338e"
 ARG analysis_tools_ref="aae6a67b81e71678c7c508d412609d6e8f762e1a"
 ARG summit_utils_ref="w.2026.41"
@@ -16,6 +17,14 @@ ARG summit_extras_ref="w.2026.41"
 ARG ts_wep_ref="v17.15.1"
 ARG donut_viz_ref="v4.13.0"
 ARG tarts_ref="v4.3"
+=======
+ARG drp_pipe_ref="w.2026.22"
+ARG summit_utils_ref="ac8fc39669064c904ed7892b1ab427a92c0cc944"
+ARG summit_extras_ref="w.2026.22"
+ARG ts_wep_ref="v17.3.0"
+ARG donut_viz_ref="v4.3.0-alpha"
+ARG tarts_ref="fa6acd31400a278a0b9bc0e537dee5c9afd5c0de"
+>>>>>>> 5384c44b (Bring in new threshold for mount motion plot)
 ARG ts_ofc_ref="5245ded9c985c7707232f53f130a8cb6a402f7e1"
 ARG ts_config_mttcs_ref="ad3ef1b625f0ab5f276193987e4251db95161227"
 ARG ts_aos_ai_ref="v0.3.0"
