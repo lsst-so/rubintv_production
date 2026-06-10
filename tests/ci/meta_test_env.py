@@ -160,48 +160,58 @@ def main() -> int:
     print("Starting Redis server...")
     redis_process, host, port, password = start_test_redis()
 
-    # 4. Check that Redis process is now running. Check the process handle
-    # directly rather than via pgrep: a redis-server that died at startup
-    # leaves a zombie child whose comm name still matches pgrep -f.
-    print("Verifying Redis process is running...")
-    if redis_process.poll() is not None:
-        print_redis_server_output(redis_process)
-        fail(f"ERROR: redis-server exited at startup with code {redis_process.returncode}")
-    elif not check_redis_process(expect_running=True):
-        fail("ERROR: Redis failed to start or is not running as expected")
+    # The try/finally guarantees the spawned redis-server dies with this
+    # test. The meta-test runner SIGTERMs overrunning tests (delivered
+    # here as KeyboardInterrupt); without the finally, that unwound past
+    # the stop_redis call below and orphaned a live redis-server on the
+    # port, poisoning every subsequent run.
+    try:
+        # 4. Check that Redis process is now running. Check the process
+        # handle directly rather than via pgrep: a redis-server that died
+        # at startup leaves a zombie child whose comm name still matches
+        # pgrep -f.
+        print("Verifying Redis process is running...")
+        if redis_process.poll() is not None:
+            print_redis_server_output(redis_process)
+            fail(f"ERROR: redis-server exited at startup with code {redis_process.returncode}")
+        elif not check_redis_process(expect_running=True):
+            fail("ERROR: Redis failed to start or is not running as expected")
 
-    # 5. Test Redis connection
-    print("Testing Redis connection...")
-    if not check_redis_connection(host, port, password):
-        fail("ERROR: Redis connection failed")
-    else:
-        print("Redis connection successful")
+        # 5. Test Redis connection
+        print("Testing Redis connection...")
+        if not check_redis_connection(host, port, password):
+            fail("ERROR: Redis connection failed")
+        else:
+            print("Redis connection successful")
 
-    # 5b. Test trying to start Redis again (should fail). Skipped if the
-    # server is dead: the double-start guard relies on pgrep finding the
-    # first server, so attempting it would actually spawn a second one.
-    if redis_process.poll() is None:
-        print("Testing attempt to start Redis when already running...")
-        try:
-            start_test_redis()
-            fail("ERROR: Was able to start Redis again when it should have failed")
-        except RuntimeError as e:
-            if "Redis server is already running" in str(e):
-                print("✅ Correctly failed to start Redis when already running")
-            else:
-                fail(f"ERROR: Got unexpected error when starting Redis again: {e}")
-    else:
-        print("Skipping double-start check - redis-server is not running")
+        # 5b. Test trying to start Redis again (should fail). Skipped if the
+        # server is dead: the double-start guard relies on pgrep finding the
+        # first server, so attempting it would actually spawn a second one.
+        if redis_process.poll() is None:
+            print("Testing attempt to start Redis when already running...")
+            try:
+                start_test_redis()
+                fail("ERROR: Was able to start Redis again when it should have failed")
+            except RuntimeError as e:
+                if "Redis server is already running" in str(e):
+                    print("✅ Correctly failed to start Redis when already running")
+                else:
+                    fail(f"ERROR: Got unexpected error when starting Redis again: {e}")
+        else:
+            print("Skipping double-start check - redis-server is not running")
 
-    # 6. Stop Redis
-    print("Stopping Redis server...")
-    stop_redis(redis_process)
+        # 6. Stop Redis
+        print("Stopping Redis server...")
+        stop_redis(redis_process)
 
-    # 7. Verify Redis is no longer running
-    print("Verifying Redis process is stopped...")
-    time.sleep(1)  # Give it a moment to fully terminate
-    if not check_redis_process(expect_running=False):
-        fail("ERROR: Redis didn't shut down properly")
+        # 7. Verify Redis is no longer running
+        print("Verifying Redis process is stopped...")
+        time.sleep(1)  # Give it a moment to fully terminate
+        if not check_redis_process(expect_running=False):
+            fail("ERROR: Redis didn't shut down properly")
+    finally:
+        if redis_process.poll() is None:
+            stop_redis(redis_process)
 
     # 8. Verify environment variables match TestConfig
     print("Verifying Redis environment variables...")
