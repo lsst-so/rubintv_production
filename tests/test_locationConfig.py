@@ -81,13 +81,12 @@ from lsst.rubintv.production.locationConfig import (
 )
 from lsst.utils import getPackageDir
 
-# These three directory accessors call _checkDir(createIfMissing=False)
+# These two directory accessors call _checkDir(createIfMissing=False)
 # and so the test must precreate them. Every other dir accessor will
 # create on demand under tmp_path.
 _NON_CREATING_DIR_KEYS = (
     "starTrackerDataPath",
     "astrometryNetRefCatPath",
-    "allSkyRootDataPath",
 )
 
 # Directory keys that are created on demand. Listed explicitly so the
@@ -100,6 +99,7 @@ _CREATED_DIR_KEYS = (
     "starTrackerMetadataShardPath",
     "starTrackerOutputPath",
     "moviePngPath",
+    "allSkyRootDataPath",
     "allSkyOutputPath",
     "nightReportPath",
     "comCamMetadataPath",
@@ -189,7 +189,6 @@ def _preCreateNonAutoCreatedDirs(env: dict[str, str]) -> None:
     for path in (
         env["RA_CI_STAR_TRACKER_DATA_PATH"],
         env["RA_CI_ASTROMETRY_NET_REF_CAT_PATH"],
-        os.path.join(env["RA_CI_DATA_ROOT"], "allsky", "raw"),
     ):
         os.makedirs(path, exist_ok=True)
 
