@@ -198,7 +198,7 @@ class LocationConfig:
     @cached_property
     def starTrackerDataPath(self) -> str:
         directory = self._config["starTrackerDataPath"]
-        self._checkDir(directory, createIfMissing=False)
+        self._checkDir(directory)
         return directory
 
     @cached_property
