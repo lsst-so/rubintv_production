@@ -236,7 +236,7 @@ class LocationConfig:
     @cached_property
     def allSkyRootDataPath(self) -> str:
         directory = self._config["allSkyRootDataPath"]
-        self._checkDir(directory, createIfMissing=False)
+        self._checkDir(directory)
         return directory
 
     @cached_property
