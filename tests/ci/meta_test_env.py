@@ -12,10 +12,17 @@ from lsst.rubintv.production.predicates import getDoRaise
 
 
 def check_redis_process(expect_running: bool = False) -> bool:
-    """Check if redis-server is running using pgrep."""
+    """Check if this user has a redis-server running, using pgrep.
+
+    Scoped to ``$USER`` so a colleague's redis-server on a shared dev node
+    doesn't affect the result, matching ``RedisManager.is_redis_running`` in
+    ``test_rapid_analysis.py``.
+    """
     try:
-        # Run pgrep to find redis-server processes
-        result = subprocess.run(["pgrep", "-f", "redis-server"], capture_output=True, text=True)
+        # Run pgrep to find this user's redis-server processes
+        result = subprocess.run(
+            ["pgrep", "-u", os.environ["USER"], "-f", "redis-server"], capture_output=True, text=True
+        )
 
         # Get process IDs if any
         redis_pids = result.stdout.strip().split("\n") if result.stdout.strip() else []
@@ -33,6 +40,22 @@ def check_redis_process(expect_running: bool = False) -> bool:
     except Exception as e:
         print(f"Error checking Redis process: {e}")
         return False
+
+
+def print_redis_server_output(redis_process: subprocess.Popen) -> None:
+    """Print the exit code and captured output of a dead redis-server.
+
+    Only call this once the process has exited (``poll()`` is not ``None``),
+    otherwise reading the pipes blocks. Without this, a redis-server that
+    dies at startup (e.g. port already in use, corrupt dump.rdb in the cwd)
+    fails silently because its output goes to unread pipes.
+    """
+    stdout, stderr = redis_process.communicate()
+    print(f"redis-server exited with code {redis_process.returncode}")
+    if stdout:
+        print(f"redis-server stdout:\n{stdout.decode(errors='replace')}")
+    if stderr:
+        print(f"redis-server stderr:\n{stderr.decode(errors='replace')}")
 
 
 def start_test_redis() -> tuple[subprocess.Popen, str, str, str]:
@@ -53,8 +76,11 @@ def start_test_redis() -> tuple[subprocess.Popen, str, str, str]:
     os.environ["REDIS_PASSWORD"] = password
 
     print(f"Starting Redis on {host}:{port}")
+    # --save "" disables RDB snapshots (including the save-on-SIGTERM),
+    # so the test redis never writes a dump.rdb into the launch directory
+    # for a later startup to load.
     redis_process = subprocess.Popen(
-        ["redis-server", "--port", port, "--bind", host, "--requirepass", password],
+        ["redis-server", "--port", port, "--bind", host, "--requirepass", password, "--save", ""],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -65,6 +91,9 @@ def start_test_redis() -> tuple[subprocess.Popen, str, str, str]:
     # don't do a blind sleep or an indefinite wait.
     start_time = time.time()
     while time.time() - start_time < 15:
+        if redis_process.poll() is not None:
+            print("redis-server process exited during startup - aborting wait")
+            break
         if check_redis_connection(host, port, password):
             print(f"Redis server came up fully in {time.time() - start_time:.2f} seconds")
             break
@@ -131,9 +160,14 @@ def main() -> int:
     print("Starting Redis server...")
     redis_process, host, port, password = start_test_redis()
 
-    # 4. Check that Redis process is now running
+    # 4. Check that Redis process is now running. Check the process handle
+    # directly rather than via pgrep: a redis-server that died at startup
+    # leaves a zombie child whose comm name still matches pgrep -f.
     print("Verifying Redis process is running...")
-    if not check_redis_process(expect_running=True):
+    if redis_process.poll() is not None:
+        print_redis_server_output(redis_process)
+        fail(f"ERROR: redis-server exited at startup with code {redis_process.returncode}")
+    elif not check_redis_process(expect_running=True):
         fail("ERROR: Redis failed to start or is not running as expected")
 
     # 5. Test Redis connection
@@ -143,16 +177,21 @@ def main() -> int:
     else:
         print("Redis connection successful")
 
-    # 5b. Test trying to start Redis again (should fail)
-    print("Testing attempt to start Redis when already running...")
-    try:
-        start_test_redis()
-        fail("ERROR: Was able to start Redis again when it should have failed")
-    except RuntimeError as e:
-        if "Redis server is already running" in str(e):
-            print("✅ Correctly failed to start Redis when already running")
-        else:
-            fail(f"ERROR: Got unexpected error when starting Redis again: {e}")
+    # 5b. Test trying to start Redis again (should fail). Skipped if the
+    # server is dead: the double-start guard relies on pgrep finding the
+    # first server, so attempting it would actually spawn a second one.
+    if redis_process.poll() is None:
+        print("Testing attempt to start Redis when already running...")
+        try:
+            start_test_redis()
+            fail("ERROR: Was able to start Redis again when it should have failed")
+        except RuntimeError as e:
+            if "Redis server is already running" in str(e):
+                print("✅ Correctly failed to start Redis when already running")
+            else:
+                fail(f"ERROR: Got unexpected error when starting Redis again: {e}")
+    else:
+        print("Skipping double-start check - redis-server is not running")
 
     # 6. Stop Redis
     print("Stopping Redis server...")

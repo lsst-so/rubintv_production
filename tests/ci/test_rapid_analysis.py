@@ -518,8 +518,12 @@ class RedisManager:
             capture_kwargs["stderr"] = subprocess.PIPE
 
         print(f"Starting Redis on {host}:{port}")
+        # --save "" disables RDB snapshots (including the save-on-SIGTERM),
+        # so the suite's redis never writes a dump.rdb into the launch
+        # directory for a later startup to load.
         self.redis_process = subprocess.Popen(
-            ["redis-server", "--port", port, "--bind", host, "--requirepass", password], **capture_kwargs
+            ["redis-server", "--port", port, "--bind", host, "--requirepass", password, "--save", ""],
+            **capture_kwargs,
         )  # type: ignore[call-overload]
         assert self.redis_process is not None
         print(f"✅ Redis server started on {host}:{port} with PID: {self.redis_process.pid}")
