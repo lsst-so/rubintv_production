@@ -81,13 +81,10 @@ from lsst.rubintv.production.locationConfig import (
 )
 from lsst.utils import getPackageDir
 
-# These two directory accessors call _checkDir(createIfMissing=False)
-# and so the test must precreate them. Every other dir accessor will
-# create on demand under tmp_path.
-_NON_CREATING_DIR_KEYS = (
-    "starTrackerDataPath",
-    "astrometryNetRefCatPath",
-)
+# This directory accessor calls _checkDir(createIfMissing=False) and so
+# the test must precreate it. Every other dir accessor will create on
+# demand under tmp_path.
+_NON_CREATING_DIR_KEYS = ("astrometryNetRefCatPath",)
 
 # Directory keys that are created on demand. Listed explicitly so the
 # test fails when a new accessor is added without being classified.
@@ -95,6 +92,7 @@ _CREATED_DIR_KEYS = (
     "auxTelMetadataPath",
     "auxTelMetadataShardPath",
     "plotPath",
+    "starTrackerDataPath",
     "starTrackerMetadataPath",
     "starTrackerMetadataShardPath",
     "starTrackerOutputPath",
@@ -186,11 +184,7 @@ def _preCreateNonAutoCreatedDirs(env: dict[str, str]) -> None:
     """Pre-create the directories whose ``_checkDir(createIfMissing=False)``
     calls in ``LocationConfig`` require them to exist before construction.
     """
-    for path in (
-        env["RA_CI_STAR_TRACKER_DATA_PATH"],
-        env["RA_CI_ASTROMETRY_NET_REF_CAT_PATH"],
-    ):
-        os.makedirs(path, exist_ok=True)
+    os.makedirs(env["RA_CI_ASTROMETRY_NET_REF_CAT_PATH"], exist_ok=True)
 
 
 class LocationConfigTestCase(lsst.utils.tests.TestCase):
@@ -239,9 +233,11 @@ class LocationConfigTestCase(lsst.utils.tests.TestCase):
         # A non-creating dir accessor must fail loudly when its directory
         # is absent. Because __post_init__ now touches every accessor, this
         # surfaces at construction time rather than on first access.
+        # Uses astrometryNetRefCatPath as the exemplar since it is the only
+        # remaining accessor that calls _checkDir(createIfMissing=False).
         with tempfile.TemporaryDirectory() as tmp:
             cfgDict = _buildFixtureConfig(tmp)
-            os.rmdir(cfgDict["starTrackerDataPath"])
+            os.rmdir(cfgDict["astrometryNetRefCatPath"])
             with patch.object(locationConfigModule, "_loadConfigFile", return_value=cfgDict):
                 with self.assertRaises(RuntimeError):
                     LocationConfig("fixture")
