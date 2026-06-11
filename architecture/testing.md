@@ -253,15 +253,26 @@ Post-processing and visualization:
 
 ### Data Feeding
 
-`drip_feed_data.py` pre-loads test exposures into Redis:
+`tests/ci/ci_dataset.py` is the single source of truth for the data driving
+the suite: it defines the input exposures (with their roles: science, FAM
+intra/extra, bias), the order they are dispatched in, and derives from them
+every end-of-run expectation — the plots checked for on disk (as `PlotSpec`s
+keyed by exposure kind, sharing the on-disk layout with production code via
+`formatters.getPlotRelativePath`) and the Redis data products (step1b
+completion counts, MTAOS Zernike counts). Changing the inputs or expected
+outputs means editing `ci_dataset.py` only; the feeding and checking ends
+cannot drift apart. The `PlotSpec` grouping is also the intended hook for
+making the expected plot set depend on which pipeline file the suite runs.
+
+`drip_feed_data.py` is the delivery mechanism, pre-loading those exposures
+into Redis:
 1. Initializes Butler and RedisHelper
 2. Waits for SFM workers and head node to come online
-3. Pushes exposures to Redis with specific ordering and delays:
+3. Pushes the exposures in `LSSTCAM_DISPATCH_ORDER` with 2 s delays:
    - 227 first (intra-focal, must arrive before 228)
    - Then 436 (bias), 226 (SFM), 228 (extra-focal)
-   - 2 s delays between pushes
-4. Announces FAM pair via `LSSTCam-FROM-OCS_DONUTPAIR`
-5. Also tests LATISS with exposure 20240813/632
+4. Announces the FAM pair via `LSSTCam-FROM-OCS_DONUTPAIR`
+5. Also feeds the LATISS exposure (20240813/632)
 
 ### Redis in CI
 

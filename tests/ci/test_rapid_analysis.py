@@ -35,6 +35,12 @@ CliLog.initLog(False)
 CliLog.initLog = do_nothing  # type: ignore
 
 # Import test utilities
+from ci_dataset import (  # type: ignore # noqa: E402
+    getAosVisits,
+    getExpectedPlots,
+    getExpectedZernikeCounts,
+    getSfmVisits,
+)
 from ciutils import Check, TestScript, conditional_redirect  # type: ignore # noqa: E402
 
 # Only import from lsst packages after logging is configured
@@ -587,9 +593,8 @@ class RedisManager:
         """Check LSSTCam data in Redis."""
         inst = "LSSTCam"
 
-        visits_sfm: list[int] = [2025111500226]
-        visits_aos: list[int] = [2025111500226, 2025111500227, 2025111500228]
-        visits_fam: list[int] = [2025111500227, 2025111500228]
+        visits_sfm = getSfmVisits(inst)
+        visits_aos = getAosVisits(inst)
 
         n_visits_sfm = len(visits_sfm)
         n_visits_aos = len(visits_aos)
@@ -615,34 +620,20 @@ class RedisManager:
         else:
             checks.append(Check(True, f"{n_visits_aos}x AOS step1b finished"))
 
-        # check zernike announcement for MTAOS
-        # TODO: will need to double this for unpaired pipelines
-        expectedNonFam = 8
-        gotNonFam = redisHelper.getMTAOSZernikeCount("LSSTCam", 2025111500226)
-        if gotNonFam == expectedNonFam:
-            checks.append(
-                Check(True, f"MTAOS Zernike count for non-FAM image 2025111500226 is {expectedNonFam}")
-            )
-        else:
-            checks.append(
-                Check(
-                    False,
-                    f"MTAOS Zernike count for non-FAM image 2025111500226: expected {expectedNonFam}, "
-                    f"got {gotNonFam}",
+        # check zernike announcements for MTAOS
+        for exposure, expectedCount in getExpectedZernikeCounts().items():
+            label = "FAM" if exposure.isFam else "non-FAM"
+            got = redisHelper.getMTAOSZernikeCount(inst, exposure.expId)
+            if got == expectedCount:
+                checks.append(
+                    Check(True, f"MTAOS Zernike count for {label} image {exposure.expId} is {expectedCount}")
                 )
-            )
-
-        expectedFam = 18
-        for visit in visits_fam:
-            gotFam = redisHelper.getMTAOSZernikeCount("LSSTCam", visit)
-            if gotFam == expectedFam:
-                checks.append(Check(True, f"MTAOS Zernike count for FAM image {visit} is {expectedFam}"))
             else:
                 checks.append(
                     Check(
                         False,
-                        f"MTAOS Zernike count for FAM image 2025111500227: expected {expectedFam}, "
-                        f"got {gotFam}",
+                        f"MTAOS Zernike count for {label} image {exposure.expId}: "
+                        f"expected {expectedCount}, got {got}",
                     )
                 )
 
@@ -650,7 +641,7 @@ class RedisManager:
         """Check LATISS data in Redis."""
         inst = "LATISS"
 
-        visits_sfm = [2024081300632]
+        visits_sfm = getSfmVisits(inst)
         n_visits_sfm = len(visits_sfm)
 
         n_step1b_sfm = redisHelper.getNumVisitLevelFinished(inst, "step1b", "SFM")
@@ -1188,78 +1179,10 @@ class ResultCollector:
         """Check that expected plots were generated."""
         locationConfig = LocationConfig("usdf_testing")
 
-        expected = [  # (path, size) tuples where path is relative to locationConfig.plotPath
-            # Regular LSSTCam plots -------
-            # event timelines for all images
-            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000227.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000228.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000226.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000436.png", 5000),
-            # post ISR mosaics for all images
-            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000227.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000228.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000226.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000436.jpg", 5000),
-            # witness detector images for all with postISR that aren't CWFS
-            ("LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000226.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000436.jpg", 5000),
-            # calexp mosaic for the only in-focus image
-            ("LSSTCam/20251115/LSSTCam_calexp_mosaic_dayObs_20251115_seqNum_000226.jpg", 5000),
-            # mount plots for the three on-sky images
-            ("LSSTCam/20251115/LSSTCam_mount_dayObs_20251115_seqNum_000227.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_mount_dayObs_20251115_seqNum_000228.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_mount_dayObs_20251115_seqNum_000226.png", 5000),
-            # all the other plots for the on-sky image: fwhm, imexam
-            # TODO: DM-51391 add psfAzEl plot
-            ("LSSTCam/20251115/LSSTCam_fwhm_focal_plane_dayObs_20251115_seqNum_000226.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_imexam_dayObs_20251115_seqNum_000226.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_psf_shape_azel_dayObs_20251115_seqNum_000226.png", 5000),
-            # AOS plots -------
-            # FAM donut galleries
-            ("LSSTCam/20251115/LSSTCam_fp_donut_gallery_dayObs_20251115_seqNum_000227.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_fp_donut_gallery_dayObs_20251115_seqNum_000228.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_fp_donut_gallery_dayObs_20251115_seqNum_000226.png", 5000),
-            # Extrafocal id for FAM plot
-            ("LSSTCam/20251115/LSSTCam_zk_measurement_pyramid_dayObs_20251115_seqNum_000228.png", 5000),
-            # CWFS plot
-            ("LSSTCam/20251115/LSSTCam_zk_measurement_pyramid_dayObs_20251115_seqNum_000226.png", 5000),
-            # Extrafocal id for FAM plot
-            ("LSSTCam/20251115/LSSTCam_zk_residual_pyramid_dayObs_20251115_seqNum_000228.png", 5000),
-            # CWFS plot
-            ("LSSTCam/20251115/LSSTCam_zk_residual_pyramid_dayObs_20251115_seqNum_000226.png", 5000),
-            # PSF zernike panels FAM extra-focal and regular image
-            ("LSSTCam/20251115/LSSTCam_psf_zk_panel_dayObs_20251115_seqNum_000228.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_psf_zk_panel_dayObs_20251115_seqNum_000226.png", 5000),
-            # Donut pairing plot for regular image
-            ("LSSTCam/20251115/LSSTCam_fp_pairing_plot_dayObs_20251115_seqNum_000226.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_donut_fits_dayObs_20251115_seqNum_000226.png", 5000),
-            # Zernike and DOF FWHM prediction plots
-            ("LSSTCam/20251115/LSSTCam_zernike_predicted_fwhm_dayObs_20251115_seqNum_000226.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_dof_predicted_fwhm_dayObs_20251115_seqNum_000226.png", 5000),
-            # Guider plots and movies
-            ("LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000226.mp4", 200_000),
-            ("LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000227.mp4", 200_000),
-            ("LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000228.mp4", 200_000),
-            ("LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000226.mp4", 100_000),
-            ("LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000227.mp4", 100_000),
-            ("LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000228.mp4", 100_000),
-            ("LSSTCam/20251115/LSSTCam_centroid_alt_az_dayObs_20251115_seqNum_000226.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_flux_trend_dayObs_20251115_seqNum_000226.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_psf_trend_dayObs_20251115_seqNum_000226.jpg", 5000),
-            # Performance analysis plots for all detectors
-            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000226.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000227.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000228.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000436.jpg", 5000),
-            # AOS performance plots
-            ("LSSTCam/20251115/LSSTCam_aos_timing_dayObs_20251115_seqNum_000226.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_aos_timing_dayObs_20251115_seqNum_000228.jpg", 5000),
-            # LATISS plots -------
-            ("LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png", 5000),
-            ("LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.jpg", 5000),
-            ("LATISS/20240813/LATISS_imexam_dayObs_20240813_seqNum_000632.png", 5000),
-            ("LATISS/20240813/LATISS_specexam_dayObs_20240813_seqNum_000632.png", 5000),
-        ]
+        # (path, size) tuples where path is relative to
+        # locationConfig.plotPath, derived from the exposures the
+        # drip-feeder dispatched and the plots each kind of image produces
+        expected = getExpectedPlots()
 
         # Create a set of the expected plot paths for comparison
         expectedPlotPaths = {file for file, _ in expected}
