@@ -43,5 +43,7 @@ echo "[setup_ci_env] CI environment variables exported for user '${USER}':"
 for v in RA_CI_DATA_ROOT RA_CI_STAR_TRACKER_DATA_PATH \
          RA_CI_ASTROMETRY_NET_REF_CAT_PATH TARTS_DATA_DIR \
          AI_DONUT_DATA_DIR RA_CI_REDIS_PORT; do
-    echo "    ${v}=${!v}"
+    # printenv rather than ${!v}: bash-only indirect expansion makes
+    # `source`-ing this file fail with "bad substitution" under zsh
+    echo "    ${v}=$(printenv "${v}")"
 done
