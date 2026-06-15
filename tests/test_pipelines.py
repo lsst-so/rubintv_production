@@ -146,7 +146,6 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
             collections=[
                 f"{self.instrument}/defaults",
                 runCollection,
-                "u/gmegias/intrinsic_aberrations_collection_temp",
             ],
             writeable=True,
         )

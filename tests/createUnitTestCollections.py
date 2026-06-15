@@ -169,7 +169,7 @@ def main() -> None:
         "-b",
         "main",
         "-i",
-        "LSSTCam/defaults,u/gmegias/intrinsic_aberrations_collection_temp",
+        "LSSTCam/defaults",
         "--register-dataset-types",
     )
 
