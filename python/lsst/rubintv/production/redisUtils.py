@@ -35,6 +35,8 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import redis
+from redis.backoff import ExponentialBackoff
+from redis.retry import Retry
 
 from lsst.daf.butler import DataCoordinate, DimensionRecord
 from lsst.utils.iteration import sequence_to_string
@@ -553,7 +555,27 @@ class RedisHelper:
         host: str = os.getenv("REDIS_HOST", "")
         password = os.getenv("REDIS_PASSWORD")
         port: int = int(os.getenv("REDIS_PORT", 6379))
-        return redis.Redis(host=host, password=password, port=port)
+        return redis.Redis(
+            host=host,
+            password=password,
+            port=port,
+            socket_keepalive=True,
+            health_check_interval=30,
+            socket_connect_timeout=5,  # just the connect, and independent from socket_timeout, see below
+            # We leave socket_timeout unset here, because it's unhelpful and a
+            # footgun. This is because there's a blocking blpop using
+            # DEQUE_TIMEOUT, and socket_timeout applies to every socket read
+            # and redis-py won't extend it for blocking commands — so a
+            # socket_timeout below DEQUE_TIMEOUT would make blpop raise
+            # spuriously every poll. We don't set it here; if you do, use
+            # DEQUE_TIMEOUT + slack. Note we deliberately leave socket_timeout
+            # unset rather than just setting it generously: it's a single
+            # global applied to every read on this shared client, so sizing it
+            # for the 5s blpop would also make it the dead-socket detection
+            # latency for all the fast commands, which is why that job is left
+            # to keepalive + health checks instead.
+            retry=Retry(ExponentialBackoff(cap=10, base=0.5), retries=5),
+        )
 
     def _testRedisConnection(self) -> None:
         """Check that redis is online and can be contacted.
