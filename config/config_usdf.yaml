@@ -28,6 +28,9 @@ lsstCamMetadataPath: /sdf/scratch/rubin/rapid-analysis/LSSTCamAos/sidecar_metada
 lsstCamMetadataShardPath: /sdf/scratch/rubin/rapid-analysis/LSSTCamAos/sidecar_metadata/shards
 lsstCamButlerPath: 's3://embargo@rubin-summit-users/butler.yaml'
 
+# Summit→USDF AOS sync (see summitSync.py). This site runs the importer.
+summitSyncStagingPath: /sdf/scratch/rubin/rapid-analysis/summit_sync
+
 consDBURL: "http://consdb-pq.consdb:8080/consdb"
 
 aosLSSTCamPipelineFileDanish: $DONUT_VIZ_DIR/pipelines/production/lsstCamRapidAnalysisPipeline_Danish.yaml
