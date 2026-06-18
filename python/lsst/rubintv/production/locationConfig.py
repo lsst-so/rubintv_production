@@ -427,6 +427,10 @@ class LocationConfig:
         return self._config["aosDataDir"]
 
     @cached_property
+    def aosLSSTCamRefitWcsPipelineFile(self) -> str:
+        return self._config["aosLSSTCamRefitWcsPipelineFile"]
+
+    @cached_property
     def aosLSSTCamAiDonutPipelineFile(self) -> str:
         return self._config["aosLSSTCamAiDonutPipelineFile"]
 
