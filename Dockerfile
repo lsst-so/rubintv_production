@@ -63,6 +63,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     redis-py \
     batoid \
     danish=1.1.1 \
+    lsst-efd-client=1.0.0 \
     rubin-libradtran \
     timm \
     peft \
@@ -74,7 +75,6 @@ USER saluser
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     pip install google-cloud-storage \
-    lsst-efd-client \
     pytorch_lightning \
     easyocr \
     sentry-sdk \
