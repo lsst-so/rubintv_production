@@ -29,6 +29,7 @@ import logging
 import os
 import re
 import socket
+import sys
 import time
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -642,8 +643,12 @@ class RedisHelper:
         - ``baseline=False`` (the default) is called from the broad catch
           wrapped around the event-loop redis ping/polling when redis becomes
           unreachable. It does the same probes, then polls redis until it
-          recovers to measure the outage, and finally sleeps for 30 minutes so
-          the pod can be ``kubectl exec``-ed into while it's stuck.
+          recovers to measure the outage, sleeps for 30 minutes so the pod can
+          be ``kubectl exec``-ed into while it's stuck, and finally calls
+          ``sys.exit(1)``. The exit is deliberate: before this debug branch a
+          redis error here would have propagated and killed the pod, so we must
+          still die rather than silently recover and mask the very problem
+          we're hunting.
 
         Parameters
         ----------
@@ -714,7 +719,14 @@ class RedisHelper:
         log.error(f"[5] Sleeping {freezeSeconds}s ({freezeSeconds // 60} min) - exec into the pod now")
         log.error(bar)
         time.sleep(freezeSeconds)
-        log.error("Finished diagnostic sleep, resuming normal event loop")
+        # Die loudly. Before this debug branch a redis error in the event loop
+        # would have propagated and killed the pod; the broad catch must not
+        # turn that into a silent recovery, or we'd mask the exact failures
+        # we're trying to catch. SystemExit is a BaseException, so it sails
+        # past the ``except Exception`` in the event loop and kills the pod.
+        log.error("Finished diagnostic sleep - calling sys.exit(1) so this failure is unmissable")
+        log.error(bar)
+        sys.exit(1)
 
     def _diagnosticTcpTargets(self) -> list[tuple[str, str, int]]:
         """Build the (name, host, port) list of non-redis endpoints to probe.

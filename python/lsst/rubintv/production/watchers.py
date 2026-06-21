@@ -115,6 +115,10 @@ class RedisWatcher:
             except Exception as e:
                 self.log.exception(f"Broad catch in event loop tripped redis diagnostics: {e}")
                 self.redisHelper.runConnectionDiagnostics(e)
+                # runConnectionDiagnostics ends in sys.exit(1); this is a
+                # safety net so that even if that ever changes we never resume
+                # the loop and recover from an error that used to kill the pod.
+                sys.exit(1)
 
 
 class ButlerWatcher:
