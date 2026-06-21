@@ -626,25 +626,38 @@ class RedisHelper:
     # error fires on BTS, and then to freeze the pod so a human can exec in.
     # ------------------------------------------------------------------ #
 
-    def runConnectionDiagnostics(self, triggeringError: BaseException | None = None) -> None:
-        """Probe the network when redis becomes unreachable, then freeze.
+    def runConnectionDiagnostics(
+        self, triggeringError: BaseException | None = None, baseline: bool = False
+    ) -> None:
+        """Probe the network around redis, logging a full picture of its state.
 
-        Called from the broad catch wrapped around the event-loop redis
-        ping/polling. It deliberately does a lot of blocking work: DNS
-        resolution, TCP reachability of non-redis services, a direct-to-IP
-        redis attempt, then polls redis until it recovers to measure the
-        outage, and finally sleeps for 30 minutes so the pod can be
-        ``kubectl exec``-ed into while it's stuck.
+        Two modes:
+
+        - ``baseline=True`` is run once at pod startup, while everything is
+          healthy, to capture a reference snapshot (DNS, reachability of
+          non-redis services, direct-to-IP redis, a single redis ping) that the
+          failure-time output can be diffed against - e.g. it tells us whether
+          8.8.8.8 is even reachable from this pod when redis is fine. It does
+          not poll or sleep, so it doesn't hold up startup.
+        - ``baseline=False`` (the default) is called from the broad catch
+          wrapped around the event-loop redis ping/polling when redis becomes
+          unreachable. It does the same probes, then polls redis until it
+          recovers to measure the outage, and finally sleeps for 30 minutes so
+          the pod can be ``kubectl exec``-ed into while it's stuck.
 
         Parameters
         ----------
         triggeringError : `BaseException` or `None`, optional
             The exception that tripped the broad catch, logged for context.
+        baseline : `bool`, optional
+            If ``True``, capture a healthy-state reference and return without
+            polling or sleeping. Default is ``False``.
         """
         log = self.log
         bar = "=" * 79
+        mode = "BASELINE (healthy-state reference)" if baseline else "TRIGGERED"
         log.error(bar)
-        log.error("REDIS CONNECTION DIAGNOSTICS TRIGGERED (debug branch DM-55270)")
+        log.error(f"REDIS CONNECTION DIAGNOSTICS {mode} (debug branch DM-55270)")
         if triggeringError is not None:
             log.error(f"Triggering error: {type(triggeringError).__name__}: {triggeringError}")
         log.error(f"redis target: host={self.redisHost!r} port={self.redisPort} startupIp={self.redisIp}")
@@ -674,12 +687,29 @@ class RedisHelper:
             log.error(f"    [{'OK  ' if ok else 'FAIL'}] TCP to redis IP {ip}:{self.redisPort} -> {detail}")
             self._pingRedisByIp(ip)
 
-        # 4. Poll redis until it comes back, so we learn how long the outage
-        # actually lasted.
-        log.error("[4] Polling redis to measure outage duration")
-        self._pollUntilRedisRecovers()
+        # 4. redis ping. At baseline a single ping records the healthy latency;
+        # during a real outage we poll until it recovers to learn how long the
+        # outage actually lasted.
+        if baseline:
+            log.error("[4] Baseline redis ping")
+            try:
+                pingStart = time.time()
+                self.redis.ping()
+                log.error(f"    redis ping OK in {(time.time() - pingStart) * 1000:.0f} ms")
+            except Exception as e:
+                log.error(f"    redis ping FAILED: {type(e).__name__}: {e}")
+        else:
+            log.error("[4] Polling redis to measure outage duration")
+            self._pollUntilRedisRecovers()
 
-        # 5. Freeze so a human has time to exec into the pod and poke around.
+        # 5. Freeze so a human has time to exec into the pod and poke around -
+        # only when reacting to a real outage. At baseline we must not sleep,
+        # or the pod would never finish starting up.
+        if baseline:
+            log.error("[5] Baseline only - not polling or sleeping; this is the reference to diff against")
+            log.error(bar)
+            return
+
         freezeSeconds = 30 * 60
         log.error(f"[5] Sleeping {freezeSeconds}s ({freezeSeconds // 60} min) - exec into the pod now")
         log.error(bar)

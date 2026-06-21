@@ -1457,6 +1457,11 @@ class HeadProcessController:
         self.workTimer.start()  # times how long it actually takes to do the work
         self.loopTimer.start()  # checks the delivered loop performance
         self.startTime = time.time()
+
+        # Debug branch (DM-55270): capture a healthy-state baseline at startup
+        # so a failure-time redis diagnostic has a reference to diff against.
+        self.redisHelper.runConnectionDiagnostics(baseline=True)
+
         while True:
             # affirmRunning should be longer than longest loop but no longer
             self.redisHelper.affirmRunning(self.podDetails, 5)

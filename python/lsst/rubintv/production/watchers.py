@@ -76,6 +76,11 @@ class RedisWatcher:
             The callback to run, with the most recent ``Payload`` as the
             argument.
         """
+        # Debug branch (DM-55270): capture a healthy-state baseline at startup
+        # so the failure-time diagnostics below have a reference to diff
+        # against (e.g. is 8.8.8.8 reachable from this pod when redis is ok?).
+        self.redisHelper.runConnectionDiagnostics(baseline=True)
+
         while True:
             # Debug branch (DM-55270): very broad catch around the redis
             # ping/polling that this event loop does (announceFree, the
