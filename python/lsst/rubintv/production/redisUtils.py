@@ -28,6 +28,7 @@ import json
 import logging
 import os
 import re
+import socket
 import time
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -555,6 +556,22 @@ class RedisHelper:
         host: str = os.getenv("REDIS_HOST", "")
         password = os.getenv("REDIS_PASSWORD")
         port: int = int(os.getenv("REDIS_PORT", 6379))
+
+        # Debug branch (DM-55270): stash the connection params and the
+        # last-known-good IP so that runConnectionDiagnostics() can try to
+        # reach redis by IP directly even when DNS resolution is the thing
+        # that's failing at the moment of the outage. Resolving here, at
+        # startup, means we capture the IP while the network is healthy.
+        self.redisHost = host
+        self.redisPort = port
+        self.redisPassword = password
+        self.redisIp: str | None = None
+        try:
+            self.redisIp = socket.gethostbyname(host) if host else None
+            self.log.info(f"Resolved redis host {host!r} to IP {self.redisIp} at startup")
+        except Exception as e:
+            self.log.warning(f"Could not resolve redis host {host!r} to an IP at startup: {e}")
+
         return redis.Redis(
             host=host,
             password=password,
@@ -600,6 +617,244 @@ class RedisHelper:
             raise RuntimeError("Could not connect to redis - is it running?") from e
         except Exception as e:
             raise RuntimeError(f"Unexpected error connecting to redis: {e}") from e
+
+    # ------------------------------------------------------------------ #
+    # Debug branch (DM-55270): redis connection-loss diagnostics.
+    #
+    # NONE OF THE FOLLOWING IS MEANT TO MERGE. It exists to capture what the
+    # network looks like at the exact moment an intermittent redis connection
+    # error fires on BTS, and then to freeze the pod so a human can exec in.
+    # ------------------------------------------------------------------ #
+
+    def runConnectionDiagnostics(self, triggeringError: BaseException | None = None) -> None:
+        """Probe the network when redis becomes unreachable, then freeze.
+
+        Called from the broad catch wrapped around the event-loop redis
+        ping/polling. It deliberately does a lot of blocking work: DNS
+        resolution, TCP reachability of non-redis services, a direct-to-IP
+        redis attempt, then polls redis until it recovers to measure the
+        outage, and finally sleeps for 30 minutes so the pod can be
+        ``kubectl exec``-ed into while it's stuck.
+
+        Parameters
+        ----------
+        triggeringError : `BaseException` or `None`, optional
+            The exception that tripped the broad catch, logged for context.
+        """
+        log = self.log
+        bar = "=" * 79
+        log.error(bar)
+        log.error("REDIS CONNECTION DIAGNOSTICS TRIGGERED (debug branch DM-55270)")
+        if triggeringError is not None:
+            log.error(f"Triggering error: {type(triggeringError).__name__}: {triggeringError}")
+        log.error(f"redis target: host={self.redisHost!r} port={self.redisPort} startupIp={self.redisIp}")
+        log.error(bar)
+
+        # 1. DNS resolution of the redis host right now
+        log.error("[1] DNS resolution check")
+        self._logDnsResolution(self.redisHost)
+
+        # 2. Reachability of things that are *not* redis - the internet, the
+        # k8s API, in-cluster DNS, etc. - so we can tell a redis-specific
+        # outage apart from a wholesale loss of networking on this pod.
+        log.error("[2] General network reachability check (non-redis services)")
+        for name, host, port in self._diagnosticTcpTargets():
+            ok, detail = self._checkTcpConnect(host, port)
+            status = "OK  " if ok else "FAIL"
+            log.error(f"    [{status}] {name}: {host}:{port} -> {detail}")
+
+        # 3. Can we reach redis by its (startup-resolved) IP directly? This
+        # separates "DNS is broken" from "redis itself is unreachable".
+        log.error("[3] Direct-to-IP redis check")
+        ip = self.redisIp if self.redisIp is not None else self._resolveOne(self.redisHost)
+        if ip is None:
+            log.error("    No IP available to test redis directly")
+        else:
+            ok, detail = self._checkTcpConnect(ip, self.redisPort)
+            log.error(f"    [{'OK  ' if ok else 'FAIL'}] TCP to redis IP {ip}:{self.redisPort} -> {detail}")
+            self._pingRedisByIp(ip)
+
+        # 4. Poll redis until it comes back, so we learn how long the outage
+        # actually lasted.
+        log.error("[4] Polling redis to measure outage duration")
+        self._pollUntilRedisRecovers()
+
+        # 5. Freeze so a human has time to exec into the pod and poke around.
+        freezeSeconds = 30 * 60
+        log.error(f"[5] Sleeping {freezeSeconds}s ({freezeSeconds // 60} min) - exec into the pod now")
+        log.error(bar)
+        time.sleep(freezeSeconds)
+        log.error("Finished diagnostic sleep, resuming normal event loop")
+
+    def _diagnosticTcpTargets(self) -> list[tuple[str, str, int]]:
+        """Build the (name, host, port) list of non-redis endpoints to probe.
+
+        Includes a couple of public DNS servers and HTTPS hosts (to test the
+        internet), the in-cluster kubernetes API and DNS (to test the cluster
+        network), and redis by hostname. Extra ``host:port`` targets can be
+        appended at runtime via the ``RA_DIAG_EXTRA_TARGETS`` env var
+        (comma-separated) without editing code.
+
+        Returns
+        -------
+        targets : `list` [`tuple` [`str`, `str`, `int`]]
+            The endpoints to TCP-probe.
+        """
+        targets: list[tuple[str, str, int]] = [
+            ("internet-dns-google", "8.8.8.8", 53),
+            ("internet-dns-cloudflare", "1.1.1.1", 53),
+            ("internet-https-google", "google.com", 443),
+            ("internet-https-github", "github.com", 443),
+        ]
+
+        k8sHost = os.getenv("KUBERNETES_SERVICE_HOST")
+        k8sPort = os.getenv("KUBERNETES_SERVICE_PORT", "443")
+        if k8sHost:
+            targets.append(("k8s-api", k8sHost, int(k8sPort)))
+        targets.append(("k8s-dns-name", "kubernetes.default.svc.cluster.local", 443))
+
+        if self.redisHost:
+            targets.append(("redis-by-name", self.redisHost, self.redisPort))
+
+        for item in os.getenv("RA_DIAG_EXTRA_TARGETS", "").split(","):
+            item = item.strip()
+            if not item or ":" not in item:
+                continue
+            host, _, portStr = item.rpartition(":")
+            try:
+                targets.append((f"extra:{item}", host, int(portStr)))
+            except ValueError:
+                self.log.warning(f"Ignoring malformed RA_DIAG_EXTRA_TARGETS entry {item!r}")
+
+        return targets
+
+    def _checkTcpConnect(self, host: str, port: int, timeout: float = 5.0) -> tuple[bool, str]:
+        """Try to open a TCP connection, returning success and a detail string.
+
+        Parameters
+        ----------
+        host : `str`
+            The host or IP to connect to.
+        port : `int`
+            The TCP port to connect to.
+        timeout : `float`, optional
+            The connect timeout in seconds.
+
+        Returns
+        -------
+        ok : `bool`
+            Whether the connection succeeded.
+        detail : `str`
+            Timing on success, or the error on failure.
+        """
+        start = time.time()
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                return True, f"connected in {(time.time() - start) * 1000:.0f} ms"
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e} (after {(time.time() - start) * 1000:.0f} ms)"
+
+    def _resolveOne(self, host: str) -> str | None:
+        """Resolve a hostname to a single IP, or ``None`` if it fails."""
+        try:
+            return socket.gethostbyname(host) if host else None
+        except Exception:
+            return None
+
+    def _logDnsResolution(self, host: str) -> None:
+        """Resolve ``host`` and log every IP it maps to, with timing.
+
+        Compares against the startup IP so a changed/disappeared record is
+        obvious in the logs.
+
+        Parameters
+        ----------
+        host : `str`
+            The hostname to resolve.
+        """
+        if not host:
+            self.log.error("    redis host is empty, cannot resolve")
+            return
+        start = time.time()
+        try:
+            infos = socket.getaddrinfo(host, self.redisPort, proto=socket.IPPROTO_TCP)
+            ips = sorted({info[4][0] for info in infos})
+            self.log.error(f"    resolved {host!r} -> {ips} in {(time.time() - start) * 1000:.0f} ms")
+            if self.redisIp is not None and self.redisIp not in ips:
+                self.log.error(f"    NOTE: startup IP {self.redisIp} no longer in resolved set {ips}")
+        except Exception as e:
+            self.log.error(
+                f"    DNS resolution of {host!r} FAILED after {(time.time() - start) * 1000:.0f} ms: "
+                f"{type(e).__name__}: {e}"
+            )
+
+    def _pingRedisByIp(self, ip: str) -> None:
+        """Open a fresh redis client straight to ``ip`` and PING it.
+
+        Bypasses DNS entirely so we can tell whether redis is reachable when
+        addressed by IP, using the startup-captured address.
+
+        Parameters
+        ----------
+        ip : `str`
+            The IP address to connect the throwaway redis client to.
+        """
+        directClient: redis.Redis | None = None
+        try:
+            directClient = redis.Redis(
+                host=ip,
+                password=self.redisPassword,
+                port=self.redisPort,
+                socket_connect_timeout=5,
+                socket_timeout=5,
+            )
+            start = time.time()
+            directClient.ping()
+            self.log.error(f"    PING to redis IP {ip} SUCCEEDED in {(time.time() - start) * 1000:.0f} ms")
+        except Exception as e:
+            self.log.error(f"    PING to redis IP {ip} FAILED: {type(e).__name__}: {e}")
+        finally:
+            if directClient is not None:
+                try:
+                    directClient.close()
+                except Exception:
+                    pass
+
+    def _pollUntilRedisRecovers(self, maxWait: float = 30 * 60, cadence: float = 5.0) -> None:
+        """Ping redis in a loop until it answers, logging the outage duration.
+
+        Each ping has its own try block so a failure just gets logged and the
+        loop carries on. Gives up after ``maxWait`` seconds so we always reach
+        the diagnostic sleep even if redis never comes back.
+
+        Parameters
+        ----------
+        maxWait : `float`, optional
+            The maximum time to keep polling, in seconds.
+        cadence : `float`, optional
+            The delay between ping attempts, in seconds.
+        """
+        start = time.time()
+        attempt = 0
+        while True:
+            attempt += 1
+            elapsed = time.time() - start
+            try:
+                pingStart = time.time()
+                self.redis.ping()
+                pingMs = (time.time() - pingStart) * 1000
+                self.log.error(
+                    f"    [attempt {attempt}] redis RECOVERED after {elapsed:.1f}s (ping {pingMs:.0f} ms)"
+                )
+                return
+            except Exception as e:
+                self.log.error(
+                    f"    [attempt {attempt}] still down after {elapsed:.1f}s: {type(e).__name__}: {e}"
+                )
+            if elapsed >= maxWait:
+                self.log.error(f"    giving up polling after {elapsed:.1f}s (redis still down)")
+                return
+            time.sleep(cadence)
 
     def affirmRunning(self, pod: PodDetails, timePeriod: int | float) -> None:
         """Affirm that the named pod is running OK and should not be considered

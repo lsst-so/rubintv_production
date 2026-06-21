@@ -77,27 +77,39 @@ class RedisWatcher:
             argument.
         """
         while True:
-            self.redisHelper.announceFree(self.podDetails)
-            payload = self.redisHelper.dequeuePayload(self.podDetails)  # blocks for up to DEQUE_TIMEOUT sec
-            if payload is not None:
-                if isRestartPayload(payload):
-                    # TODO: delete existence + free keys?
-                    self.log.warning("Received RESTART_SIGNAL, exiting")
-                    self.redisHelper.setPodSecondaryStatus(self.podDetails, payload.specialMessage)
-                    sys.exit(0)
-                try:
-                    self.payload = payload  # XXX why is this being saved on the class?
-                    self.redisHelper.announceBusy(self.podDetails)
-                    self.redisHelper.setPodSecondaryStatus(self.podDetails, payload.specialMessage)
-                    callback(payload)
-                    self.payload = None
-                except Exception as e:  # deliberately don't catch KeyboardInterrupt, SIGINT etc
-                    self.log.exception(f"Error processing payload {payload}: {e}")
-                finally:
-                    self.redisHelper.announceFree(self.podDetails)
-            else:  # only sleep when no work is found
-                self.redisHelper.clearPodSecondaryStatus(self.podDetails)
-                sleep(self.cadence)  # probably unnecessary now we use a blocking dequeue but it doesn't hurt
+            # Debug branch (DM-55270): very broad catch around the redis
+            # ping/polling that this event loop does (announceFree, the
+            # blocking dequeue, etc.). Intermittent connection errors to redis
+            # on BTS land here, at which point we drop into the diagnostics
+            # block to capture the state of the network at the moment of
+            # failure and then freeze the pod so it can be exec-ed into.
+            # SystemExit from the RESTART_SIGNAL path below is a BaseException,
+            # so it sails past this Exception catch as intended.
+            try:
+                self.redisHelper.announceFree(self.podDetails)
+                payload = self.redisHelper.dequeuePayload(self.podDetails)  # blocks up to DEQUE_TIMEOUT sec
+                if payload is not None:
+                    if isRestartPayload(payload):
+                        # TODO: delete existence + free keys?
+                        self.log.warning("Received RESTART_SIGNAL, exiting")
+                        self.redisHelper.setPodSecondaryStatus(self.podDetails, payload.specialMessage)
+                        sys.exit(0)
+                    try:
+                        self.payload = payload  # XXX why is this being saved on the class?
+                        self.redisHelper.announceBusy(self.podDetails)
+                        self.redisHelper.setPodSecondaryStatus(self.podDetails, payload.specialMessage)
+                        callback(payload)
+                        self.payload = None
+                    except Exception as e:  # deliberately don't catch KeyboardInterrupt, SIGINT etc
+                        self.log.exception(f"Error processing payload {payload}: {e}")
+                    finally:
+                        self.redisHelper.announceFree(self.podDetails)
+                else:  # only sleep when no work is found
+                    self.redisHelper.clearPodSecondaryStatus(self.podDetails)
+                    sleep(self.cadence)  # probably unnecessary now we block on dequeue but it doesn't hurt
+            except Exception as e:
+                self.log.exception(f"Broad catch in event loop tripped redis diagnostics: {e}")
+                self.redisHelper.runConnectionDiagnostics(e)
 
 
 class ButlerWatcher:
