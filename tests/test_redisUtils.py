@@ -638,6 +638,48 @@ class SmokeIsHeadNodeTestCase(_RedisHelperTestBase):
             self.helper.getExposureForFanout("LSSTCam")
 
 
+class DecodeHelpersTestCase(lsst.utils.tests.TestCase):
+    """The ``bytes | str`` decode helpers in redisUtils.
+
+    redis-py 8.x types replies as ``bytes | str`` (the client is generic
+    over ``decode_responses``), so DM-55272 loosened these helpers to accept
+    either and pass an already-``str`` value through unchanged. This client
+    runs in bytes mode, so the bytes branch is the live runtime path; the str
+    pass-through is otherwise never exercised, so both branches are pinned.
+    """
+
+    def test_decodeStringFromBytes(self) -> None:
+        self.assertEqual(redisUtilsModule.decode_string(b"hello"), "hello")
+        # multi-byte utf-8 must round-trip, not just ASCII
+        self.assertEqual(redisUtilsModule.decode_string("café".encode("utf-8")), "café")
+
+    def test_decodeStringPassesStrThrough(self) -> None:
+        # the str branch is an identity pass-through (already decoded)
+        self.assertEqual(redisUtilsModule.decode_string("hello"), "hello")
+
+    def test_decodeListMixedInputs(self) -> None:
+        items: list[bytes | str] = [b"a", "b", b"c"]
+        self.assertEqual(redisUtilsModule.decode_list(items), ["a", "b", "c"])
+
+    def test_decodeSetMixedInputs(self) -> None:
+        members: set[bytes | str] = {b"a", "b"}
+        self.assertEqual(redisUtilsModule.decode_set(members), {"a", "b"})
+
+    def test_decodeHashMixedKeysAndValues(self) -> None:
+        raw: dict[bytes | str, bytes | str] = {b"k1": b"v1", "k2": "v2", b"k3": "v3"}
+        self.assertEqual(
+            redisUtilsModule.decode_hash(raw),
+            {"k1": "v1", "k2": "v2", "k3": "v3"},
+        )
+
+    def test_decodeZsetMixedMembersPreservesScoresAndOrder(self) -> None:
+        raw: list[tuple[bytes | str, float]] = [(b"a", 1.0), ("b", 2.5)]
+        self.assertEqual(
+            redisUtilsModule.decode_zset(raw),
+            [("a", 1.0), ("b", 2.5)],
+        )
+
+
 class RedisClientConfigTestCase(lsst.utils.tests.TestCase):
     """The redis.Redis construction contract in RedisHelper._makeRedis.
 
