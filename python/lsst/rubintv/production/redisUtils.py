@@ -566,19 +566,19 @@ class RedisHelper:
             port=port,
             socket_keepalive=True,
             health_check_interval=30,
-            socket_connect_timeout=5,  # just the connect, and independent from socket_timeout, see below
-            # We leave socket_timeout unset here, because it's unhelpful and a
-            # footgun. This is because there's a blocking blpop using
-            # DEQUE_TIMEOUT, and socket_timeout applies to every socket read
-            # and redis-py won't extend it for blocking commands — so a
-            # socket_timeout below DEQUE_TIMEOUT would make blpop raise
-            # spuriously every poll. We don't set it here; if you do, use
-            # DEQUE_TIMEOUT + slack. Note we deliberately leave socket_timeout
-            # unset rather than just setting it generously: it's a single
-            # global applied to every read on this shared client, so sizing it
-            # for the 5s blpop would also make it the dead-socket detection
-            # latency for all the fast commands, which is why that job is left
-            # to keepalive + health checks instead.
+            socket_connect_timeout=5,  # connect only; not the read timeout
+            # socket_timeout is the read deadline for every command, including
+            # the blocking blpop in dequeuePayload (which blocks server-side
+            # for DEQUE_TIMEOUT). redis-py 8.x derives the blocking read
+            # deadline from socket_timeout and adds no slack for the block, so
+            # it MUST sit above DEQUE_TIMEOUT. Leaving it unset is not safe
+            # under 8.x: the deadline ends up ~DEQUE_TIMEOUT, so an idle
+            # queue races the server's nil-return and raises TimeoutError
+            # spuriously - which then trips disconnect-on-error + retry into a
+            # reconnect storm (see DM-55272). DEQUE_TIMEOUT + slack lets the
+            # empty-poll nil arrive before the read expires, while still
+            # bounding dead-socket detection for the fast commands.
+            socket_timeout=DEQUE_TIMEOUT + 10,
             retry=Retry(ExponentialBackoff(cap=10, base=0.5), retries=5),
         )
 
