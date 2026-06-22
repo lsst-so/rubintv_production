@@ -38,7 +38,7 @@ from __future__ import annotations
 import json
 import time
 import unittest
-from typing import cast
+from typing import Any, cast
 from unittest.mock import patch
 
 import fakeredis
@@ -636,6 +636,43 @@ class SmokeIsHeadNodeTestCase(_RedisHelperTestBase):
         self.helper.isHeadNode = False
         with self.assertRaises(RuntimeError):
             self.helper.getExposureForFanout("LSSTCam")
+
+
+class RedisClientConfigTestCase(lsst.utils.tests.TestCase):
+    """The redis.Redis construction contract in RedisHelper._makeRedis.
+
+    These pin the two connection kwargs DM-55272 turns on. Unlike the
+    fakeredis fixture above (which discards constructor kwargs), this patches
+    redis.Redis with a plain mock so the real call kwargs can be inspected.
+    """
+
+    def _captureRedisKwargs(self) -> dict[str, Any]:
+        """Build a RedisHelper and return the kwargs passed to redis.Redis."""
+        with patch.object(redisUtilsModule.redis, "Redis") as mockRedis:
+            RedisHelper(
+                butler=cast(Butler, None),
+                locationConfig=cast(LocationConfig, None),
+            )
+        return dict(mockRedis.call_args.kwargs)
+
+    def test_socketTimeoutClearsBlockingPop(self) -> None:
+        # dequeuePayload blocks server-side for DEQUE_TIMEOUT on an empty
+        # queue. redis-py 8.x makes the socket read deadline == socket_timeout
+        # with no slack for the block, so socket_timeout MUST exceed
+        # DEQUE_TIMEOUT or an idle queue races the server's nil-return and
+        # raises TimeoutError spuriously. This is the whole point of the fix
+        # (DM-55272): a regression here brings back the spurious-timeout storm.
+        kwargs = self._captureRedisKwargs()
+        self.assertIsNotNone(kwargs.get("socket_timeout"))
+        self.assertGreater(kwargs["socket_timeout"], redisUtilsModule.DEQUE_TIMEOUT)
+
+    def test_clientSetinfoDisabled(self) -> None:
+        # CLIENT SETINFO is rejected by our redis build and fires one
+        # (swallowed) error reply per connection; driver_info=None switches it
+        # off on redis-py 8.x (DM-55272).
+        kwargs = self._captureRedisKwargs()
+        self.assertIn("driver_info", kwargs)
+        self.assertIsNone(kwargs["driver_info"])
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
