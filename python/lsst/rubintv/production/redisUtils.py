@@ -564,6 +564,11 @@ class RedisHelper:
             host=host,
             password=password,
             port=port,
+            # Disable CLIENT SETINFO: our redis build rejects it, so it fires
+            # one (swallowed) error reply per connection and inflates the
+            # server's total_error_replies. driver_info=None switches it off.
+            # See DM-55272.
+            driver_info=None,
             socket_keepalive=True,
             health_check_interval=30,
             socket_connect_timeout=5,  # connect only; not the read timeout
