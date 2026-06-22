@@ -539,12 +539,16 @@ def _extractExposureIds(exposureBytes: bytes, instrument: str) -> list[int]:
     return exposureIds
 
 
-def makeRedisClient(host: str, password: str | None, port: int = 6379) -> redis.Redis:
+def makeRedisClient(host: str, password: str | None, port: int) -> redis.Redis:
     """Construct a redis client with this project's tuned connection settings.
 
     This is the single place the ``redis.Redis`` connection contract lives, so
     that the production pods, the CI suite, and the unit tests all exercise the
     exact same client configuration rather than each rolling their own.
+
+    ``port`` is deliberately required and has no default here: the sole 6379
+    fallback lives in ``RedisHelper._makeRedis`` (the ``REDIS_PORT`` env read),
+    so callers always state the port and there is no second default to drift.
 
     Parameters
     ----------
@@ -552,7 +556,7 @@ def makeRedisClient(host: str, password: str | None, port: int = 6379) -> redis.
         The redis host to connect to.
     password : `str` or `None`
         The redis password, or `None` for an unauthenticated connection.
-    port : `int`, optional
+    port : `int`
         The redis port to connect to.
 
     Returns
