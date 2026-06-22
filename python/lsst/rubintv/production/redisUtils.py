@@ -660,64 +660,71 @@ class RedisHelper:
         """
         log = self.log
         bar = "=" * 79
+        # Routine investigation logging is INFO - a healthy baseline and the OK
+        # probes shouldn't masquerade as errors. Only genuine problems (a FAIL
+        # probe, the triggering error, "still down", the eventual exit) get
+        # logged at WARNING/ERROR so they actually stand out. The banner itself
+        # is INFO for a baseline and ERROR for a real trigger.
+        headLog = log.info if baseline else log.error
         mode = "BASELINE (healthy-state reference)" if baseline else "TRIGGERED"
-        log.error(bar)
-        log.error(f"REDIS CONNECTION DIAGNOSTICS {mode} (debug branch DM-55270)")
+        headLog(bar)
+        headLog(f"REDIS CONNECTION DIAGNOSTICS {mode} (debug branch DM-55270)")
         if triggeringError is not None:
             log.error(f"Triggering error: {type(triggeringError).__name__}: {triggeringError}")
-        log.error(f"redis target: host={self.redisHost!r} port={self.redisPort} startupIp={self.redisIp}")
-        log.error(bar)
+        headLog(f"redis target: host={self.redisHost!r} port={self.redisPort} startupIp={self.redisIp}")
+        headLog(bar)
 
         # 1. DNS resolution of the redis host right now
-        log.error("[1] DNS resolution check")
+        log.info("[1] DNS resolution check")
         self._logDnsResolution(self.redisHost)
 
         # 2. Reachability of things that are *not* redis - the internet, the
         # k8s API, in-cluster DNS, etc. - so we can tell a redis-specific
         # outage apart from a wholesale loss of networking on this pod.
-        log.error("[2] General network reachability check (non-redis services)")
+        log.info("[2] General network reachability check (non-redis services)")
         for name, host, port in self._diagnosticTcpTargets():
             ok, detail = self._checkTcpConnect(host, port)
-            status = "OK  " if ok else "FAIL"
-            log.error(f"    [{status}] {name}: {host}:{port} -> {detail}")
+            level = log.info if ok else log.error
+            level(f"    [{'OK  ' if ok else 'FAIL'}] {name}: {host}:{port} -> {detail}")
 
         # 3. Can we reach redis by its (startup-resolved) IP directly? This
         # separates "DNS is broken" from "redis itself is unreachable".
-        log.error("[3] Direct-to-IP redis check")
+        log.info("[3] Direct-to-IP redis check")
         ip = self.redisIp if self.redisIp is not None else self._resolveOne(self.redisHost)
         if ip is None:
             log.error("    No IP available to test redis directly")
         else:
             ok, detail = self._checkTcpConnect(ip, self.redisPort)
-            log.error(f"    [{'OK  ' if ok else 'FAIL'}] TCP to redis IP {ip}:{self.redisPort} -> {detail}")
+            level = log.info if ok else log.error
+            level(f"    [{'OK  ' if ok else 'FAIL'}] TCP to redis IP {ip}:{self.redisPort} -> {detail}")
             self._pingRedisByIp(ip)
 
         # 4. redis ping. At baseline a single ping records the healthy latency;
         # during a real outage we poll until it recovers to learn how long the
         # outage actually lasted.
         if baseline:
-            log.error("[4] Baseline redis ping")
+            log.info("[4] Baseline redis ping")
             try:
                 pingStart = time.time()
                 self.redis.ping()
-                log.error(f"    redis ping OK in {(time.time() - pingStart) * 1000:.0f} ms")
+                log.info(f"    redis ping OK in {(time.time() - pingStart) * 1000:.0f} ms")
             except Exception as e:
                 log.error(f"    redis ping FAILED: {type(e).__name__}: {e}")
         else:
-            log.error("[4] Polling redis to measure outage duration")
+            log.info("[4] Polling redis to measure outage duration")
             self._pollUntilRedisRecovers()
 
         # 5. Freeze so a human has time to exec into the pod and poke around -
         # only when reacting to a real outage. At baseline we must not sleep,
         # or the pod would never finish starting up.
         if baseline:
-            log.error("[5] Baseline only - not polling or sleeping; this is the reference to diff against")
-            log.error(bar)
+            log.info("[5] Baseline only - not polling or sleeping; this is the reference to diff against")
+            log.info(bar)
             return
 
         freezeSeconds = 30 * 60
-        log.error(f"[5] Sleeping {freezeSeconds}s ({freezeSeconds // 60} min) - exec into the pod now")
-        log.error(bar)
+        log.warning(f"[5] Sleeping {freezeSeconds}s ({freezeSeconds // 60} min) - exec into the pod now")
+        log.warning(bar)
         time.sleep(freezeSeconds)
         # Die loudly. Before this debug branch a redis error in the event loop
         # would have propagated and killed the pod; the broad catch must not
@@ -821,9 +828,9 @@ class RedisHelper:
         try:
             infos = socket.getaddrinfo(host, self.redisPort, proto=socket.IPPROTO_TCP)
             ips = sorted({info[4][0] for info in infos})
-            self.log.error(f"    resolved {host!r} -> {ips} in {(time.time() - start) * 1000:.0f} ms")
+            self.log.info(f"    resolved {host!r} -> {ips} in {(time.time() - start) * 1000:.0f} ms")
             if self.redisIp is not None and self.redisIp not in ips:
-                self.log.error(f"    NOTE: startup IP {self.redisIp} no longer in resolved set {ips}")
+                self.log.warning(f"    NOTE: startup IP {self.redisIp} no longer in resolved set {ips}")
         except Exception as e:
             self.log.error(
                 f"    DNS resolution of {host!r} FAILED after {(time.time() - start) * 1000:.0f} ms: "
@@ -852,7 +859,7 @@ class RedisHelper:
             )
             start = time.time()
             directClient.ping()
-            self.log.error(f"    PING to redis IP {ip} SUCCEEDED in {(time.time() - start) * 1000:.0f} ms")
+            self.log.info(f"    PING to redis IP {ip} SUCCEEDED in {(time.time() - start) * 1000:.0f} ms")
         except Exception as e:
             self.log.error(f"    PING to redis IP {ip} FAILED: {type(e).__name__}: {e}")
         finally:
@@ -885,7 +892,7 @@ class RedisHelper:
                 pingStart = time.time()
                 self.redis.ping()
                 pingMs = (time.time() - pingStart) * 1000
-                self.log.error(
+                self.log.info(
                     f"    [attempt {attempt}] redis RECOVERED after {elapsed:.1f}s (ping {pingMs:.0f} ms)"
                 )
                 return
