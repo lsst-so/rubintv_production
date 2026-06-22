@@ -33,6 +33,30 @@ do that, use the config.
 
 Expected clean output: `Success: no issues found in N source files`.
 
+**The final mypy before any commit and before handoff must be a bare `mypy`
+with a clean result — no path arguments.** Path-scoped runs (`mypy
+some/file.py`) are fine for the fast inner loop while iterating, but they only
+check the files you name plus their imports, so they silently skip everything
+else your change affects. A change is not validated until a no-arguments
+`mypy` run is green; if you used targeted checks while working, re-run bare
+`mypy` as the last step before staging each commit.
+
+This matters most for **wide-blast-radius changes, where the files that break
+are not the files you edited**:
+
+- removing or changing a dependency or type stub — e.g. dropping `types-redis`
+  so the real `redis-py` types are used re-types every redis call site across
+  the whole repo, including `scripts/` and `tests/ci/`;
+- changing the signature of a widely-imported helper, a serialisable dataclass
+  field, or a base class;
+- editing anything imported widely (`redisUtils`, `payloads`, `podDefinition`,
+  `locationConfig`).
+
+For these the errors routinely land in files you never opened, and only a bare
+`mypy` run finds them. (Concrete miss this is guarding against: dropping
+`types-redis` type-checked clean on every edited file but left three
+`bytes | str` errors in `tests/ci/` that path-scoped runs never looked at.)
+
 ### 2. Unit tests (targeted, then broad if needed)
 
 Start with the tests most likely to exercise what you changed. For a
