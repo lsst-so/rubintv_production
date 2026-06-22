@@ -17,8 +17,6 @@ from queue import Empty
 from typing import Any
 from unittest.mock import patch
 
-import redis
-
 
 # Disable logging.basicConfig to avoid interference with log capture
 def do_nothing(*args: object, **kwargs: object) -> None:
@@ -44,6 +42,7 @@ from lsst.rubintv.production.redisUtils import (  # noqa: E402
     RedisHelper,
     decode_list,
     decode_string,
+    makeRedisClient,
 )
 from lsst.rubintv.production.resources import getBasePath, listDir, rmtree  # noqa: E402
 from lsst.rubintv.production.uploaders import MultiUploader  # noqa: E402
@@ -508,8 +507,10 @@ class RedisManager:
 
     def clear_database(self) -> None:
         """Clear the Redis database."""
-        r = redis.Redis(
-            host=self.config.redis_host, port=int(self.config.redis_port), password=self.config.redis_password
+        r = makeRedisClient(
+            host=self.config.redis_host,
+            password=self.config.redis_password,
+            port=int(self.config.redis_port),
         )
         r.flushall()
         print("Cleared Redis database")
@@ -520,7 +521,7 @@ class RedisManager:
         port = self.config.redis_port
         password = self.config.redis_password
 
-        r = redis.Redis(host=host, port=int(port), password=password)
+        r = makeRedisClient(host=host, password=password, port=int(port))
 
         # Ping Redis
         if not r.ping():

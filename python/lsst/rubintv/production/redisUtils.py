@@ -539,6 +539,55 @@ def _extractExposureIds(exposureBytes: bytes, instrument: str) -> list[int]:
     return exposureIds
 
 
+def makeRedisClient(host: str, password: str | None, port: int = 6379) -> redis.Redis:
+    """Construct a redis client with this project's tuned connection settings.
+
+    This is the single place the ``redis.Redis`` connection contract lives, so
+    that the production pods, the CI suite, and the unit tests all exercise the
+    exact same client configuration rather than each rolling their own.
+
+    Parameters
+    ----------
+    host : `str`
+        The redis host to connect to.
+    password : `str` or `None`
+        The redis password, or `None` for an unauthenticated connection.
+    port : `int`, optional
+        The redis port to connect to.
+
+    Returns
+    -------
+    client : `redis.Redis`
+        The configured (but not yet connected) redis client.
+    """
+    return redis.Redis(
+        host=host,
+        password=password,
+        port=port,
+        # Disable CLIENT SETINFO: our redis build rejects it, so it fires
+        # one (swallowed) error reply per connection and inflates the
+        # server's total_error_replies. driver_info=None switches it off.
+        # See DM-55272.
+        driver_info=None,
+        socket_keepalive=True,
+        health_check_interval=30,
+        socket_connect_timeout=5,  # connect only; not the read timeout
+        # socket_timeout is the read deadline for every command, including
+        # the blocking blpop in dequeuePayload (which blocks server-side
+        # for DEQUE_TIMEOUT). redis-py 8.x derives the blocking read
+        # deadline from socket_timeout and adds no slack for the block, so
+        # it MUST sit above DEQUE_TIMEOUT. Leaving it unset is not safe
+        # under 8.x: the deadline ends up ~DEQUE_TIMEOUT, so an idle
+        # queue races the server's nil-return and raises TimeoutError
+        # spuriously - which then trips disconnect-on-error + retry into a
+        # reconnect storm (see DM-55272). DEQUE_TIMEOUT + slack lets the
+        # empty-poll nil arrive before the read expires, while still
+        # bounding dead-socket detection for the fast commands.
+        socket_timeout=DEQUE_TIMEOUT + 10,
+        retry=Retry(ExponentialBackoff(cap=10, base=0.5), retries=5),
+    )
+
+
 class RedisHelper:
     def __init__(self, butler: Butler, locationConfig: LocationConfig, isHeadNode: bool = False) -> None:
         self.log = logging.getLogger("lsst.rubintv.production.redisUtils.RedisHelper")
@@ -560,32 +609,7 @@ class RedisHelper:
         host: str = os.getenv("REDIS_HOST", "")
         password = os.getenv("REDIS_PASSWORD")
         port: int = int(os.getenv("REDIS_PORT", 6379))
-        return redis.Redis(
-            host=host,
-            password=password,
-            port=port,
-            # Disable CLIENT SETINFO: our redis build rejects it, so it fires
-            # one (swallowed) error reply per connection and inflates the
-            # server's total_error_replies. driver_info=None switches it off.
-            # See DM-55272.
-            driver_info=None,
-            socket_keepalive=True,
-            health_check_interval=30,
-            socket_connect_timeout=5,  # connect only; not the read timeout
-            # socket_timeout is the read deadline for every command, including
-            # the blocking blpop in dequeuePayload (which blocks server-side
-            # for DEQUE_TIMEOUT). redis-py 8.x derives the blocking read
-            # deadline from socket_timeout and adds no slack for the block, so
-            # it MUST sit above DEQUE_TIMEOUT. Leaving it unset is not safe
-            # under 8.x: the deadline ends up ~DEQUE_TIMEOUT, so an idle
-            # queue races the server's nil-return and raises TimeoutError
-            # spuriously - which then trips disconnect-on-error + retry into a
-            # reconnect storm (see DM-55272). DEQUE_TIMEOUT + slack lets the
-            # empty-poll nil arrive before the read expires, while still
-            # bounding dead-socket detection for the fast commands.
-            socket_timeout=DEQUE_TIMEOUT + 10,
-            retry=Retry(ExponentialBackoff(cap=10, base=0.5), retries=5),
-        )
+        return makeRedisClient(host, password, port)
 
     def _testRedisConnection(self) -> None:
         """Check that redis is online and can be contacted.

@@ -681,11 +681,12 @@ class DecodeHelpersTestCase(lsst.utils.tests.TestCase):
 
 
 class RedisClientConfigTestCase(lsst.utils.tests.TestCase):
-    """The redis.Redis construction contract in RedisHelper._makeRedis.
+    """The redis.Redis construction contract in makeRedisClient.
 
-    These pin the two connection kwargs DM-55272 turns on. Unlike the
-    fakeredis fixture above (which discards constructor kwargs), this patches
-    redis.Redis with a plain mock so the real call kwargs can be inspected.
+    These pin the two connection kwargs DM-55272 turns on, exercised through
+    the production RedisHelper -> _makeRedis -> makeRedisClient path. Unlike
+    the fakeredis fixture above (which discards constructor kwargs), this
+    patches redis.Redis with a plain mock so the real call kwargs can be seen.
     """
 
     def _captureRedisKwargs(self) -> dict[str, Any]:
