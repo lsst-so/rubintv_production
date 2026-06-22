@@ -117,9 +117,10 @@ jobs:
           # ``python $RUN_ARG`` (guarded inside startup.sh).
           source /repos/.startup.sh
           cd /repos/rubintv_production
-          # mypy + types-redis + types-requests are pre-installed in
-          # the image (see Dockerfile's CI dev tooling RUN block) so
-          # there's nothing to pip install here.
+          # mypy + types-requests are pre-installed in the image (see
+          # Dockerfile's CI dev tooling RUN block) so there's nothing to
+          # pip install here. Note: no types-redis - redis-py 8.x ships its
+          # own inline (py.typed) types and the stub would shadow them.
           mypy
 
   coverage:
