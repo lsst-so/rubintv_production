@@ -288,7 +288,7 @@ class PayloadQueueTestCase(_RedisHelperTestBase):
         # third is now at the head, then first, then second at the
         # tail.
         items = self.redis.lrange(pod.queueName, 0, -1)
-        whos = [json.loads(item.decode("utf-8"))["who"] for item in items]
+        whos = [json.loads(item)["who"] for item in redisUtilsModule.decode_list(items)]
         self.assertEqual(whos, ["THIRD", "FIRST", "SECOND"])
 
     def test_queueLengthIsZeroWhenUntracked(self) -> None:

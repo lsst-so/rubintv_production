@@ -31,7 +31,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 import numpy as np
 import redis
@@ -418,84 +418,89 @@ class ExposureProcessingInfo:
         p.text(str(self))
 
 
-def decode_string(value: bytes) -> str:
-    """Decode a string from bytes to UTF-8.
+def decode_string(value: bytes | str) -> str:
+    """Decode a redis string reply to ``str``.
+
+    redis-py 8.x types replies as ``bytes | str`` because the client is
+    generic over ``decode_responses``. This client runs in bytes mode (the
+    default), so replies are ``bytes`` at runtime, but we accept the union and
+    pass any already-``str`` value through unchanged for the type checker.
 
     Parameters
     ----------
-    value : bytes
-        Bytes value to decode.
+    value : `bytes` or `str`
+        The redis reply to decode.
 
     Returns
     -------
     str
         Decoded string.
     """
-    return value.decode("utf-8")
+    return value.decode("utf-8") if isinstance(value, bytes) else value
 
 
-def decode_hash(hash_dict: dict[bytes, bytes]) -> dict[str, str]:
-    """Decode a hash dictionary from bytes to UTF-8.
+def decode_hash(hash_dict: dict[bytes | str, bytes | str]) -> dict[str, str]:
+    """Decode a hash dictionary to UTF-8.
 
     Parameters
     ----------
-    hash_dict : dict
-        Dictionary with bytes keys and values.
+    hash_dict : `dict`
+        Dictionary with ``bytes`` or ``str`` keys and values.
 
     Returns
     -------
     dict
         Dictionary with decoded keys and values.
     """
-    return {k.decode("utf-8"): v.decode("utf-8") for k, v in hash_dict.items()}
+    return {decode_string(k): decode_string(v) for k, v in hash_dict.items()}
 
 
-def decode_list(value_list: list[bytes]) -> list[str]:
-    """Decode a list of values from bytes to UTF-8.
+def decode_list(value_list: list[bytes | str]) -> list[str]:
+    """Decode a list of values to UTF-8.
 
     Parameters
     ----------
-    value_list : list
-        List of bytes values to decode.
+    value_list : `list`
+        List of ``bytes`` or ``str`` values to decode.
 
     Returns
     -------
     list
         List of decoded values.
     """
-    return [item.decode("utf-8") for item in value_list]
+    return [decode_string(item) for item in value_list]
 
 
-def decode_set(value_set: set[bytes]) -> set[str]:
-    """Decode a set of values from bytes to UTF-8.
+def decode_set(value_set: set[bytes | str]) -> set[str]:
+    """Decode a set of values to UTF-8.
 
     Parameters
     ----------
-    value_set : set
-        Set of bytes values to decode.
+    value_set : `set`
+        Set of ``bytes`` or ``str`` values to decode.
 
     Returns
     -------
     set
         Set of decoded values.
     """
-    return {item.decode("utf-8") for item in value_set}
+    return {decode_string(item) for item in value_set}
 
 
-def decode_zset(value_zset: list[tuple[Any, float]]) -> list[tuple[str, float]]:
-    """Decode a zset of values from bytes to UTF-8.
+def decode_zset(value_zset: list[tuple[bytes | str, float]]) -> list[tuple[str, float]]:
+    """Decode a zset of values to UTF-8.
 
     Parameters
     ----------
-    value_zset : list
-        List of tuple with bytes values and scores to decode.
+    value_zset : `list`
+        List of (``bytes`` or ``str`` value, score) tuples to decode.
 
     Returns
     -------
     list
         List of tuples with decoded values and scores.
     """
-    return [(item[0].decode("utf-8"), item[1]) for item in value_zset]
+    return [(decode_string(item[0]), item[1]) for item in value_zset]
 
 
 def getRedisSecret(filename: str = "$HOME/.lsst/redis_secret.ini") -> str:
@@ -715,7 +720,7 @@ class RedisHelper:
         status = self.redis.get(getPodSecondaryStatusKey(pod.queueName))
         if status is None:
             return ""
-        return status.decode("utf-8")
+        return decode_string(status)
 
     def clearPodSecondaryStatus(self, pod: PodDetails) -> None:
         """Clear the secondary status of a pod.
@@ -752,11 +757,11 @@ class RedisHelper:
 
         queueName = getQueueName(podFlavor, instrument, "*", "*")
 
-        existing = self.redis.keys(getPodExistsKey(queueName))
-        existing = [key.decode("utf-8").replace("+EXISTS", "") for key in existing]
+        existingKeys = self.redis.keys(getPodExistsKey(queueName))
+        existing = [decode_string(key).replace("+EXISTS", "") for key in existingKeys]
 
-        busy = self.redis.keys(getPodBusyKey(queueName))
-        busy = [key.decode("utf-8").replace("+IS_BUSY", "") for key in busy]
+        busyKeys = self.redis.keys(getPodBusyKey(queueName))
+        busy = [decode_string(key).replace("+IS_BUSY", "") for key in busyKeys]
 
         allWorkerQueues = sorted(set(existing + busy))
 
@@ -1003,7 +1008,7 @@ class RedisHelper:
         expRecordJson = expRecord.to_simple().json()
 
         data = self.redis.lrange(getButlerWatcherListKey(instrument), 0, -1)
-        recordStrings = [item.decode("utf-8") for item in data]
+        recordStrings = decode_list(data)
         return expRecordJson in recordStrings
 
     def _checkIsHeadNode(self) -> None:
@@ -1119,7 +1124,9 @@ class RedisHelper:
         expRecordJson = self.redis.lpop(queueName)
         if expRecordJson is None:
             return None
-        return expRecordFromJson(expRecordJson, self.locationConfig)
+        # lpop's reply type is over-broad (it can return a list with a count
+        # arg); we call it without one, so narrow to the single bytes reply.
+        return expRecordFromJson(cast(bytes, expRecordJson), self.locationConfig)
 
     def enqueuePayload(self, payload: Payload, destinationPod: PodDetails, top: bool = True) -> None:
         """Send a unit of work to a specific worker-queue.
@@ -1162,7 +1169,7 @@ class RedisHelper:
         else:
             self.redis.hincrby(QUEUE_LENGTHS_KEY, f"{pod.queueName}", -1)
         _, payLoadJson = popped  # if it's not None, it's a tuple of (queueName, payload)
-        return Payload.from_json(payLoadJson, self.butler)
+        return Payload.from_json(decode_string(payLoadJson), self.butler)
 
     def getQueueLength(self, pod: PodDetails) -> int:
         """Get the length of a specific worker queue.
@@ -1389,7 +1396,7 @@ class RedisHelper:
         rawFields = self.redis.hgetall(key)
         if not rawFields:
             return None
-        fields = {k.decode("utf-8"): v.decode("utf-8") for k, v in rawFields.items()}
+        fields = decode_hash(rawFields)
         return ExposureProcessingInfo.fromRedisHash(expId, fields)
 
     def getActiveExposures(self, instrument: str) -> set[int]:
@@ -1407,7 +1414,7 @@ class RedisHelper:
         """
         key = getActiveExposuresKey(instrument)
         members = self.redis.smembers(key)
-        return {int(m.decode("utf-8")) for m in members}
+        return {int(decode_string(m)) for m in members}
 
     def markStep1aDispatched(self, instrument: str, expId: int, who: str) -> None:
         """Mark the step1a gather as dispatched for ``who``.
@@ -1543,7 +1550,7 @@ class RedisHelper:
 
         valueBytes = self.redis.get(WITNESS_DETECTOR_KEY)
         if valueBytes is not None:
-            value = valueBytes.decode("utf-8")  # could be R11_S11 or 123 as a string now
+            value = decode_string(valueBytes)  # could be R11_S11 or 123 as a string now
             lookupKey: str | int = value
             if value.isdigit():
                 lookupKey = int(value)
@@ -1625,7 +1632,7 @@ class RedisHelper:
         value = self.redis.get(key)
         if value is None:
             return []
-        return [int(det) for det in value.decode("utf-8").split(",") if det.isdigit()]
+        return [int(det) for det in decode_string(value).split(",") if det.isdigit()]
 
     def reportVisitSummaryStats(
         self, instrument: str, visit: int, detector: int, stats: ExposureSummaryStats
@@ -1768,7 +1775,7 @@ class RedisHelper:
         keys = sorted(r.keys("*"))
 
         if ignorePods:
-            keys = [key for key in keys if not isPod(key.decode("utf-8"))]
+            keys = [key for key in keys if not isPod(decode_string(key))]
 
         if not keys:
             print("Nothing in the Redis database.")
@@ -1806,7 +1813,7 @@ class RedisHelper:
 
         for key in keys:
             key = decode_string(key)
-            type_of_key = r.type(key).decode("utf-8")
+            type_of_key = decode_string(r.type(key))
 
             if any(pattern in key for pattern in lengthKeyPatterns):
                 handleLengthKeys(key)
@@ -1836,7 +1843,8 @@ class RedisHelper:
                 sValues = decode_set(r.smembers(key))
                 print(f"{key}: {sValues}")
             elif type_of_key == "zset":
-                zValues = decode_zset(r.zrange(key, 0, -1, withscores=True))
+                zRaw = cast("list[tuple[bytes | str, float]]", r.zrange(key, 0, -1, withscores=True))
+                zValues = decode_zset(zRaw)
                 print(f"{key}: {zValues}")
             else:
                 print(f"Unsupported type for key: {key}")
@@ -1868,7 +1876,7 @@ class RedisHelper:
             # Get all keys and delete them selectively
             all_keys = self.redis.keys("*")
             for key in all_keys:
-                key_str = key.decode("utf-8")
+                key_str = decode_string(key)
                 if "fromButlerWacher" not in key_str:
                     self.redis.delete(key)
             print("Redis database cleared, but ButlerWatcher history retained.")

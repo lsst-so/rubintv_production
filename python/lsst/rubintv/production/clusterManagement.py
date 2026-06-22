@@ -35,7 +35,7 @@ from tabulate import tabulate
 from .payloads import Payload, RestartPayload, getDetectorId, isRestartPayload
 from .podDefinition import PodDetails, PodFlavor
 from .processingControl import CameraControlConfig
-from .redisUtils import RedisHelper
+from .redisUtils import RedisHelper, decode_string
 from .workerSets import AosWorkerSet, SfmWorkerSet, Step1bWorkerSet
 
 if TYPE_CHECKING:
@@ -228,7 +228,7 @@ class ClusterManager:
             dataIdInfo = ""
 
             try:
-                payload = Payload.from_json(item, self.butler)
+                payload = Payload.from_json(decode_string(item), self.butler)
                 dataId = payload.dataId
 
                 # Extract the most relevant ID info from each dataId
@@ -248,7 +248,7 @@ class ClusterManager:
                 who = payload.who
             except Exception:
                 try:
-                    decodedItem = item.decode("utf-8")
+                    decodedItem = decode_string(item)
                     payloadData = json.loads(decodedItem)
                     if "dataIds" in payloadData:
                         dataIdInfo = str(payloadData["dataIds"])

@@ -9,6 +9,7 @@ import redis
 from test_rapid_analysis import TestConfig  # type: ignore[import-not-found]
 
 from lsst.rubintv.production.predicates import getDoRaise
+from lsst.rubintv.production.redisUtils import decode_string
 
 
 def check_redis_process(expect_running: bool = False) -> bool:
@@ -90,7 +91,7 @@ def check_redis_connection(host: str, port: str, password: str) -> bool:
         if raw is None:
             print("Could not set and read back a test key in Redis")
             return False
-        value = raw.decode("utf-8")
+        value = decode_string(raw)
         if value != "test_value":
             print("Could not set and read back a test key in Redis")
             return False
