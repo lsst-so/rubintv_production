@@ -24,6 +24,7 @@ from __future__ import annotations
 __all__ = ("ExposureProcessingInfo", "RedisHelper")
 
 
+import functools
 import json
 import logging
 import os
@@ -642,13 +643,14 @@ class RedisHelper:
           not poll or sleep, so it doesn't hold up startup.
         - ``baseline=False`` (the default) is called from the broad catch
           wrapped around the event-loop redis ping/polling when redis becomes
-          unreachable. It does the same probes, then polls redis until it
-          recovers to measure the outage, sleeps for 30 minutes so the pod can
-          be ``kubectl exec``-ed into while it's stuck, and finally calls
-          ``sys.exit(1)``. The exit is deliberate: before this debug branch a
-          redis error here would have propagated and killed the pod, so we must
-          still die rather than silently recover and mask the very problem
-          we're hunting.
+          unreachable. It does the same probes, polls redis until it recovers
+          to measure the outage, dumps redis server-side state (SLOWLOG /
+          LATENCY / INFO / CLIENT LIST) to catch a single-threaded stall,
+          sleeps for 30 minutes so the pod can be ``kubectl exec``-ed into
+          while it's stuck, and finally calls ``sys.exit(1)``. The exit is
+          deliberate: before this debug branch a redis error here would have
+          propagated and killed the pod, so we must still die rather than
+          silently recover and mask the very problem we're hunting.
 
         Parameters
         ----------
@@ -714,16 +716,26 @@ class RedisHelper:
             log.info("[4] Polling redis to measure outage duration")
             self._pollUntilRedisRecovers()
 
-        # 5. Freeze so a human has time to exec into the pod and poke around -
-        # only when reacting to a real outage. At baseline we must not sleep,
-        # or the pod would never finish starting up.
+        # Baseline stops here - it must not poll, dump server state, or sleep,
+        # or it would hold up (and pile load onto redis at) every pod startup.
         if baseline:
             log.info("[5] Baseline only - not polling or sleeping; this is the reference to diff against")
             log.info(bar)
             return
 
+        # 5. Ask redis what just happened. A BLPOP read timeout with the
+        # network healthy and a fresh ping instant points at the single-
+        # threaded server briefly blocking; SLOWLOG / LATENCY / INFO are what
+        # reveal the culprit (a blocking O(N) command, a bgsave fork, swap).
+        # Queried over the existing client, so there's no need to exec into
+        # the redis pod, and only on a real trigger so this load never hits
+        # redis from 400 pods at startup.
+        log.info("[5] redis server-side state (SLOWLOG / LATENCY / INFO / clients)")
+        self._logRedisServerState()
+
+        # 6. Freeze so a human has time to exec into the pod and poke around.
         freezeSeconds = 30 * 60
-        log.warning(f"[5] Sleeping {freezeSeconds}s ({freezeSeconds // 60} min) - exec into the pod now")
+        log.warning(f"[6] Sleeping {freezeSeconds}s ({freezeSeconds // 60} min) - exec into the pod now")
         log.warning(bar)
         time.sleep(freezeSeconds)
         # Die loudly. Before this debug branch a redis error in the event loop
@@ -904,6 +916,166 @@ class RedisHelper:
                 self.log.error(f"    giving up polling after {elapsed:.1f}s (redis still down)")
                 return
             time.sleep(cadence)
+
+    def _logRedisServerState(self) -> None:
+        """Dump redis server-side state to pin down a single-threaded stall.
+
+        Queried over the existing client from inside the pod, so there's no
+        need to exec into the redis pod. Each query is isolated so an older
+        server (e.g. one without ``LATENCY``) losing one doesn't lose the rest.
+        Run only on a real trigger, never at baseline, so these (some O(N))
+        commands don't pile load onto redis from every pod at startup.
+        """
+        # KEYS/SMEMBERS/SORT cost scales with the keyspace, so DBSIZE gives the
+        # slow-command findings context.
+        self._logRedisQuery("DBSIZE", lambda: self.redis.dbsize())
+
+        # INFO sections where a stall shows up: a bgsave fork or AOF rewrite
+        # (persistence), blocked clients (clients), swap / fragmentation
+        # (memory), fork time and ops/sec (stats).
+        for section in ("server", "clients", "memory", "persistence", "stats"):
+            self._logRedisQuery(f"INFO {section}", functools.partial(self.redis.info, section))
+
+        # redis' own human-readable analyses.
+        self._logRedisQuery("LATENCY DOCTOR", lambda: self.redis.execute_command("LATENCY", "DOCTOR"))
+        self._logRedisQuery("MEMORY DOCTOR", lambda: self.redis.execute_command("MEMORY", "DOCTOR"))
+
+        # Latency-monitor spikes (needs latency-monitor-threshold set server-
+        # side; may be empty, which is fine).
+        self._logRedisQuery("LATENCY LATEST", lambda: self.redis.execute_command("LATENCY", "LATEST"))
+
+        # The slow log - the single most useful thing for a blocking-command
+        # stall, and it persists so it survives until we query it.
+        self._logRedisQuery("SLOWLOG GET 25", lambda: self.redis.slowlog_get(25))
+
+        # Persistence / memory config, to interpret the above.
+        self._logRedisQuery("CONFIG GET (save/appendonly/maxmemory)", self._getRedisPersistenceConfig)
+
+        # Connected-client summary - what everyone else is doing, and in
+        # particular anyone running an expensive command right now.
+        self._logRedisClientSummary()
+
+    def _logRedisQuery(self, label: str, func: Callable[[], Any]) -> None:
+        """Run one server-state query and log its result, isolated.
+
+        Parameters
+        ----------
+        label : `str`
+            Human-readable name of the query, used as the log heading.
+        func : `callable`
+            Zero-arg callable performing the query and returning its result.
+        """
+        try:
+            result = func()
+        except Exception as e:
+            self.log.error(f"    [{label}] FAILED: {type(e).__name__}: {e}")
+            return
+        self.log.info(f"    [{label}]")
+        for line in self._formatRedisResult(result):
+            self.log.info(f"        {line}")
+
+    def _formatRedisResult(self, result: Any, maxLines: int = 60) -> list[str]:
+        """Flatten an arbitrary redis reply into a capped list of log lines.
+
+        Parameters
+        ----------
+        result : `Any`
+            The reply from a redis query (bytes, str, dict, list, scalar).
+        maxLines : `int`, optional
+            Cap on the number of lines returned, to keep dumps bounded.
+
+        Returns
+        -------
+        lines : `list` [`str`]
+            The formatted lines, truncated with a marker if over ``maxLines``.
+        """
+
+        def dec(value: Any) -> str:
+            return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else str(value)
+
+        lines: list[str] = []
+        if result is None:
+            lines = ["(nil)"]
+        elif isinstance(result, dict):
+            lines = [f"{dec(k)}: {dec(v)}" for k, v in result.items()]
+        elif isinstance(result, (list, tuple)):
+            for item in result:
+                if isinstance(item, dict):
+                    lines.append(", ".join(f"{dec(k)}={dec(v)}" for k, v in item.items()))
+                elif isinstance(item, (list, tuple)):
+                    lines.append(" ".join(dec(x) for x in item))
+                else:
+                    lines.append(dec(item))
+        else:
+            text = dec(result)
+            lines = text.splitlines() or [text]
+
+        if len(lines) > maxLines:
+            lines = lines[:maxLines] + [f"... ({len(lines) - maxLines} more lines truncated)"]
+        return lines
+
+    def _getRedisPersistenceConfig(self) -> dict[str, str]:
+        """Return the persistence/memory-relevant ``CONFIG GET`` values."""
+
+        def dec(value: Any) -> str:
+            return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else str(value)
+
+        config: dict[Any, Any] = {}
+        for pattern in ("save", "appendonly", "appendfsync", "maxmemory", "maxmemory-policy"):
+            config.update(self.redis.config_get(pattern))
+        return {dec(k): dec(v) for k, v in config.items()}
+
+    def _logRedisClientSummary(self) -> None:
+        """Summarise ``CLIENT LIST``: total, breakdown, blocking commands.
+
+        With hundreds of workers a full dump is enormous and mostly identical
+        (everyone parked on BLPOP), so log a count, a per-command breakdown,
+        and the full line for any client running a command known to block the
+        single-threaded server.
+        """
+        blocking = {
+            "keys",
+            "sort",
+            "smembers",
+            "sunion",
+            "sinter",
+            "sdiff",
+            "hgetall",
+            "hkeys",
+            "hvals",
+            "lrange",
+            "zrange",
+            "flushall",
+            "flushdb",
+            "save",
+            "bgsave",
+            "bgrewriteaof",
+            "debug",
+        }
+        try:
+            clients = self.redis.client_list()
+        except Exception as e:
+            self.log.error(f"    [CLIENT LIST] FAILED: {type(e).__name__}: {e}")
+            return
+
+        counts: dict[str, int] = {}
+        suspicious: list[str] = []
+        for c in clients:
+            cmd = str(c.get("cmd", "?"))
+            counts[cmd] = counts.get(cmd, 0) + 1
+            if cmd.split("|")[0].lower() in blocking:
+                suspicious.append(
+                    f"addr={c.get('addr')} name={c.get('name')} cmd={cmd}"
+                    f" age={c.get('age')} idle={c.get('idle')}"
+                )
+
+        self.log.info(f"    [CLIENT LIST] {len(clients)} clients connected")
+        for cmd, n in sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:15]:
+            self.log.info(f"        {n:>4} x {cmd}")
+        if suspicious:
+            self.log.warning(f"    [CLIENT LIST] {len(suspicious)} client(s) running blocking commands:")
+            for line in suspicious[:20]:
+                self.log.warning(f"        {line}")
 
     def affirmRunning(self, pod: PodDetails, timePeriod: int | float) -> None:
         """Affirm that the named pod is running OK and should not be considered
