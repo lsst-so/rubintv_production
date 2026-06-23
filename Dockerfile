@@ -12,9 +12,9 @@ ENV GID=73006
 ARG drp_pipe_ref="w.2026.22"
 ARG summit_utils_ref="1485dcbc10ad7637a845ee7e9a5a29d0f1da7680"
 ARG summit_extras_ref="w.2026.22"
-ARG ts_wep_ref="v17.5.0"
-ARG donut_viz_ref="v4.3.0-alpha"
-ARG tarts_ref="v4"
+ARG ts_wep_ref="v17.6.1-alpha"
+ARG donut_viz_ref="v4.4.0-alpha"
+ARG tarts_ref="v4.2"
 ARG ts_ofc_ref="5245ded9c985c7707232f53f130a8cb6a402f7e1"
 ARG ts_config_mttcs_ref="ad3ef1b625f0ab5f276193987e4251db95161227"
 
@@ -63,6 +63,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     redis-py \
     batoid \
     danish=1.1.1 \
+    lsst-efd-client=1.0.0 \
     rubin-libradtran \
     timm \
     peft \
@@ -74,7 +75,6 @@ USER saluser
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     pip install google-cloud-storage \
-    lsst-efd-client \
     pytorch_lightning \
     easyocr \
     sentry-sdk \

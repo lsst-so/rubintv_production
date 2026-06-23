@@ -86,6 +86,7 @@ PIPELINE_NAMES: tuple[str, ...] = (
     "AOS_WCS_DANISH_BIN_1",
     "AOS_DANISH",
     "AOS_TIE",
+    "AOS_REFIT_WCS",
     "AOS_AI_DONUT",
     "AOS_TARTS_UNPAIRED",
     "AOS_UNPAIRED_DANISH",
@@ -438,6 +439,7 @@ def buildPipelines(
     aosFileTIE = locationConfig.aosLSSTCamPipelineFileTie
     aosFileDanishFam = locationConfig.aosLSSTCamFullArrayModePipelineFileDanish
     aosFileTIEFam = locationConfig.aosLSSTCamFullArrayModePipelineFileTie
+    aosRefitWcsFile = locationConfig.aosLSSTCamRefitWcsPipelineFile
     aiDonutFile = locationConfig.aosLSSTCamAiDonutPipelineFile
     tartsFile = locationConfig.aosLSSTCamTartsPipelineFile
     unpairedDanishFile = locationConfig.aosLSSTCamUnpairedDanishPipelineFile
@@ -483,6 +485,9 @@ def buildPipelines(
         )
         pipelines["AOS_TIE"] = PipelineComponents(
             butler.registry, aosFileTIE, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
+        )
+        pipelines["AOS_REFIT_WCS"] = PipelineComponents(
+            butler.registry, aosRefitWcsFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
         pipelines["AOS_AI_DONUT"] = PipelineComponents(
             butler.registry, aiDonutFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
@@ -812,6 +817,7 @@ class HeadProcessController:
         # WCS_DANISH_BIN_1
         # DANISH
         # TIE
+        # REFIT_WCS
         # AI_DONUT
         # UNPAIRED_DANISH
         # TARTS_UNPAIRED
