@@ -39,12 +39,15 @@ from ciutils import Check, TestScript, conditional_redirect  # type: ignore # no
 from lsst.rubintv.production.locationConfig import LocationConfig, findMissingConfigKeys  # noqa: E402
 from lsst.rubintv.production.packageVersions import (  # noqa: E402
     UNKNOWN_VERSION,
+    UNKNOWN_VERSION_NUMBER,
     PackageVersions,
     VersionComparison,
     compareVersionsToDockerfile,
     envVarForPackage,
     findDockerfile,
+    getRegistryPath,
     missingPackageDirEnvVars,
+    resolveVersionNumber,
 )
 from lsst.rubintv.production.predicates import getDoRaise, runningCI  # noqa: E402
 from lsst.rubintv.production.redisUtils import (  # noqa: E402
@@ -1343,6 +1346,11 @@ _YELLOW = "\033[93m"
 _BOLD = "\033[1m"
 _RESET = "\033[0m"
 
+# Instruments the CI runs head nodes for. Each head node maintains its own
+# per-instrument package-version registry, so the overall number is resolved
+# per instrument. Keep in sync with the head node scripts launched below.
+CI_HEAD_NODE_INSTRUMENTS = ("LSSTCam", "LATISS")
+
 
 def _colour(text: str, *codes: str) -> str:
     """Wrap ``text`` in the given ANSI codes, resetting at the end of the line.
@@ -1393,6 +1401,32 @@ def gather_package_version_comparisons() -> tuple[PackageVersions, list[VersionC
     return versions, comparisons, dockerfilePath
 
 
+def resolve_ci_version_numbers(versions: PackageVersions) -> dict[str, int]:
+    """Resolve the overall version number for each CI head-node instrument.
+
+    Uses the same registry + ``resolveVersionNumber`` path as the deployed head
+    node (here against the ``usdf_testing`` location), so the CI exercises and
+    displays the exact persistence mechanism — and the number increments across
+    runs when a tracked package version changes. Idempotent with the head
+    node's own resolution during the run. Never raises.
+
+    Returns
+    -------
+    numbers : `dict` [`str`, `int`]
+        Mapping of instrument to its overall version number, empty if the
+        registry location could not be resolved.
+    """
+    try:
+        registryDir = LocationConfig("usdf_testing").packageVersionRegistryPath
+    except Exception as e:  # noqa: BLE001 — CI infra must not fall over here
+        print(f"⚠️  Could not locate the package-version registry: {e}")
+        return {}
+    return {
+        instrument: resolveVersionNumber(getRegistryPath(registryDir, instrument), versions)
+        for instrument in CI_HEAD_NODE_INSTRUMENTS
+    }
+
+
 def print_loud_version_mismatch_warning(mismatches: list[VersionComparison]) -> None:
     """Print an impossible-to-miss banner for Dockerfile version mismatches.
 
@@ -1417,7 +1451,11 @@ def print_loud_version_mismatch_warning(mismatches: list[VersionComparison]) -> 
     print("\n" * 6)
 
 
-def print_package_version_summary(comparisons: list[VersionComparison], dockerfilePath: str | None) -> None:
+def print_package_version_summary(
+    comparisons: list[VersionComparison],
+    dockerfilePath: str | None,
+    versionNumbers: dict[str, int] | None = None,
+) -> None:
     """Print the tracked package versions and their Dockerfile agreement.
 
     Shown at the very end of the run, beneath the test results. A mismatch is
@@ -1442,6 +1480,12 @@ def print_package_version_summary(comparisons: list[VersionComparison], dockerfi
         else:
             status = _colour("— git version unknown", _YELLOW)
         print(f"  {comparison.package}: {comparison.gitVersion}  {status}")
+
+    if versionNumbers:
+        print(_colour("  Overall version number (per instrument):", _BOLD))
+        for instrument, number in versionNumbers.items():
+            shown = "unknown (registry unavailable)" if number == UNKNOWN_VERSION_NUMBER else str(number)
+            print(f"    {instrument}: {shown}")
 
     # rubintv_production is excluded from the scary verdict: it is under
     # development and intentionally tracks a SHA rather than a Dockerfile ref.
@@ -1470,6 +1514,7 @@ class TestRunner:
         # populated at startup by scrape_package_versions, shown again at end
         self.package_version_comparisons: list[VersionComparison] = []
         self.dockerfile_path: str | None = None
+        self.package_version_numbers: dict[str, int] = {}
 
     def scrape_package_versions(self) -> None:
         """Scrape tracked package versions at startup and warn loudly on drift.
@@ -1489,6 +1534,12 @@ class TestRunner:
             self.package_version_comparisons = comparisons
             self.dockerfile_path = dockerfilePath
             print(f"Scraped tracked package versions: {versions.versions}")
+
+            # Resolve the overall version number via the same registry the
+            # deployed head node uses, so it persists and increments across CI
+            # runs (idempotent with the head node's own resolution below).
+            self.package_version_numbers = resolve_ci_version_numbers(versions)
+            print(f"Overall package-version numbers (per instrument): {self.package_version_numbers}")
 
             # A missing *_DIR env var means the package isn't set up — a hard
             # failure here even though the head node tolerates it. Reported as
@@ -1687,8 +1738,11 @@ class TestRunner:
             overall_pass = self.result_collector.print_final_result(self.config)
 
             # Show the tracked package versions beneath the test results, with
-            # their Dockerfile agreement. Scary on mismatch, never a failure.
-            print_package_version_summary(self.package_version_comparisons, self.dockerfile_path)
+            # their Dockerfile agreement and the overall version number. Scary
+            # on mismatch, never a failure.
+            print_package_version_summary(
+                self.package_version_comparisons, self.dockerfile_path, self.package_version_numbers
+            )
 
             # Exit with appropriate status
             if not overall_pass:
