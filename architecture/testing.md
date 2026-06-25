@@ -125,6 +125,21 @@ The CI suite has its own mini-framework:
 - **`ProcessManager`** - launches test scripts as `multiprocessing.Process`
 - **`ResultCollector`** - aggregates pass/fail results
 
+### Package Version Validation
+
+At startup the suite scrapes the git versions of the tracked science
+packages (`ts_wep`, `donut_viz`, `rubintv_production`) and cross-checks them
+against the refs pinned in the `Dockerfile`:
+
+- A mismatch on a Dockerfile-pinned package prints a loud bold-red banner up
+  front and is shown again, scarily, in a version summary printed beneath the
+  test results at the end. This is **advisory** — git is the source of truth
+  and the Dockerfile can legitimately be mid-edit, so it is **not** a failure.
+  `rubintv_production` is excluded from the loud warning (it tracks a SHA
+  under development).
+- A missing `*_DIR` env var (the package isn't set up) **is** a hard failure:
+  the env vars are a precondition of the running image, so the run goes red.
+
 ### Test Phases
 
 **Phase 1: Meta Tests** (30 s timeout)
