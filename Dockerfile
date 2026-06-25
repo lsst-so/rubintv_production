@@ -22,7 +22,7 @@ ARG drp_pipe_ref="w.2026.22"
 ARG summit_utils_ref="ac8fc39669064c904ed7892b1ab427a92c0cc944"
 ARG summit_extras_ref="w.2026.22"
 ARG ts_wep_ref="v17.5.0"
-ARG donut_viz_ref="v4.3.0-alpha"
+ARG donut_viz_ref="v4.4.0-alpha"
 ARG tarts_ref="v4"
 >>>>>>> cc7193da (Pin AOS code back to previous version)
 ARG ts_ofc_ref="5245ded9c985c7707232f53f130a8cb6a402f7e1"
