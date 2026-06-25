@@ -38,6 +38,7 @@ import unittest.mock
 
 import lsst.utils.tests
 from lsst.rubintv.production.packageVersions import (
+    TRACKED_INSTALLED_PACKAGES,
     TRACKED_PACKAGES,
     UNKNOWN_VERSION,
     UNKNOWN_VERSION_NUMBER,
@@ -47,6 +48,7 @@ from lsst.rubintv.production.packageVersions import (
     envVarForPackage,
     findDockerfile,
     getGitVersion,
+    getInstalledPackageVersion,
     getPackageVersion,
     getRegistryPath,
     missingPackageDirEnvVars,
@@ -192,6 +194,20 @@ class EnvVarTestCase(lsst.utils.tests.TestCase):
             self.assertEqual(missingPackageDirEnvVars(), TRACKED_PACKAGES)
 
 
+class InstalledPackageVersionTestCase(lsst.utils.tests.TestCase):
+    def test_knownInstalledPackage(self) -> None:
+        # numpy is a guaranteed-present distribution in the stack; its version
+        # comes from the installed metadata, not a git checkout or env var
+        version = getInstalledPackageVersion("numpy")
+        self.assertNotEqual(version, UNKNOWN_VERSION)
+        self.assertTrue(version)
+
+    def test_unknownInstalledPackage(self) -> None:
+        self.assertEqual(
+            getInstalledPackageVersion("a_distribution_that_does_not_exist_xyz"), UNKNOWN_VERSION
+        )
+
+
 class PackageVersionsTestCase(lsst.utils.tests.TestCase):
     def test_toShardDictHasBookMarker(self) -> None:
         versions = {"ts_wep": "v1", "donut_viz": "v2", "rubintv_production": "abc123"}
@@ -217,13 +233,19 @@ class PackageVersionsTestCase(lsst.utils.tests.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             makeGitRepo(tmp, tag="v5.0.0")
             with unittest.mock.patch.dict(os.environ, {envVarForPackage("ts_wep"): tmp}):
-                pv = PackageVersions.fromPackages(["ts_wep", "not_a_real_package"])
+                pv = PackageVersions.fromPackages(["ts_wep", "not_a_real_package"], installedPackageNames=[])
             self.assertEqual(pv.versions["ts_wep"], "v5.0.0")
             self.assertEqual(pv.versions["not_a_real_package"], UNKNOWN_VERSION)
 
+    def test_fromPackagesIncludesInstalledPackages(self) -> None:
+        # numpy is a guaranteed-present installed distribution in the stack
+        pv = PackageVersions.fromPackages(packageNames=[], installedPackageNames=["numpy"])
+        self.assertIn("numpy", pv.versions)
+        self.assertNotEqual(pv.versions["numpy"], UNKNOWN_VERSION)
+
     def test_fromPackagesDefaultsToTrackedPackages(self) -> None:
         pv = PackageVersions.fromPackages()
-        self.assertEqual(list(pv.versions.keys()), TRACKED_PACKAGES)
+        self.assertEqual(list(pv.versions.keys()), TRACKED_PACKAGES + TRACKED_INSTALLED_PACKAGES)
 
 
 class VersionsMatchTestCase(lsst.utils.tests.TestCase):
@@ -267,16 +289,41 @@ class DockerfileParsingTestCase(lsst.utils.tests.TestCase):
         self.assertNotIn("STACK_TAG", refs)
         self.assertNotIn("commented", refs)
 
+    def test_parsesCondaPins(self) -> None:
+        contents = (
+            "    conda install -y \\\n"
+            "    batoid \\\n"
+            "    danish=1.1.1 \\\n"
+            "    lsst-efd-client=1.0.0 \\\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "Dockerfile")
+            with open(path, "w") as f:
+                f.write(contents)
+            refs = parseDockerfileRefs(path, condaPackages=["danish"])
+        self.assertEqual(refs["danish"], "1.1.1")
+        # only the requested conda package is extracted, not other pins
+        self.assertNotIn("lsst-efd-client", refs)
+        # and without asking for conda packages, nothing conda is parsed
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "Dockerfile")
+            with open(path, "w") as f:
+                f.write(contents)
+            self.assertNotIn("danish", parseDockerfileRefs(path))
+
     def test_realDockerfileFormatIsParseable(self) -> None:
-        # Pins the Dockerfile ARG format the runtime cross-check depends on. If
-        # this fails, the format drifted and parseDockerfileRefs needs updating
-        # (the runtime check only warns, so without this test the drift is
-        # silent).
+        # Pins the Dockerfile ARG + conda pin formats the runtime cross-check
+        # depends on. If this fails, the format drifted and parseDockerfileRefs
+        # needs updating (the runtime check only warns, so without this test
+        # the drift is silent).
         self.assertTrue(os.path.isfile(REPO_DOCKERFILE), f"Dockerfile not found at {REPO_DOCKERFILE}")
-        refs = parseDockerfileRefs(REPO_DOCKERFILE)
+        refs = parseDockerfileRefs(REPO_DOCKERFILE, condaPackages=TRACKED_INSTALLED_PACKAGES)
         for package in ("ts_wep", "donut_viz"):
             self.assertIn(package, refs, f"{package}_ref no longer parseable from the Dockerfile")
             self.assertTrue(refs[package], f"{package}_ref parsed as empty")
+        for package in TRACKED_INSTALLED_PACKAGES:
+            self.assertIn(package, refs, f"{package} conda pin no longer parseable from the Dockerfile")
+            self.assertTrue(refs[package], f"{package} conda pin parsed as empty")
         # rubintv_production is COPYed in, not checked out via a _ref arg
         self.assertNotIn("rubintv_production", refs)
 
@@ -374,6 +421,24 @@ class CompareVersionsToDockerfileTestCase(lsst.utils.tests.TestCase):
             comparisons = compareVersionsToDockerfile(pv, "/nonexistent/Dockerfile")
         self.assertEqual(len(comparisons), 2)
         self.assertTrue(all(c.matches is None for c in comparisons))
+
+    def test_crossChecksCondaPinnedInstalledPackage(self) -> None:
+        # danish is pinned via a conda spec, not an ARG _ref, but is still
+        # cross-checked (it is in TRACKED_INSTALLED_PACKAGES)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._writeDockerfile(tmp, "    danish=1.1.1 \\\n")
+            byName = {
+                c.package: c
+                for c in compareVersionsToDockerfile(PackageVersions(versions={"danish": "1.1.1"}), path)
+            }
+            self.assertTrue(byName["danish"].matches)
+            self.assertEqual(byName["danish"].dockerfileRef, "1.1.1")
+
+            byName = {
+                c.package: c
+                for c in compareVersionsToDockerfile(PackageVersions(versions={"danish": "1.0.0"}), path)
+            }
+            self.assertFalse(byName["danish"].matches)
 
 
 class VersionHashTestCase(lsst.utils.tests.TestCase):
