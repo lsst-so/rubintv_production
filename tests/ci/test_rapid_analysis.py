@@ -38,6 +38,7 @@ from ciutils import Check, TestScript, conditional_redirect  # type: ignore # no
 # Only import from lsst packages after logging is configured
 from lsst.rubintv.production.locationConfig import LocationConfig, findMissingConfigKeys  # noqa: E402
 from lsst.rubintv.production.packageVersions import (  # noqa: E402
+    TRACKED_INSTALLED_PACKAGES,
     UNKNOWN_VERSION,
     UNKNOWN_VERSION_NUMBER,
     PackageVersions,
@@ -1476,7 +1477,7 @@ def print_package_version_summary(
                 f"❌ DOES NOT MATCH Dockerfile (expected {comparison.dockerfileRef})", _RED, _BOLD
             )
         elif comparison.dockerfileRef is None:
-            status = _colour("— not pinned in Dockerfile (under development)", _YELLOW)
+            status = _colour("— not pinned in the Dockerfile", _YELLOW)
         else:
             status = _colour("— git version unknown", _YELLOW)
         print(f"  {comparison.package}: {comparison.gitVersion}  {status}")
@@ -1573,6 +1574,21 @@ class TestRunner:
                         f" ${envVar}={os.environ[envVar]} is not a usable git checkout",
                     )
                 )
+
+            # Installed packages (no env var) whose version couldn't be read —
+            # the distribution isn't installed/importable. Also a hard failure.
+            for comparison in comparisons:
+                if (
+                    comparison.package in TRACKED_INSTALLED_PACKAGES
+                    and comparison.gitVersion == UNKNOWN_VERSION
+                ):
+                    self.result_collector.checks.append(
+                        Check(
+                            False,
+                            f"Could not determine the version of {comparison.package}: the"
+                            f" '{comparison.package}' distribution is not installed/importable",
+                        )
+                    )
 
             mismatches = [c for c in comparisons if c.matches is False and c.package != "rubintv_production"]
             if mismatches:

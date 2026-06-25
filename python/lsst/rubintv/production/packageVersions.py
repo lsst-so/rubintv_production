@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import importlib.metadata
 import json
 import logging
 import os
@@ -54,6 +55,7 @@ from typing import Any
 
 __all__ = [
     "TRACKED_PACKAGES",
+    "TRACKED_INSTALLED_PACKAGES",
     "UNKNOWN_VERSION",
     "UNKNOWN_VERSION_NUMBER",
     "PackageVersions",
@@ -61,6 +63,7 @@ __all__ = [
     "envVarForPackage",
     "getGitVersion",
     "getPackageVersion",
+    "getInstalledPackageVersion",
     "missingPackageDirEnvVars",
     "findDockerfile",
     "parseDockerfileRefs",
@@ -76,9 +79,17 @@ _log = logging.getLogger(__name__)
 
 
 # The packages whose git versions are recorded for every dispatched image. The
-# set is deliberately small: just the things that change the AOS results. It is
-# kept as a plain list so it is trivial to extend.
+# set is deliberately small: just the things that change the AOS results. These
+# are git checkouts located via their EUPS ``<PACKAGE>_DIR`` env var. Kept as a
+# plain list so it is trivial to extend.
 TRACKED_PACKAGES = ["ts_wep", "donut_viz", "rubintv_production"]
+
+# Tracked packages that are installed into the environment (conda/pip) rather
+# than being git checkouts. These have no ``*_DIR`` env var, so their version
+# comes from the installed distribution metadata instead. In the Dockerfile
+# they are pinned with a conda ``name=version`` spec rather than an ``ARG
+# <name>_ref``.
+TRACKED_INSTALLED_PACKAGES = ["danish"]
 
 # Sentinel used when a package's version genuinely can't be determined (its
 # ``*_DIR`` env var isn't set, the directory isn't a git checkout, etc.). We
@@ -196,6 +207,35 @@ def getPackageVersion(packageName: str) -> str:
         return UNKNOWN_VERSION
 
 
+def getInstalledPackageVersion(packageName: str) -> str:
+    """Get the version of an installed (conda/pip) distribution.
+
+    Used for tracked packages that are installed into the environment rather
+    than being git checkouts (e.g. ``danish``), so they have no ``*_DIR`` env
+    var. The version is read from the installed distribution metadata — no need
+    to import the package itself. Never raises: returns `UNKNOWN_VERSION` and
+    logs a warning if the distribution can't be found.
+
+    Parameters
+    ----------
+    packageName : `str`
+        The distribution name, e.g. ``"danish"``.
+
+    Returns
+    -------
+    version : `str`
+        The installed version, or `UNKNOWN_VERSION` if it can't be found.
+    """
+    try:
+        return importlib.metadata.version(packageName)
+    except importlib.metadata.PackageNotFoundError:
+        _log.warning("Installed package %s not found; cannot record its version", packageName)
+        return UNKNOWN_VERSION
+    except Exception as e:  # noqa: BLE001 — version recording must never raise
+        _log.warning("Failed to get the version for installed package %s: %s", packageName, e)
+        return UNKNOWN_VERSION
+
+
 def missingPackageDirEnvVars(packageNames: list[str] | None = None) -> list[str]:
     """Return the tracked packages whose ``*_DIR`` env var is not set.
 
@@ -223,29 +263,38 @@ def missingPackageDirEnvVars(packageNames: list[str] | None = None) -> list[str]
 
 @dataclass
 class PackageVersions:
-    """The git versions of the tracked science packages at processing time.
+    """The versions of the tracked science packages at processing time.
 
     The versions are held in a dict keyed by package name rather than as named
     fields so that the set of recorded packages can be grown just by editing
-    `TRACKED_PACKAGES` — no change to the wire format written to the AOS
-    metadata page is required.
+    `TRACKED_PACKAGES` / `TRACKED_INSTALLED_PACKAGES` — no change to the wire
+    format written to the AOS metadata page is required.
 
     Parameters
     ----------
     versions : `dict` [`str`, `str`]
-        Mapping of package name to git version (tag or SHA).
+        Mapping of package name to version (a git tag/SHA for git checkouts, an
+        installed distribution version for installed packages).
     """
 
     versions: dict[str, str]
 
     @classmethod
-    def fromPackages(cls, packageNames: list[str] | None = None) -> PackageVersions:
-        """Build by reading the git version of each named package.
+    def fromPackages(
+        cls,
+        packageNames: list[str] | None = None,
+        installedPackageNames: list[str] | None = None,
+    ) -> PackageVersions:
+        """Build by reading the version of each named package.
 
         Parameters
         ----------
         packageNames : `list` [`str`], optional
-            The packages to record. Defaults to `TRACKED_PACKAGES`.
+            Git-checkout packages to record (version from the checkout at their
+            ``*_DIR`` env var). Defaults to `TRACKED_PACKAGES`.
+        installedPackageNames : `list` [`str`], optional
+            Installed packages to record (version from the installed
+            distribution metadata). Defaults to `TRACKED_INSTALLED_PACKAGES`.
 
         Returns
         -------
@@ -254,7 +303,12 @@ class PackageVersions:
         """
         if packageNames is None:
             packageNames = TRACKED_PACKAGES
-        return cls(versions={name: getPackageVersion(name) for name in packageNames})
+        if installedPackageNames is None:
+            installedPackageNames = TRACKED_INSTALLED_PACKAGES
+        versions = {name: getPackageVersion(name) for name in packageNames}
+        for name in installedPackageNames:
+            versions[name] = getInstalledPackageVersion(name)
+        return cls(versions=versions)
 
     def toShardDict(self, versionNumber: int | None = None) -> dict[str, str | int]:
         """Render as a metadata-shard cell.
@@ -320,28 +374,54 @@ def findDockerfile() -> str | None:
     return dockerfilePath if os.path.isfile(dockerfilePath) else None
 
 
-def parseDockerfileRefs(dockerfilePath: str) -> dict[str, str]:
-    """Parse the ``ARG <package>_ref=...`` pins out of the Dockerfile.
+def _findCondaPin(lines: list[str], packageName: str) -> str | None:
+    """Find a ``name=version`` conda/pip pin for ``packageName`` in the lines.
+
+    Matches e.g. ``    danish=1.1.1 \\`` -> ``"1.1.1"``. Scoped to the exact
+    package name so it can't pick up unrelated ``foo=bar`` lines.
+    """
+    pattern = re.compile(rf"^\s*{re.escape(packageName)}==?([^\s\\]+)")
+    for line in lines:
+        match = pattern.match(line)
+        if match:
+            return match.group(1)
+    return None
+
+
+def parseDockerfileRefs(dockerfilePath: str, condaPackages: list[str] | None = None) -> dict[str, str]:
+    """Parse the package version pins out of the Dockerfile.
+
+    Picks up two pin styles: ``ARG <package>_ref=...`` (git checkouts) for any
+    package, and conda/pip ``<package>=<version>`` specs for the names given in
+    ``condaPackages`` (installed packages such as ``danish``).
 
     Parameters
     ----------
     dockerfilePath : `str`
         The path to the Dockerfile.
+    condaPackages : `list` [`str`], optional
+        Installed-package names to additionally look for as ``name=version``
+        conda pins. Defaults to none.
 
     Returns
     -------
     refs : `dict` [`str`, `str`]
-        Mapping of package name to the ref it is pinned to, e.g.
-        ``{"ts_wep": "v17.6.1-alpha", ...}``. Packages without a ``_ref`` arg
-        (e.g. ``rubintv_production`` itself, which is COPYed in rather than
-        checked out) are simply absent.
+        Mapping of package name to the ref/version it is pinned to, e.g.
+        ``{"ts_wep": "v17.6.1-alpha", "danish": "1.1.1", ...}``. Packages with
+        no recognised pin (e.g. ``rubintv_production``, which is COPYed in
+        rather than checked out) are simply absent.
     """
     refs: dict[str, str] = {}
     with open(dockerfilePath) as f:
-        for line in f:
-            match = _DOCKERFILE_REF_RE.match(line)
-            if match:
-                refs[match.group(1)] = match.group(2)
+        lines = f.readlines()
+    for line in lines:
+        match = _DOCKERFILE_REF_RE.match(line)
+        if match:
+            refs[match.group(1)] = match.group(2)
+    for name in condaPackages or []:
+        pin = _findCondaPin(lines, name)
+        if pin is not None:
+            refs[name] = pin
     return refs
 
 
@@ -402,7 +482,7 @@ def compareVersionsToDockerfile(
     dockerfilePath: str,
     log: logging.Logger | None = None,
 ) -> list[VersionComparison]:
-    """Compare each recorded git version to its Dockerfile pin.
+    """Compare each recorded version to its Dockerfile pin.
 
     Never raises: if the Dockerfile can't be read or parsed, a warning is
     logged and every package is reported as not-comparable (``matches=None``).
@@ -410,7 +490,7 @@ def compareVersionsToDockerfile(
     Parameters
     ----------
     packageVersions : `PackageVersions`
-        The versions git reported for the running checkouts.
+        The versions recorded for the running packages.
     dockerfilePath : `str`
         The path to the Dockerfile to cross-check against.
     log : `logging.Logger`, optional
@@ -426,7 +506,7 @@ def compareVersionsToDockerfile(
         log = _log
 
     try:
-        refs = parseDockerfileRefs(dockerfilePath)
+        refs = parseDockerfileRefs(dockerfilePath, condaPackages=TRACKED_INSTALLED_PACKAGES)
     except OSError as e:
         log.warning("Could not read the Dockerfile at %s for version cross-check: %s", dockerfilePath, e)
         refs = {}
