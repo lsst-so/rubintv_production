@@ -3,12 +3,11 @@ import subprocess
 import sys
 import time
 
-import redis
-
 # Import the TestConfig class to access Redis configuration
 from test_rapid_analysis import TestConfig  # type: ignore[import-not-found]
 
 from lsst.rubintv.production.predicates import getDoRaise
+from lsst.rubintv.production.redisUtils import decode_string, makeRedisClient
 
 
 def check_redis_process(expect_running: bool = False) -> bool:
@@ -77,7 +76,7 @@ def start_test_redis() -> tuple[subprocess.Popen, str, str, str]:
 def check_redis_connection(host: str, port: str, password: str) -> bool:
     """Check if Redis connection works."""
     try:
-        r = redis.Redis(host=host, port=int(port), password=password)
+        r = makeRedisClient(host=host, password=password, port=int(port))
 
         # Ping Redis
         if not r.ping():
@@ -90,7 +89,7 @@ def check_redis_connection(host: str, port: str, password: str) -> bool:
         if raw is None:
             print("Could not set and read back a test key in Redis")
             return False
-        value = raw.decode("utf-8")
+        value = decode_string(raw)
         if value != "test_value":
             print("Could not set and read back a test key in Redis")
             return False

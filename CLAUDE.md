@@ -32,6 +32,28 @@ produces. Do not confuse the two. In particular:
   `the RubinTV frontend`), that really does mean the separate frontend
   repo, not this one.
 
+## ⚠️ Branches and Jira tickets — never self-serve
+
+Every branch in this repo, and therefore every change that lands on `main`,
+**must** start from a branch named `tickets/DM-XXXXX` that corresponds to a
+Jira ticket a human has already opened. This is a hard rule with no
+exceptions.
+
+- **Never create a branch yourself — ever.** Not a `tickets/...` branch, not
+  a scratch branch, not a "quick doc fix" branch, not a backup branch you
+  intend to delete. Opening branches and Jira tickets is a human-only action
+  you cannot self-serve.
+- If you have changes to commit and you are **not** already on a
+  `tickets/DM-XXXXX` branch (for example you are on `main`, or in detached
+  HEAD), **stop and ask** the human to open a Jira ticket and create/check
+  out the matching branch. Do not invent a ticket number, and do not branch
+  off `main` "to be safe".
+- This overrides the general habit of "if you're on the default branch,
+  branch first": here you ask the human instead of branching.
+- Unrelated work still goes on the current `tickets/DM-XXXXX` branch unless
+  the human directs otherwise. Do not spin up a second branch to keep things
+  "clean" — ask first.
+
 ## This is an application, not a library
 
 `rubintv_production` is the *end consumer* of everything it imports. Nothing

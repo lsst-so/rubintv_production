@@ -17,8 +17,6 @@ from queue import Empty
 from typing import Any
 from unittest.mock import patch
 
-import redis
-
 
 # Disable logging.basicConfig to avoid interference with log capture
 def do_nothing(*args: object, **kwargs: object) -> None:
@@ -40,7 +38,12 @@ from ciutils import Check, TestScript, conditional_redirect  # type: ignore # no
 # Only import from lsst packages after logging is configured
 from lsst.rubintv.production.locationConfig import LocationConfig, findMissingConfigKeys  # noqa: E402
 from lsst.rubintv.production.predicates import getDoRaise, runningCI  # noqa: E402
-from lsst.rubintv.production.redisUtils import RedisHelper  # noqa: E402
+from lsst.rubintv.production.redisUtils import (  # noqa: E402
+    RedisHelper,
+    decode_list,
+    decode_string,
+    makeRedisClient,
+)
 from lsst.rubintv.production.resources import getBasePath, listDir, rmtree  # noqa: E402
 from lsst.rubintv.production.uploaders import MultiUploader  # noqa: E402
 
@@ -504,8 +507,10 @@ class RedisManager:
 
     def clear_database(self) -> None:
         """Clear the Redis database."""
-        r = redis.Redis(
-            host=self.config.redis_host, port=int(self.config.redis_port), password=self.config.redis_password
+        r = makeRedisClient(
+            host=self.config.redis_host,
+            password=self.config.redis_password,
+            port=int(self.config.redis_port),
         )
         r.flushall()
         print("Cleared Redis database")
@@ -516,7 +521,7 @@ class RedisManager:
         port = self.config.redis_port
         password = self.config.redis_password
 
-        r = redis.Redis(host=host, port=int(port), password=password)
+        r = makeRedisClient(host=host, password=password, port=int(port))
 
         # Ping Redis
         if not r.ping():
@@ -527,7 +532,7 @@ class RedisManager:
         result = r.get("test_key")
         if result is None:
             raise RuntimeError("Could not retrieve test key from Redis")
-        value = result.decode("utf-8")
+        value = decode_string(result)
         if value != "test_value":
             raise RuntimeError("Could not set and read back a test key in Redis")
 
@@ -634,7 +639,7 @@ class RedisManager:
     def _check_failure_keys(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
         """Check for failure keys in Redis."""
         allKeys = redisHelper.redis.keys()
-        failed_keys = [key.decode("utf-8") for key in allKeys if "FAILED" in key.decode("utf-8")]
+        failed_keys = [key for key in decode_list(allKeys) if "FAILED" in key]
         if failed_keys:
             checks.append(Check(False, f"Found failed keys: {failed_keys}"))
         else:

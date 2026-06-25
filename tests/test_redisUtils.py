@@ -38,7 +38,7 @@ from __future__ import annotations
 import json
 import time
 import unittest
-from typing import cast
+from typing import Any, cast
 from unittest.mock import patch
 
 import fakeredis
@@ -288,7 +288,7 @@ class PayloadQueueTestCase(_RedisHelperTestBase):
         # third is now at the head, then first, then second at the
         # tail.
         items = self.redis.lrange(pod.queueName, 0, -1)
-        whos = [json.loads(item.decode("utf-8"))["who"] for item in items]
+        whos = [json.loads(item)["who"] for item in redisUtilsModule.decode_list(items)]
         self.assertEqual(whos, ["THIRD", "FIRST", "SECOND"])
 
     def test_queueLengthIsZeroWhenUntracked(self) -> None:
@@ -636,6 +636,86 @@ class SmokeIsHeadNodeTestCase(_RedisHelperTestBase):
         self.helper.isHeadNode = False
         with self.assertRaises(RuntimeError):
             self.helper.getExposureForFanout("LSSTCam")
+
+
+class DecodeHelpersTestCase(lsst.utils.tests.TestCase):
+    """The ``bytes | str`` decode helpers in redisUtils.
+
+    redis-py 8.x types replies as ``bytes | str`` (the client is generic
+    over ``decode_responses``), so DM-55272 loosened these helpers to accept
+    either and pass an already-``str`` value through unchanged. This client
+    runs in bytes mode, so the bytes branch is the live runtime path; the str
+    pass-through is otherwise never exercised, so both branches are pinned.
+    """
+
+    def test_decodeStringFromBytes(self) -> None:
+        self.assertEqual(redisUtilsModule.decode_string(b"hello"), "hello")
+        # multi-byte utf-8 must round-trip, not just ASCII
+        self.assertEqual(redisUtilsModule.decode_string("café".encode("utf-8")), "café")
+
+    def test_decodeStringPassesStrThrough(self) -> None:
+        # the str branch is an identity pass-through (already decoded)
+        self.assertEqual(redisUtilsModule.decode_string("hello"), "hello")
+
+    def test_decodeListMixedInputs(self) -> None:
+        items: list[bytes | str] = [b"a", "b", b"c"]
+        self.assertEqual(redisUtilsModule.decode_list(items), ["a", "b", "c"])
+
+    def test_decodeSetMixedInputs(self) -> None:
+        members: set[bytes | str] = {b"a", "b"}
+        self.assertEqual(redisUtilsModule.decode_set(members), {"a", "b"})
+
+    def test_decodeHashMixedKeysAndValues(self) -> None:
+        raw: dict[bytes | str, bytes | str] = {b"k1": b"v1", "k2": "v2", b"k3": "v3"}
+        self.assertEqual(
+            redisUtilsModule.decode_hash(raw),
+            {"k1": "v1", "k2": "v2", "k3": "v3"},
+        )
+
+    def test_decodeZsetMixedMembersPreservesScoresAndOrder(self) -> None:
+        raw: list[tuple[bytes | str, float]] = [(b"a", 1.0), ("b", 2.5)]
+        self.assertEqual(
+            redisUtilsModule.decode_zset(raw),
+            [("a", 1.0), ("b", 2.5)],
+        )
+
+
+class RedisClientConfigTestCase(lsst.utils.tests.TestCase):
+    """The redis.Redis construction contract in makeRedisClient.
+
+    These pin the two connection kwargs DM-55272 turns on, exercised through
+    the production RedisHelper -> _makeRedis -> makeRedisClient path. Unlike
+    the fakeredis fixture above (which discards constructor kwargs), this
+    patches redis.Redis with a plain mock so the real call kwargs can be seen.
+    """
+
+    def _captureRedisKwargs(self) -> dict[str, Any]:
+        """Build a RedisHelper and return the kwargs passed to redis.Redis."""
+        with patch.object(redisUtilsModule.redis, "Redis") as mockRedis:
+            RedisHelper(
+                butler=cast(Butler, None),
+                locationConfig=cast(LocationConfig, None),
+            )
+        return dict(mockRedis.call_args.kwargs)
+
+    def test_socketTimeoutClearsBlockingPop(self) -> None:
+        # dequeuePayload blocks server-side for DEQUE_TIMEOUT on an empty
+        # queue. redis-py 8.x makes the socket read deadline == socket_timeout
+        # with no slack for the block, so socket_timeout MUST exceed
+        # DEQUE_TIMEOUT or an idle queue races the server's nil-return and
+        # raises TimeoutError spuriously. This is the whole point of the fix
+        # (DM-55272): a regression here brings back the spurious-timeout storm.
+        kwargs = self._captureRedisKwargs()
+        self.assertIsNotNone(kwargs.get("socket_timeout"))
+        self.assertGreater(kwargs["socket_timeout"], redisUtilsModule.DEQUE_TIMEOUT)
+
+    def test_clientSetinfoDisabled(self) -> None:
+        # CLIENT SETINFO is rejected by our redis build and fires one
+        # (swallowed) error reply per connection; driver_info=None switches it
+        # off on redis-py 8.x (DM-55272).
+        kwargs = self._captureRedisKwargs()
+        self.assertIn("driver_info", kwargs)
+        self.assertIsNone(kwargs["driver_info"])
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

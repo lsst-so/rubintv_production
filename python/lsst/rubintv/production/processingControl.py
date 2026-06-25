@@ -57,7 +57,7 @@ from .locationConfig import LocationConfig
 from .payloads import Payload, pipelineGraphToBytes
 from .podDefinition import PodDetails, PodFlavor
 from .predicates import isCalibration, isWepImage, runningCI
-from .redisUtils import ExposureProcessingInfo, RedisHelper
+from .redisUtils import ExposureProcessingInfo, RedisHelper, decode_string
 from .shardIo import getShardPath, writeExpRecordMetadataShard, writeMetadataShard
 from .timing import BoxCarTimer
 from .utils import getExpIdOrVisitId
@@ -775,7 +775,7 @@ class HeadProcessController:
             value = self.redisHelper.redis.getdel(redisKey)
             if value is not None:
                 prefix = "AOS_FAM_" if "fam" in attribute.lower() else "AOS_"
-                valueStr = f"{prefix}{value.decode()}"  # comes without the AOS_/AOS_FAM_ prefix from RubinTV
+                valueStr = f"{prefix}{decode_string(value)}"  # comes without the AOS_ prefix from RubinTV
                 if valueStr not in self.pipelines.keys():
                     self.log.error(
                         f"Received invalid pipeline name {valueStr} for {attribute} from RubinTV control!"
@@ -828,12 +828,12 @@ class HeadProcessController:
 
         _processingMode = self.redisHelper.redis.getdel("RUBINTV_CONTROL_VISIT_PROCESSING_MODE")
         if _processingMode is not None:
-            processingMode = _processingMode.decode()
+            processingMode = decode_string(_processingMode)
             self.log.warning(f"Received new visit processing mode: {processingMode} but not implemented yet")
 
         _ccConfig = self.redisHelper.redis.getdel("RUBINTV_CONTROL_CHIP_SELECTION")
         if _ccConfig is not None:
-            ccConfig = _ccConfig.decode()
+            ccConfig = decode_string(_ccConfig)
             if self.focalPlaneControl is not None:
                 self.log.info(f"Applying new chip selection config: {ccConfig}")
                 self.focalPlaneControl.applyNamedPattern(ccConfig)

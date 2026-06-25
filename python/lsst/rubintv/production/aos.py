@@ -34,7 +34,7 @@ import os
 import subprocess
 import threading
 from time import sleep, time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from matplotlib.figure import Figure
@@ -293,7 +293,9 @@ class DonutLauncher:
         while True:
             exposurePairBytes = self.redisHelper.redis.lpop(self.queueName)
             if exposurePairBytes is not None:
-                self.launchDonutProcessing(exposurePairBytes)
+                # lpop's reply type is over-broad (it can return a list with a
+                # count arg); we call it without one, so narrow to bytes.
+                self.launchDonutProcessing(cast(bytes, exposurePairBytes))
             else:
                 sleep(0.5)
 
@@ -843,7 +845,8 @@ class FocusSweepAnalysis:
         while True:
             visitIdsBytes = self.redisHelper.redis.lpop(self.queueName)
             if visitIdsBytes is not None:
-                visitIds = _extractExposureIds(visitIdsBytes, self.instrument)
+                # lpop reply type is over-broad; narrow to bytes.
+                visitIds = _extractExposureIds(cast(bytes, visitIdsBytes), self.instrument)
                 self.log.info(f"Making focus sweep plots for visitIds: {visitIds}")
                 self.makePlot(visitIds)
             else:
