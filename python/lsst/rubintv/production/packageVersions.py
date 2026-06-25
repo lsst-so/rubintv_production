@@ -57,12 +57,15 @@ __all__ = [
     "UNKNOWN_VERSION",
     "UNKNOWN_VERSION_NUMBER",
     "PackageVersions",
+    "VersionComparison",
     "envVarForPackage",
     "getGitVersion",
     "getPackageVersion",
+    "missingPackageDirEnvVars",
     "findDockerfile",
     "parseDockerfileRefs",
     "versionsMatch",
+    "compareVersionsToDockerfile",
     "checkVersionsAgainstDockerfile",
     "getRegistryPath",
     "resolveVersionNumber",
@@ -193,6 +196,31 @@ def getPackageVersion(packageName: str) -> str:
         return UNKNOWN_VERSION
 
 
+def missingPackageDirEnvVars(packageNames: list[str] | None = None) -> list[str]:
+    """Return the tracked packages whose ``*_DIR`` env var is not set.
+
+    EUPS sets these when it sets up a package, so a non-empty result means the
+    environment is broken — the package isn't actually set up and its code
+    can't run. The head node tolerates this for version recording (logging
+    "unknown"), but a validation context such as the CI suite should treat it
+    as a hard failure.
+
+    Parameters
+    ----------
+    packageNames : `list` [`str`], optional
+        The packages to check. Defaults to `TRACKED_PACKAGES`.
+
+    Returns
+    -------
+    missing : `list` [`str`]
+        The package names whose directory env var is unset or empty, in the
+        order given.
+    """
+    if packageNames is None:
+        packageNames = TRACKED_PACKAGES
+    return [name for name in packageNames if not os.environ.get(envVarForPackage(name))]
+
+
 @dataclass
 class PackageVersions:
     """The git versions of the tracked science packages at processing time.
@@ -228,7 +256,7 @@ class PackageVersions:
             packageNames = TRACKED_PACKAGES
         return cls(versions={name: getPackageVersion(name) for name in packageNames})
 
-    def toShardDict(self) -> dict[str, str]:
+    def toShardDict(self, versionNumber: int | None = None) -> dict[str, str | int]:
         """Render as a metadata-shard cell.
 
         The returned dict is the cell value written to the AOS metadata
@@ -236,12 +264,23 @@ class PackageVersions:
         frontend shows a single book glyph that expands to the per-package
         versions, keeping the table tidy as the tracked set grows.
 
+        Parameters
+        ----------
+        versionNumber : `int`, optional
+            The overall version number. When given it is duplicated inside the
+            book cell (under "Version number") so the expanded view is
+            self-contained, in addition to whatever standalone column the
+            caller writes.
+
         Returns
         -------
-        shardDict : `dict` [`str`, `str`]
-            The package versions plus the ``DISPLAY_VALUE`` book marker.
+        shardDict : `dict` [`str`, `str` or `int`]
+            The package versions, optional overall number, and the
+            ``DISPLAY_VALUE`` book marker.
         """
-        shardDict = dict(self.versions)
+        shardDict: dict[str, str | int] = dict(self.versions)
+        if versionNumber is not None:
+            shardDict["Version number"] = versionNumber
         shardDict["DISPLAY_VALUE"] = "📖"
         return shardDict
 
@@ -333,6 +372,81 @@ def versionsMatch(gitVersion: str, dockerfileRef: str) -> bool:
     return False
 
 
+@dataclass
+class VersionComparison:
+    """The result of comparing one package's git version to the Dockerfile.
+
+    Parameters
+    ----------
+    package : `str`
+        The package name.
+    gitVersion : `str`
+        The version git reported for the running checkout.
+    dockerfileRef : `str` or `None`
+        The ref the Dockerfile pins the package to, or `None` if there is no
+        pin (e.g. ``rubintv_production``, which is COPYed in, not checked out).
+    matches : `bool` or `None`
+        Whether the git version agrees with the Dockerfile pin. `None` when
+        the comparison is not meaningful — there is no pin, or the git version
+        could not be determined.
+    """
+
+    package: str
+    gitVersion: str
+    dockerfileRef: str | None
+    matches: bool | None
+
+
+def compareVersionsToDockerfile(
+    packageVersions: PackageVersions,
+    dockerfilePath: str,
+    log: logging.Logger | None = None,
+) -> list[VersionComparison]:
+    """Compare each recorded git version to its Dockerfile pin.
+
+    Never raises: if the Dockerfile can't be read or parsed, a warning is
+    logged and every package is reported as not-comparable (``matches=None``).
+
+    Parameters
+    ----------
+    packageVersions : `PackageVersions`
+        The versions git reported for the running checkouts.
+    dockerfilePath : `str`
+        The path to the Dockerfile to cross-check against.
+    log : `logging.Logger`, optional
+        The logger to warn on if the Dockerfile can't be read. Defaults to this
+        module's logger.
+
+    Returns
+    -------
+    comparisons : `list` [`VersionComparison`]
+        One entry per tracked package, in the order they are recorded.
+    """
+    if log is None:
+        log = _log
+
+    try:
+        refs = parseDockerfileRefs(dockerfilePath)
+    except OSError as e:
+        log.warning("Could not read the Dockerfile at %s for version cross-check: %s", dockerfilePath, e)
+        refs = {}
+    except Exception as e:  # noqa: BLE001 — advisory check must never take down the head node
+        log.warning("Unexpected error parsing the Dockerfile at %s: %s", dockerfilePath, e)
+        refs = {}
+
+    comparisons: list[VersionComparison] = []
+    for name, gitVersion in packageVersions.versions.items():
+        ref = refs.get(name)
+        if ref is None or gitVersion == UNKNOWN_VERSION:
+            matches = None  # no pin to compare against, or no git version to compare
+        else:
+            matches = versionsMatch(gitVersion, ref)
+        comparisons.append(
+            VersionComparison(package=name, gitVersion=gitVersion, dockerfileRef=ref, matches=matches)
+        )
+    return comparisons
+
+
 def checkVersionsAgainstDockerfile(
     packageVersions: PackageVersions,
     dockerfilePath: str,
@@ -359,27 +473,13 @@ def checkVersionsAgainstDockerfile(
     if log is None:
         log = _log
 
-    try:
-        refs = parseDockerfileRefs(dockerfilePath)
-    except OSError as e:
-        log.warning("Could not read the Dockerfile at %s for version cross-check: %s", dockerfilePath, e)
-        return
-    except Exception as e:  # noqa: BLE001 — advisory check must never take down the head node
-        log.warning("Unexpected error parsing the Dockerfile at %s: %s", dockerfilePath, e)
-        return
-
-    for name, gitVersion in packageVersions.versions.items():
-        expected = refs.get(name)
-        if expected is None:
-            continue  # no pin in the Dockerfile for this package, nothing to check
-        if gitVersion == UNKNOWN_VERSION:
-            continue  # couldn't determine the git version; already warned about elsewhere
-        if not versionsMatch(gitVersion, expected):
+    for comparison in compareVersionsToDockerfile(packageVersions, dockerfilePath, log=log):
+        if comparison.matches is False:
             log.warning(
                 "Package %s is at git version %r but the Dockerfile pins it to %r",
-                name,
-                gitVersion,
-                expected,
+                comparison.package,
+                comparison.gitVersion,
+                comparison.dockerfileRef,
             )
 
 

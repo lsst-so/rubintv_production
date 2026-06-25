@@ -792,7 +792,7 @@ class HeadProcessController:
                 expRecord.day_obs,
                 {
                     expRecord.seq_num: {
-                        "Package versions": self.packageVersions.toShardDict(),
+                        "Package versions": self.packageVersions.toShardDict(self.packageVersionNumber),
                         "Package version number": self.packageVersionNumber,
                     }
                 },
