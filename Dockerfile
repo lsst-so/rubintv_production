@@ -74,7 +74,11 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     rubin-env-rsp \
     redis-py \
     batoid \
+<<<<<<< HEAD
     danish=1.4.0 \
+=======
+    danish=1.1.0 \
+>>>>>>> 1ee42df (Revert danish back to 1.1)
     lsst-efd-client=1.0.0 \
     rubin-libradtran \
     timm \
