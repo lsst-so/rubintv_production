@@ -6,6 +6,10 @@ dimensionUniverseFile: '/sdf/scratch/rubin/rapid-analysis/butlerDimensionUnivers
 scratchPath : rapidAnalysisScratch
 plotPath: '/sdf/scratch/rubin/rapid-analysis/plots'
 
+# Persistent home for the package-version registry (the integer -> package
+# versions mapping). Must survive pod restarts and the nightly cleanup.
+packageVersionRegistryPath: /sdf/scratch/rubin/rapid-analysis/packageVersionRegistry
+
 # configuration
 binning: 8
 

@@ -55,7 +55,14 @@ from lsst.utils import getPackageDir
 from lsst.utils.packages import Packages
 
 from .locationConfig import LocationConfig
-from .packageVersions import PackageVersions, checkVersionsAgainstDockerfile, findDockerfile
+from .packageVersions import (
+    UNKNOWN_VERSION_NUMBER,
+    PackageVersions,
+    checkVersionsAgainstDockerfile,
+    findDockerfile,
+    getRegistryPath,
+    resolveVersionNumber,
+)
 from .payloads import Payload, pipelineGraphToBytes
 from .podDefinition import PodDetails, PodFlavor
 from .predicates import isCalibration, isWepImage, runningCI
@@ -709,10 +716,14 @@ class HeadProcessController:
             f" Data will be written to {self.outputRun}"
         )
 
-        # Resolve and cache the tracked package versions now, at startup, so
-        # the dispatch loop never pays for the git calls, and cross-check them
+        # Resolve and cache the tracked package versions and their overall
+        # version number now, at startup, so the dispatch loop never pays for
+        # the git calls or the registry read, and cross-check the versions
         # against the Dockerfile (advisory only, never fatal).
-        self.log.info(f"Tracked package versions: {self.packageVersions.versions}")
+        self.log.info(
+            f"Tracked package versions (overall number {self.packageVersionNumber}):"
+            f" {self.packageVersions.versions}"
+        )
         self._checkPackageVersionsAgainstDockerfile()
 
     @functools.cached_property
@@ -723,6 +734,24 @@ class HeadProcessController:
         and cached thereafter.
         """
         return PackageVersions.fromPackages()
+
+    @functools.cached_property
+    def packageVersionNumber(self) -> int:
+        """The overall version number for this pod's package set.
+
+        A single integer that increments whenever the combined set of tracked
+        package versions changes. The integer -> versions mapping is recorded
+        per-instrument in the location's registry. Fixed for the lifetime of
+        the pod, so resolved once and cached; falls back to
+        ``UNKNOWN_VERSION_NUMBER`` if the registry can't be reached.
+        """
+        try:
+            registryDir = self.locationConfig.packageVersionRegistryPath
+        except Exception:
+            self.log.exception("Could not resolve the package-version registry path")
+            return UNKNOWN_VERSION_NUMBER
+        registryPath = getRegistryPath(registryDir, self.instrument)
+        return resolveVersionNumber(registryPath, self.packageVersions, log=self.log)
 
     def _checkPackageVersionsAgainstDockerfile(self) -> None:
         """Warn if the running package versions disagree with the Dockerfile.
@@ -744,9 +773,10 @@ class HeadProcessController:
         """Record the tracked package versions for a dispatched image.
 
         Writes the cached package versions to the AOS metadata page as a single
-        book-marked, dict-like cell. There is no AOS metadata page for LATISS,
-        so this is a no-op there. Never raises — recording provenance must not
-        be able to disrupt dispatch.
+        book-marked, dict-like cell, alongside the overall version number as a
+        plain integer cell. There is no AOS metadata page for LATISS, so this
+        is a no-op there. Never raises — recording provenance must not be able
+        to disrupt dispatch.
 
         Parameters
         ----------
@@ -760,7 +790,12 @@ class HeadProcessController:
             writeMetadataShard(
                 aosShardPath,
                 expRecord.day_obs,
-                {expRecord.seq_num: {"Package versions": self.packageVersions.toShardDict()}},
+                {
+                    expRecord.seq_num: {
+                        "Package versions": self.packageVersions.toShardDict(),
+                        "Package version number": self.packageVersionNumber,
+                    }
+                },
             )
         except Exception:
             self.log.exception(f"Failed to write package-version shard for {expRecord.id}")
