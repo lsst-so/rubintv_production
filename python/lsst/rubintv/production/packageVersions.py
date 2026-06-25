@@ -42,15 +42,20 @@ rather than silently turning the runtime check into a no-op.
 
 from __future__ import annotations
 
+import datetime
+import hashlib
+import json
 import logging
 import os
 import re
 import subprocess
 from dataclasses import dataclass
+from typing import Any
 
 __all__ = [
     "TRACKED_PACKAGES",
     "UNKNOWN_VERSION",
+    "UNKNOWN_VERSION_NUMBER",
     "PackageVersions",
     "envVarForPackage",
     "getGitVersion",
@@ -59,6 +64,8 @@ __all__ = [
     "parseDockerfileRefs",
     "versionsMatch",
     "checkVersionsAgainstDockerfile",
+    "getRegistryPath",
+    "resolveVersionNumber",
 ]
 
 
@@ -75,6 +82,10 @@ TRACKED_PACKAGES = ["ts_wep", "donut_viz", "rubintv_production"]
 # never raise for this; recording "unknown" is better than taking down the
 # head node over a provenance nicety.
 UNKNOWN_VERSION = "unknown"
+
+# Sentinel overall version number used when the registry can't be read or
+# written. Negative so it can never collide with a real (>= 1) number.
+UNKNOWN_VERSION_NUMBER = -1
 
 # The minimum length a Dockerfile ref must have before we treat it as an
 # abbreviated SHA that may prefix-match a full git SHA. Below this, a short
@@ -234,6 +245,22 @@ class PackageVersions:
         shardDict["DISPLAY_VALUE"] = "📖"
         return shardDict
 
+    def versionHash(self) -> str:
+        """A stable, order-independent hash of the package versions.
+
+        Used as the identity of a version set in the registry: two pods with
+        the same package versions hash identically and therefore share an
+        overall version number, regardless of the order the packages happen to
+        be recorded in.
+
+        Returns
+        -------
+        hexdigest : `str`
+            The SHA-256 hex digest of the canonicalised versions.
+        """
+        canonical = json.dumps(self.versions, sort_keys=True)
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
 
 def findDockerfile() -> str | None:
     """Locate the Dockerfile shipped alongside the rubintv_production checkout.
@@ -354,3 +381,112 @@ def checkVersionsAgainstDockerfile(
                 gitVersion,
                 expected,
             )
+
+
+def getRegistryPath(registryDir: str, instrument: str) -> str:
+    """Build the path to an instrument's overall-version registry file.
+
+    The registry is kept per-instrument: each head node owns the registry for
+    its own instrument, so there is only ever a single writer per file.
+
+    Parameters
+    ----------
+    registryDir : `str`
+        The directory holding the registry files.
+    instrument : `str`
+        The instrument the registry is for, e.g. ``"LSSTCam"``.
+
+    Returns
+    -------
+    registryPath : `str`
+        The path to the registry JSON file.
+    """
+    return os.path.join(registryDir, f"packageVersionRegistry-{instrument}.json")
+
+
+def _loadRegistryEntries(registryPath: str) -> list[dict[str, Any]]:
+    """Load the list of entries from a registry file, or ``[]`` if absent."""
+    if not os.path.isfile(registryPath):
+        return []
+    with open(registryPath) as f:
+        data = json.load(f)
+    entries = data.get("entries", [])
+    if not isinstance(entries, list):
+        raise ValueError(f"Malformed registry at {registryPath}: 'entries' is not a list")
+    return entries
+
+
+def _saveRegistryEntries(registryPath: str, entries: list[dict[str, Any]]) -> None:
+    """Atomically write the registry entries to ``registryPath``."""
+    directory = os.path.dirname(registryPath)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    tmpPath = f"{registryPath}.tmp"
+    with open(tmpPath, "w") as f:
+        json.dump({"entries": entries}, f, indent=2, sort_keys=True)
+    os.replace(tmpPath, registryPath)  # atomic, so a concurrent reader never sees a half-written file
+
+
+def resolveVersionNumber(
+    registryPath: str,
+    packageVersions: PackageVersions,
+    timestamp: str | None = None,
+    log: logging.Logger | None = None,
+) -> int:
+    """Map a set of package versions to its overall, incrementing number.
+
+    The registry at ``registryPath`` records every distinct package-version set
+    seen so far and the integer assigned to it. If ``packageVersions`` is
+    already known, its existing number is returned. Otherwise it is assigned
+    the next integer (one more than the highest seen), recorded in the
+    registry, and that number returned.
+
+    Robust: any problem reading or writing the registry results in a warning
+    and `UNKNOWN_VERSION_NUMBER`, never an exception — recording an overall
+    number must not be able to disrupt processing.
+
+    Parameters
+    ----------
+    registryPath : `str`
+        The path to the registry JSON file.
+    packageVersions : `PackageVersions`
+        The versions to look up or record.
+    timestamp : `str`, optional
+        The timestamp recorded against a newly-assigned number. Defaults to the
+        current UTC time; injectable for deterministic tests.
+    log : `logging.Logger`, optional
+        The logger to use. Defaults to this module's logger.
+
+    Returns
+    -------
+    number : `int`
+        The overall version number (``>= 1``), or `UNKNOWN_VERSION_NUMBER` if
+        the registry could not be reached.
+    """
+    if log is None:
+        log = _log
+
+    targetHash = packageVersions.versionHash()
+    try:
+        entries = _loadRegistryEntries(registryPath)
+        for entry in entries:
+            if entry.get("hash") == targetHash:
+                return int(entry["number"])
+
+        nextNumber = max((int(entry["number"]) for entry in entries), default=0) + 1
+        if timestamp is None:
+            timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        entries.append(
+            {
+                "number": nextNumber,
+                "hash": targetHash,
+                "versions": dict(packageVersions.versions),
+                "firstSeen": timestamp,
+            }
+        )
+        _saveRegistryEntries(registryPath, entries)
+        log.info("Assigned new overall package-version number %d to %s", nextNumber, packageVersions.versions)
+        return nextNumber
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as e:
+        log.warning("Could not resolve the overall package-version number at %s: %s", registryPath, e)
+        return UNKNOWN_VERSION_NUMBER

@@ -29,6 +29,7 @@ which would silently turn the runtime cross-check into a no-op — fails loudly
 here instead.
 """
 
+import json
 import os
 import subprocess
 import tempfile
@@ -39,13 +40,16 @@ import lsst.utils.tests
 from lsst.rubintv.production.packageVersions import (
     TRACKED_PACKAGES,
     UNKNOWN_VERSION,
+    UNKNOWN_VERSION_NUMBER,
     PackageVersions,
     checkVersionsAgainstDockerfile,
     envVarForPackage,
     findDockerfile,
     getGitVersion,
     getPackageVersion,
+    getRegistryPath,
     parseDockerfileRefs,
+    resolveVersionNumber,
     versionsMatch,
 )
 
@@ -302,6 +306,100 @@ class CheckVersionsAgainstDockerfileTestCase(lsst.utils.tests.TestCase):
         missing = os.path.join("/nonexistent", "Dockerfile")
         with self.assertLogs(level="WARNING"):
             checkVersionsAgainstDockerfile(pv, missing)  # must not raise
+
+
+class VersionHashTestCase(lsst.utils.tests.TestCase):
+    def test_stableAndOrderIndependent(self) -> None:
+        a = PackageVersions(versions={"ts_wep": "v1", "donut_viz": "v2"})
+        b = PackageVersions(versions={"donut_viz": "v2", "ts_wep": "v1"})  # different insertion order
+        self.assertEqual(a.versionHash(), b.versionHash())
+
+    def test_changesWhenAVersionChanges(self) -> None:
+        a = PackageVersions(versions={"ts_wep": "v1", "donut_viz": "v2"})
+        c = PackageVersions(versions={"ts_wep": "v1", "donut_viz": "v3"})
+        self.assertNotEqual(a.versionHash(), c.versionHash())
+
+
+class GetRegistryPathTestCase(lsst.utils.tests.TestCase):
+    def test_perInstrumentFilename(self) -> None:
+        path = getRegistryPath("/some/dir", "LSSTCam")
+        self.assertEqual(path, "/some/dir/packageVersionRegistry-LSSTCam.json")
+        # different instruments get distinct files
+        self.assertNotEqual(path, getRegistryPath("/some/dir", "LSSTComCam"))
+
+
+class ResolveVersionNumberTestCase(lsst.utils.tests.TestCase):
+    def test_firstSetGetsOne(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = getRegistryPath(tmp, "LSSTCam")
+            pv = PackageVersions(versions={"ts_wep": "v1"})
+            self.assertEqual(resolveVersionNumber(path, pv, timestamp="t0"), 1)
+
+    def test_sameSetReturnsSameNumber(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = getRegistryPath(tmp, "LSSTCam")
+            pv = PackageVersions(versions={"ts_wep": "v1"})
+            first = resolveVersionNumber(path, pv, timestamp="t0")
+            second = resolveVersionNumber(path, pv, timestamp="t1")  # later call, same versions
+            self.assertEqual(first, second)
+
+    def test_newSetIncrements(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = getRegistryPath(tmp, "LSSTCam")
+            pv1 = PackageVersions(versions={"ts_wep": "v1"})
+            pv2 = PackageVersions(versions={"ts_wep": "v2"})
+            pv3 = PackageVersions(versions={"ts_wep": "v3"})
+            self.assertEqual(resolveVersionNumber(path, pv1, timestamp="t0"), 1)
+            self.assertEqual(resolveVersionNumber(path, pv2, timestamp="t1"), 2)
+            self.assertEqual(resolveVersionNumber(path, pv3, timestamp="t2"), 3)
+            # and the old set still maps to its original number
+            self.assertEqual(resolveVersionNumber(path, pv1, timestamp="t3"), 1)
+
+    def test_persistsAcrossInstances(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = getRegistryPath(tmp, "LSSTCam")
+            pv1 = PackageVersions(versions={"ts_wep": "v1"})
+            pv2 = PackageVersions(versions={"ts_wep": "v2"})
+            resolveVersionNumber(path, pv1, timestamp="t0")
+            resolveVersionNumber(path, pv2, timestamp="t1")
+            # read the file back and check its recorded contents
+            with open(path) as f:
+                entries = json.load(f)["entries"]
+            self.assertEqual(len(entries), 2)
+            byNumber = {e["number"]: e for e in entries}
+            self.assertEqual(byNumber[1]["versions"], {"ts_wep": "v1"})
+            self.assertEqual(byNumber[2]["versions"], {"ts_wep": "v2"})
+            self.assertEqual(byNumber[1]["hash"], pv1.versionHash())
+            self.assertEqual(byNumber[1]["firstSeen"], "t0")
+
+    def test_createsMissingDirectory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            # registry dir does not exist yet
+            path = getRegistryPath(os.path.join(tmp, "newdir"), "LSSTCam")
+            pv = PackageVersions(versions={"ts_wep": "v1"})
+            self.assertEqual(resolveVersionNumber(path, pv, timestamp="t0"), 1)
+            self.assertTrue(os.path.isfile(path))
+
+    def test_robustToUnwritablePath(self) -> None:
+        # a path under a regular file (not a dir) can't be created -> sentinel
+        with tempfile.TemporaryDirectory() as tmp:
+            notADir = os.path.join(tmp, "afile")
+            with open(notADir, "w") as f:
+                f.write("x")
+            path = os.path.join(notADir, "packageVersionRegistry-LSSTCam.json")
+            pv = PackageVersions(versions={"ts_wep": "v1"})
+            with self.assertLogs(level="WARNING"):
+                self.assertEqual(resolveVersionNumber(path, pv, timestamp="t0"), UNKNOWN_VERSION_NUMBER)
+
+    def test_robustToMalformedRegistry(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = getRegistryPath(tmp, "LSSTCam")
+            os.makedirs(tmp, exist_ok=True)
+            with open(path, "w") as f:
+                f.write("{ this is not valid json")
+            pv = PackageVersions(versions={"ts_wep": "v1"})
+            with self.assertLogs(level="WARNING"):
+                self.assertEqual(resolveVersionNumber(path, pv, timestamp="t0"), UNKNOWN_VERSION_NUMBER)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

@@ -64,6 +64,10 @@ lsstCamButlerPath: main
 scratchPath : rapidAnalysisScratchCi
 plotPath: /sdf/home/m/mfl/u/rubintv/plots
 
+# Persistent home for the package-version registry (the integer -> package
+# versions mapping). Must survive pod restarts and the nightly cleanup.
+packageVersionRegistryPath: /sdf/home/m/mfl/u/rubintv/packageVersionRegistry
+
 # TMA config:
 tmaMetadataPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata
 tmaMetadataShardPath: /sdf/home/m/mfl/u/rubintv/tma/sidecar_metadata/shards
