@@ -43,11 +43,13 @@ from lsst.rubintv.production.packageVersions import (
     UNKNOWN_VERSION_NUMBER,
     PackageVersions,
     checkVersionsAgainstDockerfile,
+    compareVersionsToDockerfile,
     envVarForPackage,
     findDockerfile,
     getGitVersion,
     getPackageVersion,
     getRegistryPath,
+    missingPackageDirEnvVars,
     parseDockerfileRefs,
     resolveVersionNumber,
     versionsMatch,
@@ -172,6 +174,23 @@ class EnvVarTestCase(lsst.utils.tests.TestCase):
             with unittest.mock.patch.dict(os.environ, {envVar: tmp}):
                 self.assertEqual(getPackageVersion("ts_wep"), UNKNOWN_VERSION)
 
+    def test_missingPackageDirEnvVarsFlagsUnset(self) -> None:
+        # all three unset -> all three reported as missing
+        with unittest.mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(missingPackageDirEnvVars(["ts_wep", "donut_viz"]), ["ts_wep", "donut_viz"])
+
+    def test_missingPackageDirEnvVarsHonoursSetVars(self) -> None:
+        with unittest.mock.patch.dict(os.environ, {}, clear=True):
+            os.environ[envVarForPackage("ts_wep")] = "/some/dir"
+            os.environ[envVarForPackage("donut_viz")] = ""  # empty counts as unset
+            missing = missingPackageDirEnvVars(["ts_wep", "donut_viz"])
+            self.assertNotIn("ts_wep", missing)
+            self.assertIn("donut_viz", missing)
+
+    def test_missingPackageDirEnvVarsDefaultsToTracked(self) -> None:
+        with unittest.mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(missingPackageDirEnvVars(), TRACKED_PACKAGES)
+
 
 class PackageVersionsTestCase(lsst.utils.tests.TestCase):
     def test_toShardDictHasBookMarker(self) -> None:
@@ -181,8 +200,18 @@ class PackageVersionsTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(shardDict["DISPLAY_VALUE"], "📖")
         for name, version in versions.items():
             self.assertEqual(shardDict[name], version)
+        # without a version number, none is recorded inside the cell
+        self.assertNotIn("Version number", shardDict)
         # rendering must not mutate the underlying versions dict
         self.assertNotIn("DISPLAY_VALUE", pv.versions)
+
+    def test_toShardDictIncludesVersionNumber(self) -> None:
+        pv = PackageVersions(versions={"ts_wep": "v1"})
+        shardDict = pv.toShardDict(versionNumber=7)
+        self.assertEqual(shardDict["Version number"], 7)
+        self.assertEqual(shardDict["DISPLAY_VALUE"], "📖")
+        self.assertEqual(shardDict["ts_wep"], "v1")
+        self.assertNotIn("Version number", pv.versions)  # not leaked into the dataclass
 
     def test_fromPackages(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -306,6 +335,45 @@ class CheckVersionsAgainstDockerfileTestCase(lsst.utils.tests.TestCase):
         missing = os.path.join("/nonexistent", "Dockerfile")
         with self.assertLogs(level="WARNING"):
             checkVersionsAgainstDockerfile(pv, missing)  # must not raise
+
+
+class CompareVersionsToDockerfileTestCase(lsst.utils.tests.TestCase):
+    def _writeDockerfile(self, tmp: str, body: str) -> str:
+        path = os.path.join(tmp, "Dockerfile")
+        with open(path, "w") as f:
+            f.write(body)
+        return path
+
+    def test_classifiesMatchMismatchAndUnpinned(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._writeDockerfile(tmp, 'ARG ts_wep_ref="v1.0.0"\nARG donut_viz_ref="v2.0.0"\n')
+            pv = PackageVersions(
+                versions={
+                    "ts_wep": "v1.0.0",  # matches
+                    "donut_viz": "v9.9.9",  # mismatch
+                    "rubintv_production": "abc123",  # no pin -> not comparable
+                }
+            )
+            byName = {c.package: c for c in compareVersionsToDockerfile(pv, path)}
+            self.assertTrue(byName["ts_wep"].matches)
+            self.assertFalse(byName["donut_viz"].matches)
+            self.assertIsNone(byName["rubintv_production"].matches)
+            self.assertIsNone(byName["rubintv_production"].dockerfileRef)
+            self.assertEqual(byName["donut_viz"].dockerfileRef, "v2.0.0")
+
+    def test_unknownGitVersionNotComparable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._writeDockerfile(tmp, 'ARG ts_wep_ref="v1.0.0"\n')
+            pv = PackageVersions(versions={"ts_wep": UNKNOWN_VERSION})
+            (comparison,) = compareVersionsToDockerfile(pv, path)
+            self.assertIsNone(comparison.matches)
+
+    def test_unreadableDockerfileMakesAllNotComparable(self) -> None:
+        pv = PackageVersions(versions={"ts_wep": "v1.0.0", "donut_viz": "v2.0.0"})
+        with self.assertLogs(level="WARNING"):
+            comparisons = compareVersionsToDockerfile(pv, "/nonexistent/Dockerfile")
+        self.assertEqual(len(comparisons), 2)
+        self.assertTrue(all(c.matches is None for c in comparisons))
 
 
 class VersionHashTestCase(lsst.utils.tests.TestCase):

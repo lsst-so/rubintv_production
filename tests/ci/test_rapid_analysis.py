@@ -37,6 +37,15 @@ from ciutils import Check, TestScript, conditional_redirect  # type: ignore # no
 
 # Only import from lsst packages after logging is configured
 from lsst.rubintv.production.locationConfig import LocationConfig, findMissingConfigKeys  # noqa: E402
+from lsst.rubintv.production.packageVersions import (  # noqa: E402
+    UNKNOWN_VERSION,
+    PackageVersions,
+    VersionComparison,
+    compareVersionsToDockerfile,
+    envVarForPackage,
+    findDockerfile,
+    missingPackageDirEnvVars,
+)
 from lsst.rubintv.production.predicates import getDoRaise, runningCI  # noqa: E402
 from lsst.rubintv.production.redisUtils import (  # noqa: E402
     RedisHelper,
@@ -1327,6 +1336,127 @@ class ResultCollector:
         return n_fails == 0
 
 
+# ANSI escapes, matching the style already used in print_final_result.
+_RED = "\033[91m"
+_GREEN = "\033[92m"
+_YELLOW = "\033[93m"
+_BOLD = "\033[1m"
+_RESET = "\033[0m"
+
+
+def _colour(text: str, *codes: str) -> str:
+    """Wrap ``text`` in the given ANSI codes, resetting at the end of the line.
+
+    Each line is reset independently so the colour can't bleed into captured or
+    interleaved output downstream.
+    """
+    return "".join(codes) + text + _RESET
+
+
+def locate_dockerfile() -> str | None:
+    """Find the Dockerfile to cross-check the running package versions against.
+
+    Prefers the package-relative lookup
+    (``$RUBINTV_PRODUCTION_DIR/Dockerfile``, how the pods see it), falling back
+    to the repo checkout this test lives in so the check still works when the
+    suite is run from a source tree.
+    """
+    path = findDockerfile()
+    if path is not None:
+        return path
+    candidate = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "Dockerfile"))
+    return candidate if os.path.isfile(candidate) else None
+
+
+def gather_package_version_comparisons() -> tuple[PackageVersions, list[VersionComparison], str | None]:
+    """Scrape the tracked package versions and compare them to the Dockerfile.
+
+    Returns
+    -------
+    versions : `PackageVersions`
+        The scraped git versions.
+    comparisons : `list` [`VersionComparison`]
+        One entry per tracked package.
+    dockerfilePath : `str` or `None`
+        The Dockerfile used for the comparison, or `None` if none was found (in
+        which case nothing is comparable).
+    """
+    versions = PackageVersions.fromPackages()
+    dockerfilePath = locate_dockerfile()
+    if dockerfilePath is None:
+        comparisons = [
+            VersionComparison(package=name, gitVersion=version, dockerfileRef=None, matches=None)
+            for name, version in versions.versions.items()
+        ]
+    else:
+        comparisons = compareVersionsToDockerfile(versions, dockerfilePath)
+    return versions, comparisons, dockerfilePath
+
+
+def print_loud_version_mismatch_warning(mismatches: list[VersionComparison]) -> None:
+    """Print an impossible-to-miss banner for Dockerfile version mismatches.
+
+    Surrounded by blank lines and rendered in bold red so it stands clear of
+    the surrounding CI chatter. Advisory only — the caller does not treat this
+    as a failure.
+    """
+    width = 78
+    bar = "█" * width
+    print("\n" * 6)
+    print(_colour(bar, _RED, _BOLD))
+    print(_colour(bar, _RED, _BOLD))
+    print(_colour("  ⚠️  WARNING: PACKAGE VERSIONS DO NOT MATCH THE DOCKERFILE  ⚠️", _RED, _BOLD))
+    print(_colour("  git is the source of truth; the image may have been built from", _RED, _BOLD))
+    print(_colour("  different refs than the Dockerfile currently declares:", _RED, _BOLD))
+    print(_colour(bar, _RED, _BOLD))
+    for comparison in mismatches:
+        line = f"    {comparison.package}:  git = {comparison.gitVersion}   Dockerfile = {comparison.dockerfileRef}"  # noqa: E501
+        print(_colour(line, _RED, _BOLD))
+    print(_colour(bar, _RED, _BOLD))
+    print(_colour(bar, _RED, _BOLD))
+    print("\n" * 6)
+
+
+def print_package_version_summary(comparisons: list[VersionComparison], dockerfilePath: str | None) -> None:
+    """Print the tracked package versions and their Dockerfile agreement.
+
+    Shown at the very end of the run, beneath the test results. A mismatch is
+    rendered scarily but is explicitly *not* a CI failure — git is the source
+    of truth and the Dockerfile can legitimately be mid-edit.
+    """
+    width = 78
+    print()
+    print(_colour("Tracked package versions", _BOLD))
+    if dockerfilePath is None:
+        print(_colour("  (no Dockerfile found — cannot cross-check)", _YELLOW))
+
+    for comparison in comparisons:
+        if comparison.matches is True:
+            status = _colour(f"✅ matches Dockerfile ({comparison.dockerfileRef})", _GREEN)
+        elif comparison.matches is False:
+            status = _colour(
+                f"❌ DOES NOT MATCH Dockerfile (expected {comparison.dockerfileRef})", _RED, _BOLD
+            )
+        elif comparison.dockerfileRef is None:
+            status = _colour("— not pinned in Dockerfile (under development)", _YELLOW)
+        else:
+            status = _colour("— git version unknown", _YELLOW)
+        print(f"  {comparison.package}: {comparison.gitVersion}  {status}")
+
+    # rubintv_production is excluded from the scary verdict: it is under
+    # development and intentionally tracks a SHA rather than a Dockerfile ref.
+    mismatches = [c for c in comparisons if c.matches is False]
+    bar = "█" * width
+    if mismatches:
+        print(_colour(bar, _RED, _BOLD))
+        print(_colour("  ⚠️  PACKAGE VERSIONS DO NOT MATCH THE DOCKERFILE  ⚠️", _RED, _BOLD))
+        print(_colour("  This is NOT a CI failure, but the running code may differ from", _RED, _BOLD))
+        print(_colour("  what the Dockerfile declares — check before trusting these results.", _RED, _BOLD))
+        print(_colour(bar, _RED, _BOLD))
+    else:
+        print(_colour("  All Dockerfile-pinned packages match. 👍", _GREEN))
+
+
 class TestRunner:
     """Main class for orchestrating the test suite."""
 
@@ -1337,6 +1467,61 @@ class TestRunner:
         self.process_manager = ProcessManager(self.log_manager)
         self.result_collector = ResultCollector()
         self.patches: Any = []  # not sure what type to use here
+        # populated at startup by scrape_package_versions, shown again at end
+        self.package_version_comparisons: list[VersionComparison] = []
+        self.dockerfile_path: str | None = None
+
+    def scrape_package_versions(self) -> None:
+        """Scrape tracked package versions at startup and warn loudly on drift.
+
+        Records the comparison so it can be shown again at the end of the run.
+        The loud warning excludes ``rubintv_production`` — it intentionally
+        tracks a SHA under development rather than a Dockerfile ref. Never
+        raises; CI infrastructure must not fall over here.
+
+        Unlike the production head node (where an undeterminable version is a
+        non-fatal "unknown"), a missing version here is a hard CI failure: the
+        ``*_DIR`` env vars are a precondition of the running image, so if one
+        isn't set, the environment is broken and the run must not pass.
+        """
+        try:
+            versions, comparisons, dockerfilePath = gather_package_version_comparisons()
+            self.package_version_comparisons = comparisons
+            self.dockerfile_path = dockerfilePath
+            print(f"Scraped tracked package versions: {versions.versions}")
+
+            # A missing *_DIR env var means the package isn't set up — a hard
+            # failure here even though the head node tolerates it. Reported as
+            # a failing check so the run goes red.
+            for name in missingPackageDirEnvVars():
+                self.result_collector.checks.append(
+                    Check(
+                        False, f"Package {name} is not set up: its ${envVarForPackage(name)} env var is unset"
+                    )
+                )
+
+            # Env var is set but the version still couldn't be read (e.g. the
+            # directory isn't a git checkout) — also a hard failure.
+            stillUnknown = [
+                c
+                for c in comparisons
+                if c.gitVersion == UNKNOWN_VERSION and os.environ.get(envVarForPackage(c.package))
+            ]
+            for comparison in stillUnknown:
+                envVar = envVarForPackage(comparison.package)
+                self.result_collector.checks.append(
+                    Check(
+                        False,
+                        f"Could not determine the version of {comparison.package}:"
+                        f" ${envVar}={os.environ[envVar]} is not a usable git checkout",
+                    )
+                )
+
+            mismatches = [c for c in comparisons if c.matches is False and c.package != "rubintv_production"]
+            if mismatches:
+                print_loud_version_mismatch_warning(mismatches)
+        except Exception as e:  # noqa: BLE001 — never let provenance scraping break the CI run
+            print(f"⚠️  Failed to scrape package versions: {e}")
 
     def check_system_requirements(self) -> None:
         """Check system size and load for running tests."""
@@ -1442,6 +1627,11 @@ class TestRunner:
 
     def run(self) -> None:
         try:
+            # Scrape tracked package versions first so the loud warning (if
+            # any) lands at the very top of the output, before the rest of the
+            # run.
+            self.scrape_package_versions()
+
             # Check system capabilities
             self.check_system_requirements()
 
@@ -1493,8 +1683,14 @@ class TestRunner:
             self.result_collector.check_plots(self.config)
             self.redis_manager.check_final_contents(self.result_collector.checks)
 
-            # Print final results and exit with appropriate status
+            # Print final results
             overall_pass = self.result_collector.print_final_result(self.config)
+
+            # Show the tracked package versions beneath the test results, with
+            # their Dockerfile agreement. Scary on mismatch, never a failure.
+            print_package_version_summary(self.package_version_comparisons, self.dockerfile_path)
+
+            # Exit with appropriate status
             if not overall_pass:
                 sys.exit(1)
         finally:
