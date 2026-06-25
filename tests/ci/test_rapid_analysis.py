@@ -1440,8 +1440,8 @@ def print_loud_version_mismatch_warning(mismatches: list[VersionComparison]) -> 
     print(_colour(bar, _RED, _BOLD))
     print(_colour(bar, _RED, _BOLD))
     print(_colour("  ⚠️  WARNING: PACKAGE VERSIONS DO NOT MATCH THE DOCKERFILE  ⚠️", _RED, _BOLD))
-    print(_colour("  git is the source of truth; the image may have been built from", _RED, _BOLD))
-    print(_colour("  different refs than the Dockerfile currently declares:", _RED, _BOLD))
+    print(_colour("  git is the source of truth; the code you're running will not match what", _RED, _BOLD))
+    print(_colour("  BTS or the summit would see when deployed:", _RED, _BOLD))
     print(_colour(bar, _RED, _BOLD))
     for comparison in mismatches:
         line = f"    {comparison.package}:  git = {comparison.gitVersion}   Dockerfile = {comparison.dockerfileRef}"  # noqa: E501
@@ -1493,9 +1493,15 @@ def print_package_version_summary(
     bar = "█" * width
     if mismatches:
         print(_colour(bar, _RED, _BOLD))
-        print(_colour("  ⚠️  PACKAGE VERSIONS DO NOT MATCH THE DOCKERFILE  ⚠️", _RED, _BOLD))
-        print(_colour("  This is NOT a CI failure, but the running code may differ from", _RED, _BOLD))
-        print(_colour("  what the Dockerfile declares — check before trusting these results.", _RED, _BOLD))
+        print(_colour("  ⚠️  ACTIVE PACKAGE VERSIONS DO NOT MATCH THE DOCKERFILE  ⚠️", _RED, _BOLD))
+        print(_colour("  This is NOT a CI failure, but the running code differs from", _RED, _BOLD))
+        print(
+            _colour(
+                "  what the Dockerfile declares — do not deploy to BTS or summit if you see this.",
+                _RED,
+                _BOLD,
+            )
+        )
         print(_colour(bar, _RED, _BOLD))
     else:
         print(_colour("  All Dockerfile-pinned packages match. 👍", _GREEN))
