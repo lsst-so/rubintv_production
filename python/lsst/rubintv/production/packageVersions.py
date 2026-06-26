@@ -82,7 +82,7 @@ _log = logging.getLogger(__name__)
 # set is deliberately small: just the things that change the AOS results. These
 # are git checkouts located via their EUPS ``<PACKAGE>_DIR`` env var. Kept as a
 # plain list so it is trivial to extend.
-TRACKED_PACKAGES = ["ts_wep", "donut_viz", "rubintv_production"]
+TRACKED_PACKAGES = ["ts_wep", "donut_viz", "rubintv_production", "tarts"]
 
 # Tracked packages that are installed into the environment (conda/pip) rather
 # than being git checkouts. These have no ``*_DIR`` env var, so their version

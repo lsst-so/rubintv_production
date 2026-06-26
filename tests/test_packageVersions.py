@@ -156,6 +156,7 @@ class EnvVarTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(envVarForPackage("ts_wep"), "TS_WEP_DIR")
         self.assertEqual(envVarForPackage("donut_viz"), "DONUT_VIZ_DIR")
         self.assertEqual(envVarForPackage("rubintv_production"), "RUBINTV_PRODUCTION_DIR")
+        self.assertEqual(envVarForPackage("tarts"), "TARTS_DIR")
 
     def test_getPackageVersionUnknownWhenUnset(self) -> None:
         # ensure the env var is genuinely absent
@@ -318,7 +319,7 @@ class DockerfileParsingTestCase(lsst.utils.tests.TestCase):
         # the drift is silent).
         self.assertTrue(os.path.isfile(REPO_DOCKERFILE), f"Dockerfile not found at {REPO_DOCKERFILE}")
         refs = parseDockerfileRefs(REPO_DOCKERFILE, condaPackages=TRACKED_INSTALLED_PACKAGES)
-        for package in ("ts_wep", "donut_viz"):
+        for package in ("ts_wep", "donut_viz", "tarts"):
             self.assertIn(package, refs, f"{package}_ref no longer parseable from the Dockerfile")
             self.assertTrue(refs[package], f"{package}_ref parsed as empty")
         for package in TRACKED_INSTALLED_PACKAGES:
