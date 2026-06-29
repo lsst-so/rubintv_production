@@ -759,6 +759,14 @@ class ControlStateTestCase(_RedisHelperTestBase):
         self.assertEqual(self.helper.getControlReadback(self.CONTROL_KEY), "REJECTED_BETWEEN_PAIR!")
         self.assertEqual(self.helper.getControlState(self.CONTROL_KEY), "AOS_TIE")
 
+    def test_readbackMessageDoesNotCreateState(self) -> None:
+        # A readback message written with no prior state must not conjure a
+        # state key into existence — otherwise a rejection on a fresh control
+        # would later be mistaken for a persisted selection on restart.
+        self.helper.setControlReadbackMessage(self.CONTROL_KEY, "REJECTED_BETWEEN_PAIR!")
+        self.assertEqual(self.helper.getControlReadback(self.CONTROL_KEY), "REJECTED_BETWEEN_PAIR!")
+        self.assertIsNone(self.helper.getControlState(self.CONTROL_KEY))
+
     def test_setControlStateOverwrites(self) -> None:
         self.helper.setControlState(self.CONTROL_KEY, "AOS_TIE")
         self.helper.setControlState(self.CONTROL_KEY, "AOS_DANISH")

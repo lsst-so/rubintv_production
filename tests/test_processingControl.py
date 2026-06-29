@@ -307,6 +307,7 @@ class RestoreAosPipelinesTestCase(lsst.utils.tests.TestCase):
         # First boot after deploy: no _STATE key exists yet, but RubinTV's
         # readback holds the operator's last selection — adopt it so the
         # upgrade doesn't silently reset to the default.
+        self.assertIsNone(self.helper.getControlState(self.AOS[0]))  # precondition
         self.redis.set(getControlReadbackKey(self.AOS[0]), "AOS_TIE")
 
         controller = self._controller()
@@ -315,6 +316,51 @@ class RestoreAosPipelinesTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(controller.currentAosPipeline, "AOS_TIE")
         # and the value is healed into the persisted-state key for next time
         self.assertEqual(self.helper.getControlState(self.AOS[0]), "AOS_TIE")
+        self.assertEqual(self.helper.getControlReadback(self.AOS[0]), "AOS_TIE")
+
+    def test_persistedStateWinsOverReadback(self) -> None:
+        # When _STATE exists it is authoritative: a *different* (still valid)
+        # readback value must be ignored, not adopted. This pins the migration
+        # bridge as one-time only — readback is never consulted once _STATE is
+        # present — and confirms readback gets re-asserted back to the state.
+        self.helper.setControlState(self.AOS[0], "AOS_TIE")
+        self.helper.setControlReadbackMessage(self.AOS[0], "AOS_DANISH")
+
+        controller = self._controller()
+        self._restore(controller)
+
+        self.assertEqual(controller.currentAosPipeline, "AOS_TIE")
+        self.assertNotEqual(controller.currentAosPipeline, "AOS_DANISH")
+        self.assertEqual(self.helper.getControlReadback(self.AOS[0]), "AOS_TIE")
+
+    def test_invalidStateDoesNotConsultReadback(self) -> None:
+        # A corrupt _STATE must drop straight to the default, NOT fall through
+        # to a (here valid) readback: readback is only a bridge for when _STATE
+        # is entirely absent, so a present-but-corrupt _STATE is not a licence
+        # to trust the stale display value instead.
+        self.helper.setControlState(self.AOS[0], "AOS_NONSENSE")
+        self.helper.setControlReadbackMessage(self.AOS[0], "AOS_TIE")
+
+        controller = self._controller()
+        self._restore(controller)
+
+        self.assertEqual(controller.currentAosPipeline, "AOS_DANISH")
+        self.assertNotEqual(controller.currentAosPipeline, "AOS_TIE")
+
+    def test_ignoresInvalidReadbackOnMigration(self) -> None:
+        # No _STATE, and the readback holds a rejection rather than a real
+        # pipeline (the last thing before restart was a rejected switch).
+        # The garbage must not be adopted; fall back to the default and heal.
+        self.assertIsNone(self.helper.getControlState(self.AOS[0]))  # precondition
+        self.helper.setControlReadbackMessage(self.AOS[0], "REJECTED_BETWEEN_PAIR!")
+
+        controller = self._controller()
+        self._restore(controller)
+
+        self.assertEqual(controller.currentAosPipeline, "AOS_DANISH")
+        # healed: both keys now carry the default, the rejection is gone
+        self.assertEqual(self.helper.getControlState(self.AOS[0]), "AOS_DANISH")
+        self.assertEqual(self.helper.getControlReadback(self.AOS[0]), "AOS_DANISH")
 
     def test_fallsBackToDefaultWhenNothingStored(self) -> None:
         controller = self._controller()
@@ -328,13 +374,21 @@ class RestoreAosPipelinesTestCase(lsst.utils.tests.TestCase):
 
     def test_fallsBackToDefaultOnUnknownPipeline(self) -> None:
         # A corrupt/unknown persisted value must never be applied verbatim —
-        # the head node would try to run a pipeline that doesn't exist.
+        # the head node would try to run a pipeline that doesn't exist — and
+        # the corrupt value must be healed off both keys, not left to be
+        # re-read (or displayed) next restart. Checked for both controls.
         self.helper.setControlState(self.AOS[0], "AOS_NONSENSE")
+        self.helper.setControlState(self.FAM[0], "AOS_FAM_NONSENSE")
 
         controller = self._controller()
         self._restore(controller)
 
         self.assertEqual(controller.currentAosPipeline, "AOS_DANISH")
+        self.assertEqual(controller.currentAosFamPipeline, "AOS_FAM_DANISH")
+        # healed: the nonsense is overwritten with the default on both keys
+        self.assertEqual(self.helper.getControlState(self.AOS[0]), "AOS_DANISH")
+        self.assertEqual(self.helper.getControlReadback(self.AOS[0]), "AOS_DANISH")
+        self.assertEqual(self.helper.getControlState(self.FAM[0]), "AOS_FAM_DANISH")
 
     def test_clearsStaleRejectionMessage(self) -> None:
         # State holds the real value while readback was left showing a
@@ -351,13 +405,24 @@ class RestoreAosPipelinesTestCase(lsst.utils.tests.TestCase):
 
     def test_noOpForNonLsstCam(self) -> None:
         # Only the LSSTCam head node consumes these controls; others must not
-        # touch Redis or change their (ignored) defaults.
-        self.helper.setControlState(self.AOS[0], "AOS_TIE")
+        # restore a stored value, nor write anything to Redis.
+        self.helper.setControlState(self.AOS[0], "AOS_TIE")  # AOS has state present...
+        # ...while the FAM control has nothing stored at all
+        self.assertIsNone(self.helper.getControlState(self.FAM[0]))
 
         controller = self._controller(instrument="LATISS")
         self._restore(controller)
 
-        self.assertEqual(controller.currentAosPipeline, "AOS_DANISH")  # unchanged default
+        # both attributes keep their (ignored) defaults — the AOS_TIE state is
+        # not adopted
+        self.assertEqual(controller.currentAosPipeline, "AOS_DANISH")
+        self.assertEqual(controller.currentAosFamPipeline, "AOS_FAM_DANISH")
+        # and restore wrote nothing: the FAM control is still absent, and the
+        # pre-existing AOS keys are untouched (not re-asserted to the default)
+        self.assertIsNone(self.helper.getControlState(self.FAM[0]))
+        self.assertIsNone(self.helper.getControlReadback(self.FAM[0]))
+        self.assertEqual(self.helper.getControlState(self.AOS[0]), "AOS_TIE")
+        self.assertEqual(self.helper.getControlReadback(self.AOS[0]), "AOS_TIE")
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

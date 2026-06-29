@@ -871,19 +871,23 @@ class HeadProcessController:
         """Restore the RubinTV-controlled AOS pipeline selections from Redis.
 
         The head node is restarted routinely (rolling updates, etc.). Without
-        this, every restart would silently reset the AOS pipeline selections
-        to their ``AOS_DANISH`` defaults while RubinTV carried on displaying
-        the last value the operator chose, leaving the head node and the
-        frontend disagreeing. The live selection is persisted on every change
-        (see `updateConfigsFromRubinTV`), so reinstate it here on startup.
+        this, every restart would silently reset the AOS pipeline selections to
+        their defaults while RubinTV carried on displaying the last value the
+        operator chose, leaving the head node and the frontend disagreeing. The
+        live selection is persisted on every change (see
+        `updateConfigsFromRubinTV`), so reinstate it here on startup.
 
-        The persisted state is the source of truth. If it is missing — e.g.
-        the first startup after this feature was deployed — the value RubinTV
-        last displayed (the readback) is adopted instead so existing
-        selections aren't lost on the upgrade. Only if neither is a recognised
-        pipeline do we fall back to the ``AOS_DANISH`` default already set in
-        ``__init__``. That cascade guarantees a corrupt, stale, or absent key
-        can never leave the head node running an invalid pipeline.
+        The persisted state is the source of truth. When it is entirely absent
+        — e.g. the first startup after this feature was deployed — the value
+        RubinTV last displayed (the readback) is adopted instead, so existing
+        selections aren't lost on the upgrade. The readback is only a one-time
+        migration bridge: once a ``_STATE`` key exists it is used verbatim and
+        the readback is no longer consulted. Whichever value is chosen is
+        validated against the known pipelines, and anything unrecognised (a
+        corrupt key, or a stale ``REJECTED_BETWEEN_PAIR!`` message) falls back
+        to the ``AOS_DANISH`` default already set in ``__init__``. That
+        guarantees a corrupt, stale, or absent key can never leave the head
+        node running an invalid pipeline.
         """
         if self.instrument != "LSSTCam":
             # matches updateConfigsFromRubinTV: only the LSSTCam head node
@@ -892,27 +896,29 @@ class HeadProcessController:
 
         for controlKey, attribute, default in self._aosPipelineControls:
             candidate = self.redisHelper.getControlState(controlKey)
+            source = "persisted state"
             if candidate is None:
-                # fall back to the readback to migrate selections made before
-                # the persisted-state key existed; a rejection message or
-                # anything else unrecognised drops through to the default below
+                # migrate selections made before the persisted-state key
+                # existed; once _STATE is present this branch is skipped, so a
+                # corrupt _STATE does not silently fall through to the readback
                 candidate = self.redisHelper.getControlReadback(controlKey)
+                source = "readback"
 
             if candidate is not None and candidate in self.pipelines:
                 value = candidate
-                self.log.info(f"Restored {attribute} to {value} from Redis after restart")
+                self.log.info(f"Restored {attribute} to {value} from {source} after restart")
             else:
                 if candidate is not None:
                     self.log.warning(
-                        f"Persisted {attribute}={candidate!r} is not a known pipeline;"
+                        f"Stored {attribute}={candidate!r} ({source}) is not a known pipeline;"
                         f" falling back to default {default}"
                     )
                 value = default
 
             setattr(self, attribute, value)
             # re-assert state and readback so memory, the persisted value and
-            # what RubinTV displays all agree, clearing any stale rejection
-            # message left in readback before the restart
+            # what RubinTV displays all agree, healing a corrupt value and
+            # clearing any stale rejection message left in readback
             self.redisHelper.setControlState(controlKey, value)
 
     def getPipelineConfig(self, expRecord: DimensionRecord) -> tuple[bytes, PipelineGraph, str]:
