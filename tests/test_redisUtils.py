@@ -58,6 +58,8 @@ from lsst.rubintv.production.redisKeys import (
     getButlerWatcherListKey,
     getConsDbAnnouncementField,
     getConsDbAnnouncementKey,
+    getControlReadbackKey,
+    getControlStateKey,
     getPodBusyKey,
     getPodExistsKey,
     getPodRunningKey,
@@ -716,6 +718,52 @@ class RedisClientConfigTestCase(lsst.utils.tests.TestCase):
         kwargs = self._captureRedisKwargs()
         self.assertIn("driver_info", kwargs)
         self.assertIsNone(kwargs["driver_info"])
+
+
+class ControlStateTestCase(_RedisHelperTestBase):
+    """setControlState / getControlState / getControlReadback /
+    setControlReadbackMessage — the persisted-state + readback machinery that
+    lets a RubinTV control selection (e.g. the AOS pipeline) survive a
+    head-node restart.
+
+    The contract pinned here: ``setControlState`` writes the live value to
+    *both* the ``_STATE`` key (restored on startup) and the ``_READBACK`` key
+    (displayed by RubinTV) so the two never drift;
+    ``setControlReadbackMessage`` touches *only* readback, leaving the
+    persisted value intact so a transient rejection can't survive a restart;
+    getters return decoded strings and `None` when unset.
+    """
+
+    CONTROL_KEY = "RUBINTV_CONTROL_AOS_PIPELINE"
+
+    def test_unsetReturnsNone(self) -> None:
+        self.assertIsNone(self.helper.getControlState(self.CONTROL_KEY))
+        self.assertIsNone(self.helper.getControlReadback(self.CONTROL_KEY))
+
+    def test_setControlStateWritesBothKeys(self) -> None:
+        # The live value must land on both keys, decoded to str, so the head
+        # node restores it and RubinTV displays it from the same write.
+        self.helper.setControlState(self.CONTROL_KEY, "AOS_TIE")
+        self.assertEqual(self.helper.getControlState(self.CONTROL_KEY), "AOS_TIE")
+        self.assertEqual(self.helper.getControlReadback(self.CONTROL_KEY), "AOS_TIE")
+        # and the raw keys are the documented _STATE / _READBACK suffixes
+        self.assertEqual(self.redis.get(getControlStateKey(self.CONTROL_KEY)), b"AOS_TIE")
+        self.assertEqual(self.redis.get(getControlReadbackKey(self.CONTROL_KEY)), b"AOS_TIE")
+
+    def test_readbackMessageLeavesStateUntouched(self) -> None:
+        # A rejection (or any transient message) must update only readback;
+        # the persisted state has to stay put so a restart restores the real
+        # value rather than the rejection string.
+        self.helper.setControlState(self.CONTROL_KEY, "AOS_TIE")
+        self.helper.setControlReadbackMessage(self.CONTROL_KEY, "REJECTED_BETWEEN_PAIR!")
+        self.assertEqual(self.helper.getControlReadback(self.CONTROL_KEY), "REJECTED_BETWEEN_PAIR!")
+        self.assertEqual(self.helper.getControlState(self.CONTROL_KEY), "AOS_TIE")
+
+    def test_setControlStateOverwrites(self) -> None:
+        self.helper.setControlState(self.CONTROL_KEY, "AOS_TIE")
+        self.helper.setControlState(self.CONTROL_KEY, "AOS_DANISH")
+        self.assertEqual(self.helper.getControlState(self.CONTROL_KEY), "AOS_DANISH")
+        self.assertEqual(self.helper.getControlReadback(self.CONTROL_KEY), "AOS_DANISH")
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

@@ -57,6 +57,8 @@ from .redisKeys import (
     getButlerWatcherListKey,
     getConsDbAnnouncementField,
     getConsDbAnnouncementKey,
+    getControlReadbackKey,
+    getControlStateKey,
     getIgnoredDetectorsKey,
     getMtaosZernikeResultKey,
     getNewDataQueueName,
@@ -1666,6 +1668,78 @@ class RedisHelper:
         if value is None:
             return []
         return [int(det) for det in decode_string(value).split(",") if det.isdigit()]
+
+    def setControlState(self, controlKey: str, value: str) -> None:
+        """Persist the live value of a RubinTV control and mirror it to
+        readback.
+
+        Writes ``value`` to both the persisted-state key (reloaded on
+        head-node startup so the selection survives a restart) and the
+        readback key RubinTV polls to display the current value, keeping the
+        two in lockstep so the head node and the frontend can never disagree.
+
+        Parameters
+        ----------
+        controlKey : `str`
+            The RubinTV control command key, e.g.
+            ``"RUBINTV_CONTROL_AOS_PIPELINE"``.
+        value : `str`
+            The live value to persist, e.g. ``"AOS_TIE"``.
+        """
+        self.redis.set(getControlStateKey(controlKey), value)
+        self.redis.set(getControlReadbackKey(controlKey), value)
+
+    def getControlState(self, controlKey: str) -> str | None:
+        """Return the persisted live value of a RubinTV control.
+
+        Parameters
+        ----------
+        controlKey : `str`
+            The RubinTV control command key, e.g.
+            ``"RUBINTV_CONTROL_AOS_PIPELINE"``.
+
+        Returns
+        -------
+        value : `str` or `None`
+            The persisted value, or `None` if nothing has been persisted yet.
+        """
+        value = self.redis.get(getControlStateKey(controlKey))
+        return decode_string(value) if value is not None else None
+
+    def getControlReadback(self, controlKey: str) -> str | None:
+        """Return the value RubinTV is currently displaying for a control.
+
+        Parameters
+        ----------
+        controlKey : `str`
+            The RubinTV control command key, e.g.
+            ``"RUBINTV_CONTROL_AOS_PIPELINE"``.
+
+        Returns
+        -------
+        value : `str` or `None`
+            The readback value, or `None` if none has been written yet.
+        """
+        value = self.redis.get(getControlReadbackKey(controlKey))
+        return decode_string(value) if value is not None else None
+
+    def setControlReadbackMessage(self, controlKey: str, message: str) -> None:
+        """Write a transient readback-only message for a RubinTV control.
+
+        Unlike `setControlState`, this updates *only* the readback key and
+        leaves the persisted live value untouched. It surfaces a transient
+        status to RubinTV — e.g. that a control command was rejected — without
+        changing what the head node will restore after a restart.
+
+        Parameters
+        ----------
+        controlKey : `str`
+            The RubinTV control command key, e.g.
+            ``"RUBINTV_CONTROL_AOS_FAM_PIPELINE"``.
+        message : `str`
+            The message to display, e.g. ``"REJECTED_BETWEEN_PAIR!"``.
+        """
+        self.redis.set(getControlReadbackKey(controlKey), message)
 
     def reportVisitSummaryStats(
         self, instrument: str, visit: int, detector: int, stats: ExposureSummaryStats

@@ -21,15 +21,32 @@
 
 """Test cases for utils."""
 
+import logging
 import unittest
+from types import SimpleNamespace
+from typing import cast
+from unittest.mock import patch
+
+import fakeredis
 
 import lsst.utils.tests
+from lsst.daf.butler import Butler
+from lsst.rubintv.production import redisUtils as redisUtilsModule
+from lsst.rubintv.production.locationConfig import LocationConfig
 from lsst.rubintv.production.processingControl import (
     PIPELINE_NAMES,
     CameraControlConfig,
+    HeadProcessController,
     VisitProcessingMode,
     WorkerProcessingMode,
 )
+from lsst.rubintv.production.redisKeys import getControlReadbackKey
+from lsst.rubintv.production.redisUtils import RedisHelper
+
+
+def _makeFakeRedis(*args: object, **kwargs: object) -> fakeredis.FakeStrictRedis:
+    """Drop-in for `redis.Redis(...)` returning a fresh in-process client."""
+    return fakeredis.FakeStrictRedis()
 
 
 class CamearaControlConfigTestCase(lsst.utils.tests.TestCase):
@@ -225,6 +242,122 @@ class PipelineNamesTestCase(lsst.utils.tests.TestCase):
         # The "SFM" entry is the science pipeline and is referenced by
         # name throughout the package — guard it explicitly.
         self.assertIn("SFM", PIPELINE_NAMES)
+
+
+class RestoreAosPipelinesTestCase(lsst.utils.tests.TestCase):
+    """`HeadProcessController.restoreAosPipelinesFromRedis` — the
+    stickiness-across-restarts logic.
+
+    A full `HeadProcessController` needs a Butler, Redis and S3, so rather
+    than build one we invoke the unbound method against a duck-typed ``self``
+    carrying just the attributes the method touches, backed by a real
+    `RedisHelper` over fakeredis. That exercises the genuine cascade
+    (persisted state -> readback -> default), the validation against
+    ``self.pipelines``, and the readback re-assertion, without the heavy
+    machinery.
+    """
+
+    # The two controls, as (controlKey, attribute, default).
+    AOS = HeadProcessController._aosPipelineControls[0]
+    FAM = HeadProcessController._aosPipelineControls[1]
+
+    def setUp(self) -> None:
+        self._patcher = patch.object(redisUtilsModule.redis, "Redis", side_effect=_makeFakeRedis)
+        self._patcher.start()
+        self.helper = RedisHelper(
+            butler=cast(Butler, None),
+            locationConfig=cast(LocationConfig, None),
+            isHeadNode=True,
+        )
+        self.redis = self.helper.redis
+
+    def tearDown(self) -> None:
+        self._patcher.stop()
+
+    def _controller(self, instrument: str = "LSSTCam") -> SimpleNamespace:
+        """Build a minimal duck-typed stand-in for HeadProcessController."""
+        return SimpleNamespace(
+            instrument=instrument,
+            redisHelper=self.helper,
+            log=logging.getLogger("test.restoreAosPipelines"),
+            pipelines={"AOS_DANISH", "AOS_TIE", "AOS_FAM_DANISH", "AOS_FAM_TIE"},
+            _aosPipelineControls=HeadProcessController._aosPipelineControls,
+            # the __init__ defaults that restore should overwrite (or keep)
+            currentAosPipeline="AOS_DANISH",
+            currentAosFamPipeline="AOS_FAM_DANISH",
+        )
+
+    def _restore(self, controller: SimpleNamespace) -> None:
+        HeadProcessController.restoreAosPipelinesFromRedis(cast(HeadProcessController, controller))
+
+    def test_restoresFromPersistedState(self) -> None:
+        # The persisted state is the source of truth and must win on restart.
+        self.helper.setControlState(self.AOS[0], "AOS_TIE")
+        self.helper.setControlState(self.FAM[0], "AOS_FAM_TIE")
+
+        controller = self._controller()
+        self._restore(controller)
+
+        self.assertEqual(controller.currentAosPipeline, "AOS_TIE")
+        self.assertEqual(controller.currentAosFamPipeline, "AOS_FAM_TIE")
+        # readback re-asserted to match the restored live value
+        self.assertEqual(self.helper.getControlReadback(self.AOS[0]), "AOS_TIE")
+
+    def test_migratesFromReadbackWhenNoState(self) -> None:
+        # First boot after deploy: no _STATE key exists yet, but RubinTV's
+        # readback holds the operator's last selection — adopt it so the
+        # upgrade doesn't silently reset to the default.
+        self.redis.set(getControlReadbackKey(self.AOS[0]), "AOS_TIE")
+
+        controller = self._controller()
+        self._restore(controller)
+
+        self.assertEqual(controller.currentAosPipeline, "AOS_TIE")
+        # and the value is healed into the persisted-state key for next time
+        self.assertEqual(self.helper.getControlState(self.AOS[0]), "AOS_TIE")
+
+    def test_fallsBackToDefaultWhenNothingStored(self) -> None:
+        controller = self._controller()
+        self._restore(controller)
+
+        self.assertEqual(controller.currentAosPipeline, "AOS_DANISH")
+        self.assertEqual(controller.currentAosFamPipeline, "AOS_FAM_DANISH")
+        # the default is asserted onto state + readback so everything agrees
+        self.assertEqual(self.helper.getControlState(self.AOS[0]), "AOS_DANISH")
+        self.assertEqual(self.helper.getControlReadback(self.AOS[0]), "AOS_DANISH")
+
+    def test_fallsBackToDefaultOnUnknownPipeline(self) -> None:
+        # A corrupt/unknown persisted value must never be applied verbatim —
+        # the head node would try to run a pipeline that doesn't exist.
+        self.helper.setControlState(self.AOS[0], "AOS_NONSENSE")
+
+        controller = self._controller()
+        self._restore(controller)
+
+        self.assertEqual(controller.currentAosPipeline, "AOS_DANISH")
+
+    def test_clearsStaleRejectionMessage(self) -> None:
+        # State holds the real value while readback was left showing a
+        # rejection before the restart; state must win and readback must be
+        # re-asserted so the scary REJECTED string doesn't persist forever.
+        self.helper.setControlState(self.AOS[0], "AOS_TIE")
+        self.helper.setControlReadbackMessage(self.AOS[0], "REJECTED_BETWEEN_PAIR!")
+
+        controller = self._controller()
+        self._restore(controller)
+
+        self.assertEqual(controller.currentAosPipeline, "AOS_TIE")
+        self.assertEqual(self.helper.getControlReadback(self.AOS[0]), "AOS_TIE")
+
+    def test_noOpForNonLsstCam(self) -> None:
+        # Only the LSSTCam head node consumes these controls; others must not
+        # touch Redis or change their (ignored) defaults.
+        self.helper.setControlState(self.AOS[0], "AOS_TIE")
+
+        controller = self._controller(instrument="LATISS")
+        self._restore(controller)
+
+        self.assertEqual(controller.currentAosPipeline, "AOS_DANISH")  # unchanged default
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
