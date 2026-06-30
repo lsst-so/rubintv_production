@@ -165,6 +165,24 @@ class ConsDBPopulator:
         locationConfig: LocationConfig,
         asyncWrites: bool = False,
     ) -> None:
+        """Populate consDB from rapid analysis.
+
+        Parameters
+        ----------
+        client : `lsst.summit.utils.ConsDbClient`
+            The client used to talk to consDB.
+        redisHelper : `RedisHelper`
+            Used to announce completed writes for cross-pod coordination.
+        locationConfig : `LocationConfig`
+            The location config; its ``location`` gates whether writes happen
+            at all (only "summit", "bts" and "tts" insert).
+        asyncWrites : `bool`, optional
+            If ``True``, every write is handed off to a single background
+            thread so a slow or timing-out insert never blocks processing.
+            Enable in the live pods; leave ``False`` for synchronous tooling
+            (e.g. backfill) that relies on the blocking back-pressure and the
+            bool return value.
+        """
         self.client = client
         self.redisHelper = redisHelper
         self.locationConfig = locationConfig
@@ -189,6 +207,16 @@ class ConsDBPopulator:
         self._executor: ThreadPoolExecutor | None = (
             ThreadPoolExecutor(max_workers=1, thread_name_prefix="ConsDBWriter") if asyncWrites else None
         )
+        # Cache of consDB table schemas (as {column: dbType} type mappings),
+        # keyed by (instrument.lower(), table). A schema fetch is a network
+        # read whose result is needed to coerce values before the row can be
+        # built, so it cannot be made fire-and-forget like a write. But table
+        # schemas are static for the lifetime of a pod, so fetching once and
+        # caching keeps the read off the processing thread for every call
+        # after the first — the same goal the background writer serves for the
+        # writes. Only successful fetches are cached, so a transient failure is
+        # retried. Populated and read on the calling (processing) thread only.
+        self._schemaCache: dict[tuple[str, str], dict[str, str]] = {}
 
     def flush(self, timeout: float | None = None) -> None:
         """Block until all queued background consDB writes have completed.
@@ -221,6 +249,36 @@ class ConsDBPopulator:
         """
         if self._executor is not None:
             self._executor.shutdown(wait=wait)
+
+    def _getTypeMapping(self, instrument: str, table: str) -> dict[str, str]:
+        """Return the ``{column: dbType}`` type mapping for a consDB table.
+
+        The underlying schema is fetched from consDB once per
+        ``(instrument, table)`` and cached (see `_schemaCache`); every call
+        after the first is a pure in-memory lookup, so the network read only
+        ever blocks the processing thread once per table for the lifetime of
+        the pod.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name (case-insensitive).
+        table : `str`
+            The table name within the instrument schema, without the
+            ``cdb_<instrument>.`` prefix (e.g. ``"visit1_quicklook"``).
+
+        Returns
+        -------
+        typeMapping : `dict` [`str`, `str`]
+            Mapping of consDB column name to its database type string.
+        """
+        key = (instrument.lower(), table)
+        typeMapping = self._schemaCache.get(key)
+        if typeMapping is None:
+            schema = cast(dict[str, tuple[str, str]], self.client.schema(instrument.lower(), table))
+            typeMapping = {k: v[0] for k, v in schema.items()}
+            self._schemaCache[key] = typeMapping  # only cache successful fetches
+        return typeMapping
 
     def _shouldInsert(self) -> bool:
         """Check whether inserts to consDB are allowed at the current location.
@@ -594,9 +652,7 @@ class ConsDBPopulator:
             logger.info(f"Skipping consDB insert at {location} for {instrument}.visit1_quicklook")
             return
 
-        schema = self.client.schema(instrument.lower(), "visit1_quicklook")
-        schema = cast(dict[str, tuple[str, str]], schema)
-        typeMapping: dict[str, str] = {k: v[0] for k, v in schema.items()}
+        typeMapping = self._getTypeMapping(instrument, "visit1_quicklook")
 
         visitSummary = visitSummary.asAstropy()
         visits = visitSummary["visit"]
@@ -686,9 +742,7 @@ class ConsDBPopulator:
             logger.info(f"Skipping consDB insert at {location} for {instrument}.{table}")
             return
 
-        schema = self.client.schema(instrument.lower(), table)
-        schema = cast(dict[str, tuple[str, str]], schema)
-        typeMapping: dict[str, str] = {k: v[0] for k, v in schema.items()}
+        typeMapping = self._getTypeMapping(instrument, table)
 
         toSend: dict[str, int | float] = {}
         for consDbKey, value in values.items():

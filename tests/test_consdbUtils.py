@@ -233,6 +233,11 @@ class _RecordingClient:
         self.released = threading.Event()  # gates exit from insert() when block
         self.block = False
         self.exception: Exception | None = None
+        # schema() support: records each call, returns schemaReturn (or raises
+        # schemaException). The real client returns {column: (dbType, doc)}.
+        self.schemaCalls: list[tuple[str, str]] = []
+        self.schemaReturn: dict[str, tuple[str, str]] = {}
+        self.schemaException: Exception | None = None
 
     def insert(self, **kwargs: Any) -> None:
         self.entered.set()
@@ -242,6 +247,12 @@ class _RecordingClient:
             raise self.exception
         self.threadNames.append(threading.current_thread().name)
         self.inserts.append(kwargs)
+
+    def schema(self, instrument: str, table: str) -> dict[str, tuple[str, str]]:
+        self.schemaCalls.append((instrument, table))
+        if self.schemaException is not None:
+            raise self.schemaException
+        return self.schemaReturn
 
 
 class _RecordingRedisHelper:
@@ -430,6 +441,62 @@ class AsyncWriteTestCase(lsst.utils.tests.TestCase):
         populator = self._makePopulator(_RecordingClient(), asyncWrites=False)
         populator.flush()  # must not raise
         populator.shutdown()  # must not raise
+
+
+class SchemaCacheTestCase(lsst.utils.tests.TestCase):
+    """Tests for the cached consDB schema lookup (`_getTypeMapping`).
+
+    A schema fetch is a network read whose result is needed before a row can
+    be built, so it cannot be deferred like a write. Since table schemas are
+    static, they are fetched once and cached, so the read only blocks the
+    processing thread once per table rather than on every write.
+    """
+
+    def _makePopulator(self, client: _RecordingClient) -> ConsDBPopulator:
+        return ConsDBPopulator(
+            cast(ConsDbClient, client),
+            cast(RedisHelper, _RecordingRedisHelper()),
+            cast(LocationConfig, SimpleNamespace(location="summit")),
+            asyncWrites=False,
+        )
+
+    def test_schemaFetchedOnceAndCached(self) -> None:
+        client = _RecordingClient()
+        client.schemaReturn = {"a": ("BIGINT", "doc"), "b": ("DOUBLE PRECISION", "doc")}
+        populator = self._makePopulator(client)
+
+        first = populator._getTypeMapping("LSSTCam", "visit1_quicklook")
+        # a second lookup (with different-cased instrument) must hit the cache
+        second = populator._getTypeMapping("lsstcam", "visit1_quicklook")
+
+        self.assertEqual(first, {"a": "BIGINT", "b": "DOUBLE PRECISION"})
+        self.assertEqual(second, first)
+        self.assertEqual(len(client.schemaCalls), 1)  # only one network fetch
+
+    def test_differentTablesFetchedSeparately(self) -> None:
+        client = _RecordingClient()
+        client.schemaReturn = {"a": ("INTEGER", "doc")}
+        populator = self._makePopulator(client)
+
+        populator._getTypeMapping("LSSTCam", "visit1_quicklook")
+        populator._getTypeMapping("LSSTCam", "ccdvisit1_quicklook")
+        self.assertEqual(len(client.schemaCalls), 2)
+
+    def test_schemaFetchFailureIsNotCached(self) -> None:
+        client = _RecordingClient()
+        client.schemaException = RuntimeError("consdb is unreachable")
+        populator = self._makePopulator(client)
+
+        with self.assertRaises(RuntimeError):
+            populator._getTypeMapping("LSSTCam", "visit1_quicklook")
+
+        # a transient failure must not be cached: the next call retries and,
+        # once consDB is healthy again, succeeds
+        client.schemaException = None
+        client.schemaReturn = {"a": ("INTEGER", "doc")}
+        typeMapping = populator._getTypeMapping("LSSTCam", "visit1_quicklook")
+        self.assertEqual(typeMapping, {"a": "INTEGER"})
+        self.assertEqual(len(client.schemaCalls), 2)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
