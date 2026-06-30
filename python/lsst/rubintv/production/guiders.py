@@ -246,7 +246,9 @@ class GuiderWorker(BaseButlerChannel):
         self.shardsDirectory = locationConfig.guiderShardsDirectory
         self.consdbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
         self.redisHelper = RedisHelper(butler, self.locationConfig)
-        self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper, self.locationConfig)
+        self.consDBPopulator = ConsDBPopulator(
+            self.consdbClient, self.redisHelper, self.locationConfig, asyncWrites=True
+        )
         self.instrument = instrument  # why isn't this being set in the base class?!
         self.reader = GuiderReader(self.butler, view="dvcs")
         camera = getCameraFromInstrumentName(self.instrument)

@@ -187,7 +187,9 @@ consdb-announcements-{dayObs}
 - dayObs derived as `obsId // 100_000`
 - Fields: `{instrument}-{table}-{obsId}` -> `1`
 - TTL: **2 days** (172,800 seconds)
-- Written when a ConsDB insert completes
+- Written when a ConsDB insert completes (in the live pods the insert runs
+  on a background thread, so the announcement is published from that thread
+  once the row actually lands, not when the write was queued)
 - Other pods can poll/wait for results via `waitForResultInConsdDb()`
 - Enables cross-pod coordination without direct communication
 

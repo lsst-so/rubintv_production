@@ -193,7 +193,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.consdbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
         self.redisHelper = RedisHelper(butler, self.locationConfig)
 
-        self.consDBPopulator = ConsDBPopulator(self.consdbClient, self.redisHelper, self.locationConfig)
+        self.consDBPopulator = ConsDBPopulator(
+            self.consdbClient, self.redisHelper, self.locationConfig, asyncWrites=True
+        )
         self.ofcData = OFCData("lsst")
 
     @cached_property
@@ -727,19 +729,22 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 detectorNum = exp.getDetector().getId()
                 postIsrMedian = float(np.nanmedian(exp.image.array))  # np.float isn't JSON serializable
                 ccdvisitId = computeCcdExposureId(self.instrument, expRecord.id, detectorNum)
-                self.consdbClient.insert(
+                # Route through the populator so this write goes on the same
+                # background thread as every other consDB write and never
+                # blocks ISR post-processing; failures log from that thread.
+                self.consDBPopulator._insertIfAllowed(
                     instrument=self.instrument,
                     table=f"cdb_{self.instrument.lower()}.ccdexposure_quicklook",
-                    obs_id=ccdvisitId,
+                    obsId=ccdvisitId,
                     values={"postisr_pixel_median": postIsrMedian},
-                    allow_update=False,
+                    allowUpdate=False,
                 )
-                self.log.info(f"Added post_isr_image pixel median to ConsDB for {dRef.dataId}")
+                self.log.info(f"Queued post_isr_image pixel median for ConsDB for {dRef.dataId}")
                 md = {expRecord.seq_num: {"PostISR pixel median": postIsrMedian}}
                 shardPath = getShardPath(self.locationConfig, expRecord)
                 writeMetadataShard(shardPath, expRecord.day_obs, md)
             except Exception:
-                self.log.exception("Failed to populate ccdvisit1_quicklook row in ConsDB")
+                self.log.exception("Failed to populate ccdexposure_quicklook row in ConsDB")
 
     def postProcessCalibrate(self, quantum: Quantum) -> None:
         output_dataset_name = "preliminary_visit_image"

@@ -195,6 +195,11 @@ currently triggered.*
 8. **Execute quanta** - iterate through quantum graph nodes:
    - Run quantum via `SingleQuantumExecutor`
    - Post-process: write binned images, metadata shards, ConsDB rows
+     (ConsDB writes are fire-and-forget on a single background thread per
+     pod, so a slow/timing-out insert never blocks processing; nothing in
+     rapid analysis reads ConsDB back, so a dropped write is safe. Failures
+     surface as logged tracebacks from the writer thread — see
+     `ConsDBPopulator` in `consdbUtils.py`.)
    - Report task finished to Redis
 9. **Report completion** - detector-level and visit-level finish signals
 10. **Loop** - back to step 1

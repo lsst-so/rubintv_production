@@ -49,7 +49,7 @@ source ~/stack.sh && . ~/setup_packages.sh && pytest tests/ -q -n logical
 | `test_exposureLogUtils.py` | `getLogsForDayObs` with mocked HTTP responses | No |
 | `test_redisKeys.py` | Pure Redis key-construction helpers in `redisKeys.py` | No |
 | `test_aosUtils.py` | `parseDofStr` and other AOS helper functions | No |
-| `test_consdbUtils.py` | `consdbUtils` mappings and helper functions | No |
+| `test_consdbUtils.py` | `consdbUtils` mappings, helpers, and the async background-write path | No |
 | `test_clusterManagement.py` | Dataclasses in `clusterManagement.py` | No |
 | `test_workerSets.py` | `WorkerSet` registry helpers | No |
 | `test_pipelines.py` | Full pipeline graph generation and validation | Yes |
