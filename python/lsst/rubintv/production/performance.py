@@ -42,6 +42,7 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.markers import CARETLEFTBASE, MarkerStyle
 from matplotlib.patches import Patch
+from scipy.stats import gaussian_kde
 
 from lsst.daf.butler import MissingDatasetTypeError
 from lsst.rubintv.production.formatters import getFilterColorName
@@ -1374,6 +1375,245 @@ def getIngestTimingOods(
     }
 
     return wfTimes, sciTimes
+
+
+def reportIngestTimes(
+    butler: Butler,
+    dayObs: int,
+    seqNum: int,
+    efdClient: EfdClient | None = None,
+    doPrint: bool = True,
+) -> dict[str, dict[int, float]]:
+    """Get, and optionally report, the OODS ingest times for the chips.
+
+    Looks up the exposure for the given ``dayObs``/``seqNum``, fetches the
+    OODS ingest times for every chip, and (if ``doPrint``) prints the average
+    and maximum ingest time (in seconds since shutter close) for the science
+    chips and the corner wavefront sensors separately.
+
+    Parameters
+    ----------
+    butler : `Butler`
+        The butler instance, used to look up the exposure record.
+    dayObs : `int`
+        The day of observation, as an integer (YYYYMMDD).
+    seqNum : `int`
+        The sequence number within the day.
+    efdClient : `EfdClient`, optional
+        The EFD client, used to fetch the OODS ingest timestamps. If None, a
+        client is created via ``makeEfdClient()``.
+    doPrint : `bool`, optional
+        Whether to print the mean/max summary. Default is True.
+
+    Returns
+    -------
+    ingestTimes : `dict` [`str`, `dict` [`int`, `float`]]
+        Mapping of chip group (``"science"`` and ``"cwfs"``) to a dict of
+        detector number to OODS ingest time, in seconds since shutter close.
+    """
+    expRecord = getExpRecord(butler, dayObs, seqNum)
+    if expRecord is None:
+        raise ValueError(f"No exposure found for {dayObs=}, {seqNum=}")
+
+    if efdClient is None:
+        efdClient = makeEfdClient()
+
+    wfTimes, sciTimes = getIngestTimingOods(efdClient, expRecord)
+    ingestTimes = {"science": sciTimes, "cwfs": wfTimes}
+
+    if doPrint:
+        print(f"OODS ingest times for dayObs={dayObs}, seqNum={seqNum} (seconds since shutter close):")
+        for name, label in (("science", "Science chips"), ("cwfs", "CWFS chips   ")):
+            times = ingestTimes[name]
+            if times:
+                values = list(times.values())
+                print(f"  {label}: mean={np.mean(values):.2f}s  max={np.max(values):.2f}s  (n={len(values)})")
+            else:
+                print(f"  {label}: no data")
+
+    return ingestTimes
+
+
+def computeRelativeDensity(values: np.ndarray) -> np.ndarray:
+    """Compute a per-point relative density for colouring a 1D scatter column.
+
+    Uses a Gaussian KDE evaluated at each point, normalised to ``[0, 1]`` so
+    that the colour encodes how dense each point is relative to the rest of
+    the column. If the KDE cannot be computed (fewer than two points, or zero
+    spread) every point is given a density of 1.
+
+    Parameters
+    ----------
+    values : `np.ndarray`
+        The values to compute the density for.
+
+    Returns
+    -------
+    density : `np.ndarray`
+        The relative density at each point, in the range ``[0, 1]``.
+    """
+    values = np.asarray(values, dtype=float)
+    if len(values) < 2 or np.ptp(values) == 0:
+        return np.ones(len(values))
+    try:
+        density = gaussian_kde(values)(values)
+    except (np.linalg.LinAlgError, ValueError):
+        return np.ones(len(values))
+    span = np.ptp(density)
+    if span == 0:
+        return np.ones(len(values))
+    return (density - density.min()) / span
+
+
+def plotIngestTimesVsSeqNum(
+    butler: Butler,
+    dayObs: int,
+    seqNums: Iterable[int],
+    efdClient: EfdClient | None = None,
+    figsize: tuple[float, float] = (14, 8),
+    saveAs: str | None = None,
+) -> Figure:
+    """Plot OODS ingest times across a range of seqNums as a density scatter.
+
+    For each seqNum the per-detector science-chip ingest times are drawn as a
+    density-coloured, x-jittered scatter so the shape of the distribution is
+    visible, the CWFS-chip times are overlaid as distinct markers, and the
+    maximum ingest time for that seqNum is marked with a red dash (and joined
+    into an envelope line) to make the worst case obvious.
+
+    Missing exposures, missing EFD topics and seqNums with no ingest data are
+    skipped with a warning, so an arbitrary range can be passed.
+
+    Parameters
+    ----------
+    butler : `Butler`
+        The butler instance, used to look up the exposure records.
+    dayObs : `int`
+        The day of observation, as an integer (YYYYMMDD).
+    seqNums : `Iterable` [`int`]
+        The sequence numbers to plot, e.g. ``range(1, 100)``.
+    efdClient : `EfdClient`, optional
+        The EFD client. If None, a client is created via ``makeEfdClient()``.
+    figsize : `tuple` [`float`, `float`], optional
+        The figure size. Default is ``(14, 8)``.
+    saveAs : `str`, optional
+        If given, the path to save the figure to.
+
+    Returns
+    -------
+    fig : `matplotlib.figure.Figure`
+        The figure object.
+    """
+    log = logging.getLogger(__name__)
+
+    if efdClient is None:
+        efdClient = makeEfdClient()
+
+    sciData: dict[int, dict[int, float]] = {}
+    cwfsData: dict[int, dict[int, float]] = {}
+    for seqNum in seqNums:
+        try:
+            ingestTimes = reportIngestTimes(butler, dayObs, seqNum, efdClient=efdClient, doPrint=False)
+        except Exception as e:
+            # a whole range will inevitably contain seqNums with no exposure,
+            # no ingest data, or missing EFD topics - skip and keep going
+            log.warning(f"Skipping seqNum={seqNum}: {e}")
+            continue
+        if ingestTimes["science"]:
+            sciData[seqNum] = ingestTimes["science"]
+        if ingestTimes["cwfs"]:
+            cwfsData[seqNum] = ingestTimes["cwfs"]
+
+    allSeqNums = sorted(set(sciData) | set(cwfsData))
+    if not allSeqNums:
+        raise RuntimeError(f"No ingest-time data found for any requested seqNum on {dayObs=}")
+
+    fig = make_figure(figsize=figsize)
+    ax = fig.gca()
+
+    rng = np.random.default_rng(1234)
+    jitterWidth = 0.3
+
+    # Science chips: one density-coloured column per seqNum, drawn as a single
+    # scatter so there is a single shared colourbar.
+    scienceX: list[np.ndarray] = []
+    scienceY: list[np.ndarray] = []
+    scienceC: list[np.ndarray] = []
+    for seqNum in sorted(sciData):
+        values = np.array(list(sciData[seqNum].values()))
+        jitter = rng.uniform(-jitterWidth, jitterWidth, size=len(values))
+        scienceX.append(seqNum + jitter)
+        scienceY.append(values)
+        scienceC.append(computeRelativeDensity(values))
+
+    if scienceX:
+        scatter = ax.scatter(
+            np.concatenate(scienceX),
+            np.concatenate(scienceY),
+            c=np.concatenate(scienceC),
+            cmap="viridis",
+            s=12,
+            alpha=0.7,
+            label="Science chips",
+            zorder=2,
+        )
+        cbar = fig.colorbar(scatter, ax=ax)
+        cbar.set_label("Relative point density (within each seqNum)")
+
+    # CWFS chips: distinct markers, jittered the same way.
+    cwfsX: list[float] = []
+    cwfsY: list[float] = []
+    for seqNum in sorted(cwfsData):
+        cwfsValues = list(cwfsData[seqNum].values())
+        jitter = rng.uniform(-jitterWidth, jitterWidth, size=len(cwfsValues))
+        cwfsX.extend((seqNum + jitter).tolist())
+        cwfsY.extend(cwfsValues)
+    if cwfsX:
+        ax.scatter(
+            cwfsX,
+            cwfsY,
+            marker="d",
+            s=22,
+            facecolor="tab:orange",
+            edgecolor="k",
+            linewidths=0.3,
+            alpha=0.9,
+            label="CWFS chips",
+            zorder=3,
+        )
+
+    # Max per seqNum over all chip types, made obvious with dashes + envelope.
+    maxValues = [
+        max(list(sciData.get(seqNum, {}).values()) + list(cwfsData.get(seqNum, {}).values()))
+        for seqNum in allSeqNums
+    ]
+    ax.plot(allSeqNums, maxValues, color="red", lw=1.0, alpha=0.7, zorder=4)
+    ax.scatter(
+        allSeqNums,
+        maxValues,
+        marker="_",
+        color="red",
+        s=250,
+        linewidths=2.0,
+        label="Max (per seqNum)",
+        zorder=5,
+    )
+
+    ax.set_xlabel("seqNum")
+    ax.set_ylabel("OODS ingest time since shutter close (s)")
+    ax.set_title(
+        f"OODS ingest times - dayObs={dayObs}, "
+        f"seqNum {allSeqNums[0]}-{allSeqNums[-1]} ({len(allSeqNums)} exposures)"
+    )
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="upper right")
+    fig.tight_layout()
+
+    if saveAs is not None:
+        fig.savefig(saveAs)
+        log.info(f"Saved ingest-time plot to {saveAs}")
+
+    return fig
 
 
 def getZernikeCalculatingTaskName(data: dict[str, TaskResult]) -> str | None:
