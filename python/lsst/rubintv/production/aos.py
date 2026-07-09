@@ -345,7 +345,9 @@ class PsfAzElPlotter:
         #
         self.consDbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
         # TODO: DM-54675 remove this from being done here
-        self.consDBPopulator = ConsDBPopulator(self.consDbClient, self.redisHelper, self.locationConfig)
+        self.consDBPopulator = ConsDBPopulator(
+            self.consDbClient, self.redisHelper, self.locationConfig, asyncWrites=True
+        )
         self.s3Uploader = MultiUploader()
 
     def makePlot(self, visitId: int) -> None:

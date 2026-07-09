@@ -31,6 +31,7 @@ __all__ = [
 import itertools
 import logging
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Callable, cast
 
 import numpy as np
@@ -158,11 +159,126 @@ def changeType(key: str, typeMapping: dict[str, str]) -> Callable[[int | float],
 
 class ConsDBPopulator:
     def __init__(
-        self, client: ConsDbClient, redisHelper: RedisHelper, locationConfig: LocationConfig
+        self,
+        client: ConsDbClient,
+        redisHelper: RedisHelper,
+        locationConfig: LocationConfig,
+        asyncWrites: bool = False,
     ) -> None:
+        """Populate consDB from rapid analysis.
+
+        Parameters
+        ----------
+        client : `lsst.summit.utils.ConsDbClient`
+            The client used to talk to consDB.
+        redisHelper : `RedisHelper`
+            Used to announce completed writes for cross-pod coordination.
+        locationConfig : `LocationConfig`
+            The location config; its ``location`` gates whether writes happen
+            at all (only "summit", "bts" and "tts" insert).
+        asyncWrites : `bool`, optional
+            If ``True``, every write is handed off to a single background
+            thread so a slow or timing-out insert never blocks processing.
+            Enable in the live pods; leave ``False`` for synchronous tooling
+            (e.g. backfill) that relies on the blocking back-pressure and the
+            bool return value.
+        """
         self.client = client
         self.redisHelper = redisHelper
         self.locationConfig = locationConfig
+        # When asyncWrites is True every consDB write is handed off to a
+        # single background thread, so that a slow or timing-out insert never
+        # blocks the processing that triggered it. Nothing in rapid analysis
+        # reads back the data it writes to consDB, so deferring (or, on
+        # failure, dropping) a write is always safe; the trade-off is that
+        # write failures surface as logged tracebacks from the background
+        # thread rather than as exceptions at the call site (see
+        # _backgroundInsert). A single worker (max_workers=1) keeps writes
+        # serialised and in submission order, and means the worker thread is
+        # the only thread ever calling client.insert, while the main thread
+        # only ever calls client.schema (a read) — they never issue the same
+        # request on the shared requests.Session, and rely on urllib3's
+        # thread-safe connection pool.
+        #
+        # asyncWrites is opt-in (default False) because the backfill tooling
+        # in highLevelTools deliberately relies on synchronous inserts: it
+        # times them to back off when consDB is slow, and uses the bool
+        # return value to record which rows were written.
+        self._executor: ThreadPoolExecutor | None = (
+            ThreadPoolExecutor(max_workers=1, thread_name_prefix="ConsDBWriter") if asyncWrites else None
+        )
+        # Cache of consDB table schemas (as {column: dbType} type mappings),
+        # keyed by (instrument.lower(), table). A schema fetch is a network
+        # read whose result is needed to coerce values before the row can be
+        # built, so it cannot be made fire-and-forget like a write. But table
+        # schemas are static for the lifetime of a pod, so fetching once and
+        # caching keeps the read off the processing thread for every call
+        # after the first — the same goal the background writer serves for the
+        # writes. Only successful fetches are cached, so a transient failure is
+        # retried. Populated and read on the calling (processing) thread only.
+        self._schemaCache: dict[tuple[str, str], dict[str, str]] = {}
+
+    def flush(self, timeout: float | None = None) -> None:
+        """Block until all queued background consDB writes have completed.
+
+        This is a no-op when async writes are disabled. Because the writer is a
+        single FIFO thread, waiting on a no-op task submitted after the
+        outstanding writes guarantees that those writes have all finished.
+
+        Parameters
+        ----------
+        timeout : `float` or `None`, optional
+            Maximum number of seconds to wait. ``None`` (the default) waits
+            indefinitely.
+        """
+        if self._executor is None:
+            return
+        self._executor.submit(lambda: None).result(timeout=timeout)
+
+    def shutdown(self, wait: bool = True) -> None:
+        """Shut down the background writer thread.
+
+        This is a no-op when async writes are disabled. After shutdown no
+        further writes may be submitted.
+
+        Parameters
+        ----------
+        wait : `bool`, optional
+            If ``True`` (the default), block until all queued writes have
+            completed before returning.
+        """
+        if self._executor is not None:
+            self._executor.shutdown(wait=wait)
+
+    def _getTypeMapping(self, instrument: str, table: str) -> dict[str, str]:
+        """Return the ``{column: dbType}`` type mapping for a consDB table.
+
+        The underlying schema is fetched from consDB once per
+        ``(instrument, table)`` and cached (see `_schemaCache`); every call
+        after the first is a pure in-memory lookup, so the network read only
+        ever blocks the processing thread once per table for the lifetime of
+        the pod.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name (case-insensitive).
+        table : `str`
+            The table name within the instrument schema, without the
+            ``cdb_<instrument>.`` prefix (e.g. ``"visit1_quicklook"``).
+
+        Returns
+        -------
+        typeMapping : `dict` [`str`, `str`]
+            Mapping of consDB column name to its database type string.
+        """
+        key = (instrument.lower(), table)
+        typeMapping = self._schemaCache.get(key)
+        if typeMapping is None:
+            schema = cast(dict[str, tuple[str, str]], self.client.schema(instrument.lower(), table))
+            typeMapping = {k: v[0] for k, v in schema.items()}
+            self._schemaCache[key] = typeMapping  # only cache successful fetches
+        return typeMapping
 
     def _shouldInsert(self) -> bool:
         """Check whether inserts to consDB are allowed at the current location.
@@ -185,9 +301,15 @@ class ConsDBPopulator:
         obsId: int | tuple[int, int],
         values: Mapping[str, int | float | str],
         allowUpdate: bool,
+        onSuccess: Callable[[], None] | None = None,
     ) -> bool:
         """
         Conditionally call self.client.insert() based on location.
+
+        When the populator was created with ``asyncWrites=True`` the actual
+        write (and ``onSuccess`` callback) is handed off to the background
+        writer thread and this returns immediately; otherwise the write happens
+        inline on the calling thread.
 
         Parameters
         ----------
@@ -202,12 +324,20 @@ class ConsDBPopulator:
             Column values to write; NaN values are removed.
         allowUpdate : `bool`
             Whether to allow updates to existing rows.
+        onSuccess : `Callable` [[], `None`], optional
+            A zero-argument callback run after the write succeeds (e.g. to
+            announce the result in redis). It runs on whichever thread performs
+            the write: the background writer thread for async writes, or the
+            calling thread for synchronous writes.
 
         Returns
         -------
         inserted : `bool`
-            ``True`` if an insert/update was attempted and succeeded; ``False``
-            if skipped due to location.
+            ``True`` if an insert/update was attempted and succeeded. ``False``
+            if skipped (no values, or disallowed at this location) or if the
+            write was handed off to the background thread (in which case the
+            outcome is not yet known — async call sites must not rely on the
+            return value).
         """
         if not values:
             logger.warning(f"No values to insert into consDB for {instrument}.{table} with obsId {obsId}")
@@ -218,6 +348,45 @@ class ConsDBPopulator:
             logger.info(f"Skipping consDB insert at {location} for {instrument}.{table} for {obsId}")
             return False
 
+        if self._executor is not None:
+            # Hand the write off to the background thread and return at once.
+            # Snapshot the values so the caller is free to mutate or discard
+            # its dict the moment this returns. The bool return is meaningless
+            # in async mode (the write has not happened yet); no async call
+            # site consumes it.
+            self._executor.submit(
+                self._backgroundInsert,
+                instrument,
+                table,
+                obsId,
+                dict(values),
+                allowUpdate,
+                onSuccess,
+            )
+            return False
+
+        # Synchronous path: do the write inline, let failures propagate, and
+        # report success to the caller. Used by the backfill tooling, which
+        # relies on both the back-pressure of a blocking insert and the bool.
+        self._doInsert(instrument, table, obsId, values, allowUpdate)
+        if onSuccess is not None:
+            onSuccess()
+        return True
+
+    def _doInsert(
+        self,
+        instrument: str,
+        table: str,
+        obsId: int | tuple[int, int],
+        values: Mapping[str, int | float | str],
+        allowUpdate: bool,
+    ) -> None:
+        """Perform the actual consDB insert, raising on failure.
+
+        This is the single point at which a row is written to consDB. It runs
+        on the calling thread for synchronous writes and on the background
+        writer thread (via `_backgroundInsert`) for async writes.
+        """
         try:
             self.client.insert(
                 instrument=instrument,
@@ -226,13 +395,52 @@ class ConsDBPopulator:
                 values=_removeNans(values),
                 allow_update=allowUpdate,
             )
-            return True
         except HTTPError as e:
             try:
                 print(e.response.json())
             except Exception:
                 logger.exception("HTTPError during consDB insert and response JSON parse failed.")
             raise RuntimeError from e
+
+    def _backgroundInsert(
+        self,
+        instrument: str,
+        table: str,
+        obsId: int | tuple[int, int],
+        values: Mapping[str, int | float | str],
+        allowUpdate: bool,
+        onSuccess: Callable[[], None] | None,
+    ) -> None:
+        """Run a single consDB write on the background writer thread.
+
+        This is the body executed by the writer thread for every async write.
+        The future returned by ``submit`` is never awaited, so an exception
+        raised here would otherwise vanish silently. Everything is therefore
+        wrapped and logged with enough context (instrument, table, obsId) that
+        if a traceback surfaces later — e.g. from an insert that timed out — it
+        is unmistakably from an asynchronous rapid analysis consDB write, and
+        not from the processing that queued it.
+        """
+        try:
+            self._doInsert(instrument, table, obsId, values, allowUpdate)
+        except Exception:
+            logger.exception(
+                f"Asynchronous consDB write to {instrument}.{table} (obsId={obsId}) failed on the "
+                "background writer thread. Nothing in rapid analysis consumes consDB data, so this "
+                "does not affect processing, but the row was not written."
+            )
+            return
+
+        if onSuccess is None:
+            return
+        try:
+            onSuccess()
+        except Exception:
+            logger.exception(
+                f"The post-write callback for the asynchronous consDB write to {instrument}.{table} "
+                f"(obsId={obsId}) failed on the background writer thread. The row was written, but the "
+                "follow-up action (e.g. announcing the result in redis) did not complete."
+            )
 
     def _createExposureRow(self, expRecord: DimensionRecord, allowUpdate: bool = False) -> None:
         """Create a row for the exp in the cdb_<instrument>.exposure table.
@@ -317,15 +525,14 @@ class ConsDBPopulator:
         values = {value: getattr(summaryStats, key) for key, value in CCD_VISIT_MAPPING.items()}
         table = f"cdb_{expRecord.instrument.lower()}.ccdvisit1_quicklook"
 
-        inserted = self._insertIfAllowed(
+        self._insertIfAllowed(
             instrument=expRecord.instrument,
             table=table,
             obsId=obsId,  # integer form required for ccd-type tables
             values=values,
             allowUpdate=allowUpdate,
+            onSuccess=lambda: self.redisHelper.announceResultInConsDb(expRecord.instrument, table, obsId),
         )
-        if inserted:
-            self.redisHelper.announceResultInConsDb(expRecord.instrument, table, obsId)
 
     def populateHigherOrderMoments(
         self,
@@ -371,15 +578,14 @@ class ConsDBPopulator:
         }
         table = f"cdb_{expRecord.instrument.lower()}.ccdvisit1_quicklook"
 
-        inserted = self._insertIfAllowed(
+        self._insertIfAllowed(
             instrument=expRecord.instrument,
             table=table,
             obsId=obsId,  # integer form required for ccd-type tables
             values=values,
             allowUpdate=allowUpdate,
+            onSuccess=lambda: self.redisHelper.announceResultInConsDb(expRecord.instrument, table, obsId),
         )
-        if inserted:
-            self.redisHelper.announceResultInConsDb(expRecord.instrument, table, obsId)
 
     def populateCcdVisitRowZernikes(
         self,
@@ -446,9 +652,7 @@ class ConsDBPopulator:
             logger.info(f"Skipping consDB insert at {location} for {instrument}.visit1_quicklook")
             return
 
-        schema = self.client.schema(instrument.lower(), "visit1_quicklook")
-        schema = cast(dict[str, tuple[str, str]], schema)
-        typeMapping: dict[str, str] = {k: v[0] for k, v in schema.items()}
+        typeMapping = self._getTypeMapping(instrument, "visit1_quicklook")
 
         visitSummary = visitSummary.asAstropy()
         visits = visitSummary["visit"]
@@ -486,16 +690,15 @@ class ConsDBPopulator:
         values["visit_id"] = visit  # required key if updating
         table = f"cdb_{instrument.lower()}.visit1_quicklook"
 
-        inserted = self._insertIfAllowed(
+        self._insertIfAllowed(
             instrument=instrument,
             table=table,
             # tuple-form for obsId required for updating non ccd-type tables
             obsId=(expRecord.day_obs, expRecord.seq_num),
             values=values,
             allowUpdate=allowUpdate,
+            onSuccess=lambda: self.redisHelper.announceResultInConsDb(instrument, table, visit),
         )
-        if inserted:
-            self.redisHelper.announceResultInConsDb(instrument, table, visit)
 
     def populateArbitrary(
         self,
@@ -539,9 +742,7 @@ class ConsDBPopulator:
             logger.info(f"Skipping consDB insert at {location} for {instrument}.{table}")
             return
 
-        schema = self.client.schema(instrument.lower(), table)
-        schema = cast(dict[str, tuple[str, str]], schema)
-        typeMapping: dict[str, str] = {k: v[0] for k, v in schema.items()}
+        typeMapping = self._getTypeMapping(instrument, table)
 
         toSend: dict[str, int | float] = {}
         for consDbKey, value in values.items():
@@ -551,16 +752,17 @@ class ConsDBPopulator:
             typeFunc = changeType(consDbKey, typeMapping)
             toSend[consDbKey] = typeFunc(value)
 
-        inserted = self._insertIfAllowed(
+        self._insertIfAllowed(
             instrument=instrument,
             table=table,
             # tuple-form for obsId required for updating non ccd-type tables
             obsId=(dayObs, seqNum),
             values=toSend,
             allowUpdate=allowUpdate,
+            onSuccess=lambda: logger.info(
+                f"Inserted consDB values into {instrument}.{table} for ({dayObs=}, {seqNum=})"
+            ),
         )
-        if inserted:
-            logger.info(f"Inserted consDB values into {instrument}.{table} for ({dayObs=}, {seqNum=})")
 
     def populateMountErrors(
         self,

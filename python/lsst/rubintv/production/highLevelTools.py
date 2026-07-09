@@ -29,7 +29,7 @@ import pickle
 import re
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -855,8 +855,7 @@ def backfillCcdVisit1QuicklookForDay(
     rowsInserted: dict[DimensionRecord, list[int]] = {}
 
     table = "cdb_lsstcam.ccdvisit1_quicklook"
-    schema = cast(dict[str, tuple[str, str]], populator.client.schema("lsstcam", "ccdvisit1_quicklook"))
-    typeMapping: dict[str, str] = {k: v[0] for k, v in schema.items()}
+    typeMapping = populator._getTypeMapping("lsstcam", "ccdvisit1_quicklook")
 
     slowInserts = 0
     for i, record in enumerate(tqdm(reversed(records), total=len(records), mininterval=30.0, ncols=120)):

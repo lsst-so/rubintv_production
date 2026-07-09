@@ -21,7 +21,10 @@
 
 """Test cases for consdbUtils."""
 
+import threading
 import unittest
+from types import SimpleNamespace
+from typing import Any, cast
 
 import numpy as np
 
@@ -31,9 +34,13 @@ from lsst.rubintv.production.consdbUtils import (
     CCD_VISIT_MAPPING,
     VISIT_MIN_MED_MAX_MAPPING,
     VISIT_MIN_MED_MAX_TOTAL_MAPPING,
+    ConsDBPopulator,
     _removeNans,
     changeType,
 )
+from lsst.rubintv.production.locationConfig import LocationConfig
+from lsst.rubintv.production.redisUtils import RedisHelper
+from lsst.summit.utils.consdbClient import ConsDbClient
 
 
 class MappingShapeTestCase(lsst.utils.tests.TestCase):
@@ -210,6 +217,286 @@ class ChangeTypeTestCase(lsst.utils.tests.TestCase):
         # columns exist.
         with self.assertRaises(KeyError):
             changeType("missing", {"foo": "BIGINT"})
+
+
+class _RecordingClient:
+    """A stand-in for ``ConsDbClient`` that records ``insert`` calls.
+
+    It can optionally block inside ``insert`` (until ``released`` is set) or
+    raise, so the threading behaviour can be observed deterministically.
+    """
+
+    def __init__(self) -> None:
+        self.inserts: list[dict[str, Any]] = []
+        self.threadNames: list[str] = []
+        self.entered = threading.Event()  # set on entry to insert()
+        self.released = threading.Event()  # gates exit from insert() when block
+        self.block = False
+        self.exception: Exception | None = None
+        # schema() support: records each call, returns schemaReturn (or raises
+        # schemaException). The real client returns {column: (dbType, doc)}.
+        self.schemaCalls: list[tuple[str, str]] = []
+        self.schemaReturn: dict[str, tuple[str, str]] = {}
+        self.schemaException: Exception | None = None
+
+    def insert(self, **kwargs: Any) -> None:
+        self.entered.set()
+        if self.block:
+            self.released.wait(timeout=5.0)
+        if self.exception is not None:
+            raise self.exception
+        self.threadNames.append(threading.current_thread().name)
+        self.inserts.append(kwargs)
+
+    def schema(self, instrument: str, table: str) -> dict[str, tuple[str, str]]:
+        self.schemaCalls.append((instrument, table))
+        if self.schemaException is not None:
+            raise self.schemaException
+        return self.schemaReturn
+
+
+class _RecordingRedisHelper:
+    """A stand-in for ``RedisHelper`` that records consDB announcements."""
+
+    def __init__(self) -> None:
+        self.announced: list[tuple[str, str, int]] = []
+
+    def announceResultInConsDb(self, instrument: str, table: str, obsId: int) -> None:
+        self.announced.append((instrument, table, obsId))
+
+
+class AsyncWriteTestCase(lsst.utils.tests.TestCase):
+    """Tests for the asynchronous (background-thread) consDB write path.
+
+    All consDB writes in the live processing pods are made fire-and-forget on
+    a single background thread so that a slow or timing-out insert can never
+    block the processing that triggered it. These tests pin down that
+    contract: the
+    write happens off the calling thread, the caller does not wait for it,
+    failures are logged (with attributing context) rather than raised, and the
+    synchronous path used by the backfill tooling is unchanged.
+    """
+
+    def _makePopulator(
+        self,
+        client: _RecordingClient,
+        redis: _RecordingRedisHelper | None = None,
+        location: str = "summit",
+        asyncWrites: bool = True,
+    ) -> ConsDBPopulator:
+        if redis is None:
+            redis = _RecordingRedisHelper()
+        return ConsDBPopulator(
+            cast(ConsDbClient, client),
+            cast(RedisHelper, redis),
+            cast(LocationConfig, SimpleNamespace(location=location)),
+            asyncWrites=asyncWrites,
+        )
+
+    def test_asyncWriteRunsOnBackgroundThread(self) -> None:
+        client = _RecordingClient()
+        populator = self._makePopulator(client)
+        self.addCleanup(populator.shutdown)
+
+        returned = populator._insertIfAllowed(
+            "LSSTCam", "cdb_lsstcam.ccdvisit1_quicklook", 123, {"a": 1.0}, False
+        )
+        # async mode hands the write off, so it can't report success here
+        self.assertFalse(returned)
+        populator.flush()
+
+        self.assertEqual(len(client.inserts), 1)
+        self.assertEqual(client.inserts[0]["obs_id"], 123)
+        # the write ran on the dedicated writer thread, not the caller's
+        self.assertNotEqual(client.threadNames[0], threading.current_thread().name)
+        self.assertTrue(client.threadNames[0].startswith("ConsDBWriter"))
+
+    def test_asyncWriteDoesNotBlockCaller(self) -> None:
+        client = _RecordingClient()
+        client.block = True
+        populator = self._makePopulator(client)
+        # Order matters: releasing the worker must run *before* shutdown joins
+        # it, so register shutdown first (cleanups run last-in-first-out).
+        self.addCleanup(populator.shutdown)
+        self.addCleanup(client.released.set)
+
+        populator._insertIfAllowed("LSSTCam", "cdb_lsstcam.ccdvisit1_quicklook", 1, {"a": 1.0}, False)
+
+        # The worker is now stuck inside insert(); the caller has already
+        # returned, proving it did not wait for the (slow) write to complete.
+        self.assertTrue(client.entered.wait(timeout=5.0))
+        self.assertEqual(len(client.inserts), 0)
+
+        client.released.set()
+        populator.flush()
+        self.assertEqual(len(client.inserts), 1)
+
+    def test_asyncWriteFailureIsLoggedNotRaised(self) -> None:
+        client = _RecordingClient()
+        client.exception = RuntimeError("consdb is on fire")
+        populator = self._makePopulator(client)
+        self.addCleanup(populator.shutdown)
+
+        with self.assertLogs("lsst.rubintv.production.consdbUtils", level="ERROR") as cm:
+            # must not raise, even though the underlying insert blows up
+            populator._insertIfAllowed("LSSTCam", "cdb_lsstcam.ccdvisit1_quicklook", 999, {"a": 1.0}, False)
+            populator.flush()
+
+        joined = "\n".join(cm.output)
+        self.assertIn("Asynchronous consDB write", joined)
+        self.assertIn("cdb_lsstcam.ccdvisit1_quicklook", joined)  # the table is named in the error
+        self.assertIn("999", joined)  # and so is the obsId
+
+    def test_onSuccessRunsOnWriterThreadAfterInsert(self) -> None:
+        client = _RecordingClient()
+        populator = self._makePopulator(client)
+        self.addCleanup(populator.shutdown)
+
+        calls: list[str] = []
+        populator._insertIfAllowed(
+            "LSSTCam",
+            "cdb_lsstcam.ccdvisit1_quicklook",
+            7,
+            {"a": 1.0},
+            False,
+            onSuccess=lambda: calls.append(threading.current_thread().name),
+        )
+        populator.flush()
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(calls[0].startswith("ConsDBWriter"))
+
+    def test_onSuccessNotCalledWhenInsertFails(self) -> None:
+        client = _RecordingClient()
+        client.exception = RuntimeError("nope")
+        populator = self._makePopulator(client)
+        self.addCleanup(populator.shutdown)
+
+        called: list[bool] = []
+        with self.assertLogs("lsst.rubintv.production.consdbUtils", level="ERROR"):
+            populator._insertIfAllowed(
+                "LSSTCam", "t", 1, {"a": 1.0}, False, onSuccess=lambda: called.append(True)
+            )
+            populator.flush()
+        self.assertEqual(called, [])
+
+    def test_writesArriveInSubmissionOrder(self) -> None:
+        # The single FIFO worker must preserve submission order; some writes
+        # (e.g. create-row then populate-row) depend on it.
+        client = _RecordingClient()
+        populator = self._makePopulator(client)
+        self.addCleanup(populator.shutdown)
+
+        for i in range(20):
+            populator._insertIfAllowed("LSSTCam", "t", i, {"a": float(i)}, False)
+        populator.flush()
+        self.assertEqual([kw["obs_id"] for kw in client.inserts], list(range(20)))
+
+    def test_skippedWhenLocationDisallowsInsert(self) -> None:
+        client = _RecordingClient()
+        populator = self._makePopulator(client, location="usdf")
+        self.addCleanup(populator.shutdown)
+
+        returned = populator._insertIfAllowed("LSSTCam", "t", 1, {"a": 1.0}, False)
+        self.assertFalse(returned)
+        populator.flush()
+        self.assertEqual(len(client.inserts), 0)
+
+    def test_emptyValuesSkipInsert(self) -> None:
+        client = _RecordingClient()
+        populator = self._makePopulator(client)
+        self.addCleanup(populator.shutdown)
+
+        returned = populator._insertIfAllowed("LSSTCam", "t", 1, {}, False)
+        self.assertFalse(returned)
+        populator.flush()
+        self.assertEqual(len(client.inserts), 0)
+
+    def test_syncModeReturnsTrueAndCallsOnSuccessInline(self) -> None:
+        client = _RecordingClient()
+        populator = self._makePopulator(client, asyncWrites=False)
+        self.assertIsNone(populator._executor)  # no background thread when sync
+
+        calls: list[str] = []
+        returned = populator._insertIfAllowed(
+            "LSSTCam",
+            "t",
+            5,
+            {"a": 1.0},
+            False,
+            onSuccess=lambda: calls.append(threading.current_thread().name),
+        )
+        self.assertTrue(returned)
+        self.assertEqual(len(client.inserts), 1)
+        # synchronous: the write and callback both ran inline on this thread
+        self.assertEqual(calls, [threading.current_thread().name])
+
+    def test_syncModeReraisesInsertErrors(self) -> None:
+        client = _RecordingClient()
+        client.exception = RuntimeError("boom")
+        populator = self._makePopulator(client, asyncWrites=False)
+        with self.assertRaises(RuntimeError):
+            populator._insertIfAllowed("LSSTCam", "t", 1, {"a": 1.0}, False)
+
+    def test_flushAndShutdownAreNoOpsInSyncMode(self) -> None:
+        populator = self._makePopulator(_RecordingClient(), asyncWrites=False)
+        populator.flush()  # must not raise
+        populator.shutdown()  # must not raise
+
+
+class SchemaCacheTestCase(lsst.utils.tests.TestCase):
+    """Tests for the cached consDB schema lookup (`_getTypeMapping`).
+
+    A schema fetch is a network read whose result is needed before a row can
+    be built, so it cannot be deferred like a write. Since table schemas are
+    static, they are fetched once and cached, so the read only blocks the
+    processing thread once per table rather than on every write.
+    """
+
+    def _makePopulator(self, client: _RecordingClient) -> ConsDBPopulator:
+        return ConsDBPopulator(
+            cast(ConsDbClient, client),
+            cast(RedisHelper, _RecordingRedisHelper()),
+            cast(LocationConfig, SimpleNamespace(location="summit")),
+            asyncWrites=False,
+        )
+
+    def test_schemaFetchedOnceAndCached(self) -> None:
+        client = _RecordingClient()
+        client.schemaReturn = {"a": ("BIGINT", "doc"), "b": ("DOUBLE PRECISION", "doc")}
+        populator = self._makePopulator(client)
+
+        first = populator._getTypeMapping("LSSTCam", "visit1_quicklook")
+        # a second lookup (with different-cased instrument) must hit the cache
+        second = populator._getTypeMapping("lsstcam", "visit1_quicklook")
+
+        self.assertEqual(first, {"a": "BIGINT", "b": "DOUBLE PRECISION"})
+        self.assertEqual(second, first)
+        self.assertEqual(len(client.schemaCalls), 1)  # only one network fetch
+
+    def test_differentTablesFetchedSeparately(self) -> None:
+        client = _RecordingClient()
+        client.schemaReturn = {"a": ("INTEGER", "doc")}
+        populator = self._makePopulator(client)
+
+        populator._getTypeMapping("LSSTCam", "visit1_quicklook")
+        populator._getTypeMapping("LSSTCam", "ccdvisit1_quicklook")
+        self.assertEqual(len(client.schemaCalls), 2)
+
+    def test_schemaFetchFailureIsNotCached(self) -> None:
+        client = _RecordingClient()
+        client.schemaException = RuntimeError("consdb is unreachable")
+        populator = self._makePopulator(client)
+
+        with self.assertRaises(RuntimeError):
+            populator._getTypeMapping("LSSTCam", "visit1_quicklook")
+
+        # a transient failure must not be cached: the next call retries and,
+        # once consDB is healthy again, succeeds
+        client.schemaException = None
+        client.schemaReturn = {"a": ("INTEGER", "doc")}
+        typeMapping = populator._getTypeMapping("LSSTCam", "visit1_quicklook")
+        self.assertEqual(typeMapping, {"a": "INTEGER"})
+        self.assertEqual(len(client.schemaCalls), 2)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
