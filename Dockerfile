@@ -9,9 +9,9 @@ FROM ghcr.io/lsst/scipipe:al9-${STACK_TAG}
 ENV UID=73006
 ENV GID=73006
 
-ARG drp_pipe_ref="w.2026.22"
+ARG drp_pipe_ref="w.2026.26"
 ARG summit_utils_ref="ac8fc39669064c904ed7892b1ab427a92c0cc944"
-ARG summit_extras_ref="w.2026.22"
+ARG summit_extras_ref="w.2026.26"
 ARG ts_wep_ref="v17.6.1"
 ARG donut_viz_ref="v4.5.0"
 ARG tarts_ref="v4.2"
