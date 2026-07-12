@@ -384,8 +384,9 @@ class TempFileCleaner:
         of that boundary, and in midwinter the margin is under 20 minutes.
         Going back 12 hours lands inside the night which just ended whether
         or not the rollover has happened, so it does not depend on when the
-        call is made, which is also what makes it correct on the restart
-        path, where the chores can run at any time of day.
+        call is made. Sunrise is the only automatic caller, but this is
+        what makes it safe to dispatch a missed night by hand at any point
+        in the following day.
 
         Only runs at summit-like sites (summit/BTS/TTS), which are the only
         places a performance monitor pod is deployed to consume the payloads.
@@ -453,17 +454,29 @@ class TempFileCleaner:
 
         self.log.info("Finished bucket cleanup")
 
-    def runEndOfNightCleanupAndSync(self) -> None:
+    def runEndOfNightCleanupAndSync(self, dispatchPerformanceAnalysis: bool = True) -> None:
         """Run all the fixed-cost cleanup chores.
 
         These are the tasks that run once per day at sunrise, before the
         throttled ``cleanupPass`` fills the remaining daylight hours.
+
+        Parameters
+        ----------
+        dispatchPerformanceAnalysis : `bool`, optional
+            Whether to send the night's exposures to the performance monitor.
+            The deletions are idempotent, so re-running them after a restart
+            costs nothing, but the dispatch is not: it would enqueue a second
+            copy of the whole night. Pass ``False`` when this process did not
+            itself see the night end, i.e. it came up after sunrise, in which
+            case the dispatch has already been done by whichever process was
+            alive at the time.
         """
-        try:
-            self.launchPerformanceAnalysis()
-        except Exception as e:
-            msg = f"Error launching the performance analysis: {e}"
-            raiseIf(self.doRaise, e, self.log, msg)
+        if dispatchPerformanceAnalysis:
+            try:
+                self.launchPerformanceAnalysis()
+            except Exception as e:
+                msg = f"Error launching the performance analysis: {e}"
+                raiseIf(self.doRaise, e, self.log, msg)
         self.deletePixelProducts()
         self.deleteDirectories()
         self.deleteS3Directories()
@@ -482,23 +495,32 @@ class TempFileCleaner:
         At each sunrise: run the fixed chores (directory/bucket/pixel cleanup),
         then spend the rest of the daylight hours running ``cleanupPass`` on
         quickLook datasets. After sunset, sleep until the next sunrise.
+
+        Starting up when it is already light means the night ended before this
+        process existed, so the performance analysis for it has been dispatched
+        already and is not dispatched again. Only a process which sleeps
+        through a sunrise dispatches one, which is what keeps a pod restart
+        from enqueueing a second copy of the night.
         """
         while True:
             now = Time.now()
             nextSunrise = self.observer.sun_rise_time(now, which="next")
             nextSunset = self.observer.sun_set_time(now, which="next")
 
-            if nextSunset < nextSunrise:
+            if nextSunset < nextSunrise:  # sunset comes first, so it is already light
+                sawNightEnd = False
                 sunset = nextSunset
+                self.log.info("In daylight; skipping the performance analysis dispatch")
             else:
                 untilSunrise = humanize.precisedelta(timedelta(seconds=(nextSunrise - now).sec))
                 self.log.info(f"Night-time; sleeping until sunrise at {nextSunrise.iso} (in {untilSunrise})")
                 waitUntil(nextSunrise)
                 sunset = self.observer.sun_set_time(Time.now(), which="next")
+                sawNightEnd = True
 
-            self.log.info("Sunrise reached; running fixed daily chores")
+            self.log.info("Running fixed daily chores")
             choresStart = time.time()
-            self.runEndOfNightCleanupAndSync()
+            self.runEndOfNightCleanupAndSync(dispatchPerformanceAnalysis=sawNightEnd)
             choresElapsed = humanize.precisedelta(timedelta(seconds=time.time() - choresStart))
             self.log.info(f"Fixed chores finished in {choresElapsed}")
 
