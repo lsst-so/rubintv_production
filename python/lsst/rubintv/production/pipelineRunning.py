@@ -677,7 +677,10 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             self.postProcessVisitSummary(quantum)
         elif "AggregateZernikeTablesTask".lower() in taskName.lower():
             self.postProcessAggregateZernikeTables(quantum)
-        elif "CalcZernikesTask".lower() in taskName.lower():
+        elif "CalcZernikes".lower() in taskName.lower():
+            # matches CalcZernikesTask and its variants (e.g.
+            # CalcZernikesNeuralTask, CalcZernikesUnpairedTask), all of which
+            # produce a format-identical `zernikes` table
             self.postProcessCalcZernikes(quantum)
         else:
             return
