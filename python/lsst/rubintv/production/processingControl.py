@@ -87,7 +87,8 @@ PIPELINE_NAMES: tuple[str, ...] = (
     "AOS_DANISH",
     "AOS_TIE",
     "AOS_REFIT_WCS",
-    "AOS_AI_DONUT",
+    "AOS_AI_DONUT_BINNED2",
+    "AOS_AI_DONUT_UNBINNED",
     "AOS_TARTS_UNPAIRED",
     "AOS_UNPAIRED_DANISH",
     # Full-array-mode AOS pipelines
@@ -440,7 +441,8 @@ def buildPipelines(
     aosFileDanishFam = locationConfig.aosLSSTCamFullArrayModePipelineFileDanish
     aosFileTIEFam = locationConfig.aosLSSTCamFullArrayModePipelineFileTie
     aosRefitWcsFile = locationConfig.aosLSSTCamRefitWcsPipelineFile
-    aiDonutFile = locationConfig.aosLSSTCamAiDonutPipelineFile
+    aiDonutBinned2File = locationConfig.aosLSSTCamAiDonutBinned2PipelineFile
+    aiDonutUnbinnedFile = locationConfig.aosLSSTCamAiDonutUnbinnedPipelineFile
     tartsFile = locationConfig.aosLSSTCamTartsPipelineFile
     unpairedDanishFile = locationConfig.aosLSSTCamUnpairedDanishPipelineFile
     aosWcsBin1DanishFile = locationConfig.aosLSSTCamWcsDanishBin1PipelineFile
@@ -489,8 +491,11 @@ def buildPipelines(
         pipelines["AOS_REFIT_WCS"] = PipelineComponents(
             butler.registry, aosRefitWcsFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
-        pipelines["AOS_AI_DONUT"] = PipelineComponents(
-            butler.registry, aiDonutFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
+        pipelines["AOS_AI_DONUT_BINNED2"] = PipelineComponents(
+            butler.registry, aiDonutBinned2File, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
+        )
+        pipelines["AOS_AI_DONUT_UNBINNED"] = PipelineComponents(
+            butler.registry, aiDonutUnbinnedFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
         pipelines["AOS_TARTS_UNPAIRED"] = PipelineComponents(
             butler.registry, tartsFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
@@ -818,7 +823,8 @@ class HeadProcessController:
         # DANISH
         # TIE
         # REFIT_WCS
-        # AI_DONUT
+        # AI_DONUT_BINNED2
+        # AI_DONUT_UNBINNED
         # UNPAIRED_DANISH
         # TARTS_UNPAIRED
 

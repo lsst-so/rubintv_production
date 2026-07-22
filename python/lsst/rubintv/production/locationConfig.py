@@ -431,8 +431,12 @@ class LocationConfig:
         return self._config["aosLSSTCamRefitWcsPipelineFile"]
 
     @cached_property
-    def aosLSSTCamAiDonutPipelineFile(self) -> str:
-        return self._config["aosLSSTCamAiDonutPipelineFile"]
+    def aosLSSTCamAiDonutBinned2PipelineFile(self) -> str:
+        return self._config["aosLSSTCamAiDonutBinned2PipelineFile"]
+
+    @cached_property
+    def aosLSSTCamAiDonutUnbinnedPipelineFile(self) -> str:
+        return self._config["aosLSSTCamAiDonutUnbinnedPipelineFile"]
 
     @cached_property
     def aosLSSTCamTartsPipelineFile(self) -> str:
