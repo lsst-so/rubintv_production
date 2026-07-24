@@ -43,6 +43,8 @@ from lsst.rubintv.production.redisKeys import (
     getButlerWatcherListKey,
     getConsDbAnnouncementField,
     getConsDbAnnouncementKey,
+    getControlReadbackKey,
+    getControlStateKey,
     getIgnoredDetectorsKey,
     getMtaosZernikeResultKey,
     getNewDataQueueName,
@@ -174,6 +176,30 @@ class PerInstrumentKeysTestCase(lsst.utils.tests.TestCase):
             getIgnoredDetectorsKey("LSSTCam"),
             "LSSTCam-HEADNODE-IGNORED_DETECTORS",
         )
+
+    def test_getControlStateKey(self) -> None:
+        # The _STATE suffix is the persisted source-of-truth restored on
+        # head-node startup; the frontend never reads it.
+        self.assertEqual(
+            getControlStateKey("RUBINTV_CONTROL_AOS_PIPELINE"),
+            "RUBINTV_CONTROL_AOS_PIPELINE_STATE",
+        )
+
+    def test_getControlReadbackKey(self) -> None:
+        # The _READBACK suffix is the contract with the RubinTV frontend, which
+        # polls it to display the current value — pin it so a rename can't
+        # silently break the readback display.
+        self.assertEqual(
+            getControlReadbackKey("RUBINTV_CONTROL_AOS_PIPELINE"),
+            "RUBINTV_CONTROL_AOS_PIPELINE_READBACK",
+        )
+
+    def test_controlStateAndReadbackKeysDiffer(self) -> None:
+        # State and readback must be distinct keys: that separation is what
+        # lets a transient rejection sit on readback without clobbering the
+        # persisted value the head node restores after a restart.
+        controlKey = "RUBINTV_CONTROL_AOS_FAM_PIPELINE"
+        self.assertNotEqual(getControlStateKey(controlKey), getControlReadbackKey(controlKey))
 
     def test_getVisitSummaryStatsKey(self) -> None:
         self.assertEqual(

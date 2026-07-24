@@ -57,6 +57,8 @@ __all__ = [
     "getTrackingKey",
     "getActiveExposuresKey",
     "getIgnoredDetectorsKey",
+    "getControlStateKey",
+    "getControlReadbackKey",
     "getVisitSummaryStatsKey",
     "getMtaosZernikeResultKey",
     "getConsDbAnnouncementKey",
@@ -296,6 +298,46 @@ def getIgnoredDetectorsKey(instrument: str) -> str:
         The Redis string key.
     """
     return f"{instrument}-HEADNODE-IGNORED_DETECTORS"
+
+
+def getControlStateKey(controlKey: str) -> str:
+    """Return the key persisting the live value of a RubinTV control.
+
+    RubinTV issues a control command by setting ``controlKey``, which the head
+    node consumes with ``getdel`` (an edge-triggered, apply-once signal). The
+    value that command selected is persisted separately under this key so that
+    it survives a head-node restart instead of resetting to a hard-coded
+    default. This persisted value is the source of truth restored on startup.
+
+    Parameters
+    ----------
+    controlKey : `str`
+        The RubinTV control command key, e.g.
+        ``"RUBINTV_CONTROL_AOS_PIPELINE"``.
+
+    Returns
+    -------
+    key : `str`
+        The Redis string key holding the persisted live value.
+    """
+    return f"{controlKey}_STATE"
+
+
+def getControlReadbackKey(controlKey: str) -> str:
+    """Return the readback key RubinTV reads to display a control's value.
+
+    Parameters
+    ----------
+    controlKey : `str`
+        The RubinTV control command key, e.g.
+        ``"RUBINTV_CONTROL_AOS_PIPELINE"``.
+
+    Returns
+    -------
+    key : `str`
+        The Redis string key RubinTV polls for readback.
+    """
+    return f"{controlKey}_READBACK"
 
 
 def getVisitSummaryStatsKey(instrument: str, visit: int) -> str:
