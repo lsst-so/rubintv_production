@@ -37,10 +37,13 @@ from astropy.time import Time
 
 from lsst.daf.butler import Butler
 from lsst.obs.lsst.translators.lsst import SIMONYI_LOCATION
-from lsst.summit.utils.dateTime import getCurrentDayObsInt, offsetDayObs
+from lsst.summit.utils.dateTime import getCurrentDayObsInt, getDayObsForTime, offsetDayObs
 
 from .highLevelTools import deleteAllSkyStills, deleteNonFinalAllSkyMovies, syncBuckets
+from .payloads import Payload
+from .podDefinition import PodDetails, PodFlavor
 from .predicates import raiseIf
+from .redisUtils import RedisHelper
 from .resources import getBasePath, getSubDirs, rmtree
 from .uploaders import MultiUploader
 
@@ -160,6 +163,7 @@ class TempFileCleaner:
             writeable=True,
         )
         self.observer = Observer(location=SIMONYI_LOCATION)
+        self.redisHelper = RedisHelper(self.butler, locationConfig)
 
     def deletePixelProducts(self) -> None:
         """Delete old pixel data products for LSSTCam from the quickLook
@@ -364,6 +368,57 @@ class TempFileCleaner:
                 msg = f"Error processing removing data from {subDir}: {e}"
                 raiseIf(self.doRaise, e, self.log, msg)
 
+    def launchPerformanceAnalysis(self) -> None:
+        """Dispatch the exposures from the night which just ended to the
+        performance monitor.
+
+        The dayObs is derived from a time 12 hours in the past rather than
+        from the clock right now. This runs at sunrise, which at Cerro Pachón
+        falls between roughly 09:40 and 11:45 UTC all year round, i.e. always
+        *before* the 12:00 UTC dayObs rollover, so the current dayObs is still
+        that of the night which just ended and offsetting it by -1 would land
+        on the night before that one.
+
+        Taking the current dayObs unoffset would consequently work too, but
+        only by relying on this always being called on the pre-rollover side
+        of that boundary, and in midwinter the margin is under 20 minutes.
+        Going back 12 hours lands inside the night which just ended whether
+        or not the rollover has happened, so it does not depend on when the
+        call is made. Sunrise is the only automatic caller, but this is
+        what makes it safe to dispatch a missed night by hand at any point
+        in the following day.
+
+        Only runs at summit-like sites (summit/BTS/TTS), which are the only
+        places a performance monitor pod is deployed to consume the payloads.
+        """
+        site = self.locationConfig.location
+        if site.lower() not in ("summit", "bts", "tts"):
+            self.log.info(
+                f"Performance analysis is only dispatched at summit/BTS/TTS sites, not {site}, skipping"
+            )
+            return
+
+        podDetails = PodDetails(
+            instrument="LSSTCam",
+            podFlavor=PodFlavor.PERFORMANCE_MONITOR,
+            detectorNumber=None,
+            depth=None,
+        )
+
+        lastNight = getDayObsForTime(Time.now() - 12 * u.hour)
+
+        where = f"exposure.day_obs={lastNight} AND instrument='LSSTCam'"
+        records = list(self.butler.registry.queryDimensionRecords("exposure", where=where))
+        records = sorted(records, key=lambda x: (x.day_obs, x.seq_num))
+        self.log.info(f"Found {len(records)} exposures for performance analysis for {lastNight}")
+
+        nDispatched = 0
+        for record in records:
+            payload = Payload(record.dataId, b"", "", who="")
+            self.redisHelper.enqueuePayload(payload, podDetails)
+            nDispatched += 1
+        self.log.info(f"Dispatched {nDispatched} exposures for performance analysis")
+
     def cleanupAndSyncBuckets(self) -> None:
         """Delete stale S3 files and sync local and remote buckets.
 
@@ -399,12 +454,29 @@ class TempFileCleaner:
 
         self.log.info("Finished bucket cleanup")
 
-    def runEndOfNightCleanupAndSync(self) -> None:
+    def runEndOfNightCleanupAndSync(self, dispatchPerformanceAnalysis: bool = True) -> None:
         """Run all the fixed-cost cleanup chores.
 
         These are the tasks that run once per day at sunrise, before the
         throttled ``cleanupPass`` fills the remaining daylight hours.
+
+        Parameters
+        ----------
+        dispatchPerformanceAnalysis : `bool`, optional
+            Whether to send the night's exposures to the performance monitor.
+            The deletions are idempotent, so re-running them after a restart
+            costs nothing, but the dispatch is not: it would enqueue a second
+            copy of the whole night. Pass ``False`` when this process did not
+            itself see the night end, i.e. it came up after sunrise, in which
+            case the dispatch has already been done by whichever process was
+            alive at the time.
         """
+        if dispatchPerformanceAnalysis:
+            try:
+                self.launchPerformanceAnalysis()
+            except Exception as e:
+                msg = f"Error launching the performance analysis: {e}"
+                raiseIf(self.doRaise, e, self.log, msg)
         self.deletePixelProducts()
         self.deleteDirectories()
         self.deleteS3Directories()
@@ -423,23 +495,32 @@ class TempFileCleaner:
         At each sunrise: run the fixed chores (directory/bucket/pixel cleanup),
         then spend the rest of the daylight hours running ``cleanupPass`` on
         quickLook datasets. After sunset, sleep until the next sunrise.
+
+        Starting up when it is already light means the night ended before this
+        process existed, so the performance analysis for it has been dispatched
+        already and is not dispatched again. Only a process which sleeps
+        through a sunrise dispatches one, which is what keeps a pod restart
+        from enqueueing a second copy of the night.
         """
         while True:
             now = Time.now()
             nextSunrise = self.observer.sun_rise_time(now, which="next")
             nextSunset = self.observer.sun_set_time(now, which="next")
 
-            if nextSunset < nextSunrise:
+            if nextSunset < nextSunrise:  # sunset comes first, so it is already light
+                sawNightEnd = False
                 sunset = nextSunset
+                self.log.info("In daylight; skipping the performance analysis dispatch")
             else:
                 untilSunrise = humanize.precisedelta(timedelta(seconds=(nextSunrise - now).sec))
                 self.log.info(f"Night-time; sleeping until sunrise at {nextSunrise.iso} (in {untilSunrise})")
                 waitUntil(nextSunrise)
                 sunset = self.observer.sun_set_time(Time.now(), which="next")
+                sawNightEnd = True
 
-            self.log.info("Sunrise reached; running fixed daily chores")
+            self.log.info("Running fixed daily chores")
             choresStart = time.time()
-            self.runEndOfNightCleanupAndSync()
+            self.runEndOfNightCleanupAndSync(dispatchPerformanceAnalysis=sawNightEnd)
             choresElapsed = humanize.precisedelta(timedelta(seconds=time.time() - choresStart))
             self.log.info(f"Fixed chores finished in {choresElapsed}")
 
