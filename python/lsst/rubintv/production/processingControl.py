@@ -627,6 +627,23 @@ class HeadProcessController:
 
     targetLoopDuration = 0.2  # in seconds, so 5Hz
 
+    # RubinTV-controlled AOS pipeline selections that must survive a head-node
+    # restart, as ``(controlKey, attribute, defaultPipeline)``. ``controlKey``
+    # is the transient command RubinTV sets (consumed with ``getdel``); the
+    # live value is persisted to ``{controlKey}_STATE`` so it can be restored
+    # on startup and mirrored to ``{controlKey}_READBACK`` for RubinTV to
+    # display. The defaults here are the fallback if nothing valid is stored.
+    _aosPipelineControls = (
+        ("RUBINTV_CONTROL_AOS_PIPELINE", "currentAosPipeline", "AOS_DANISH"),
+        ("RUBINTV_CONTROL_AOS_FAM_PIPELINE", "currentAosFamPipeline", "AOS_FAM_DANISH"),
+    )
+
+    # set in __init__ from _aosPipelineControls; declared here so the type is
+    # visible despite the dynamic setattr. currentAosFamPipeline is ignored for
+    # ComCam. Both use the name of the relevant self.pipelines key.
+    currentAosPipeline: str
+    currentAosFamPipeline: str
+
     def __init__(
         self,
         butler: Butler,
@@ -654,8 +671,12 @@ class HeadProcessController:
         )
         self.doRaise = doRaise
         self.nDispatched: int = 0
-        self.currentAosPipeline = "AOS_DANISH"  # uses the name of the self.pipelines key
-        self.currentAosFamPipeline = "AOS_FAM_DANISH"  # ignored for ComCam
+        # seed the defaults from _aosPipelineControls (the single source of
+        # truth for them); the live values are restored from Redis below, once
+        # self.pipelines exists, so a RubinTV selection survives the routine
+        # head-node restarts
+        for _, attribute, default in self._aosPipelineControls:
+            setattr(self, attribute, default)
         self._lastProcessedExp: DimensionRecord | None = None
 
         if self.focalPlaneControl is not None:
@@ -692,6 +713,10 @@ class HeadProcessController:
         )
         self.allGraphs = allGraphs
         self.pipelines = pipelines
+
+        # restore RubinTV-controlled AOS selections so they survive a restart,
+        # now that self.pipelines exists to validate the stored values against
+        self.restoreAosPipelinesFromRedis()
 
         if outputChain is None:
             # allows it to be user specified, or use the default from the site
@@ -789,15 +814,16 @@ class HeadProcessController:
                                 f"Cannot switch {attribute} to {valueStr} from RubinTV control"
                                 " as we are between a FAM pair"
                             )
-                            # if we want to implement resuming state from redis
-                            # we'll need to either remove this message, or
-                            # store the actual current value elsewhere, this
-                            # would break that pattern
-                            self.redisHelper.redis.set(f"{redisKey}_READBACK", "REJECTED_BETWEEN_PAIR!")
+                            # readback-only message: the persisted state is
+                            # left untouched, so a restart correctly restores
+                            # the real current value, not this rejection
+                            self.redisHelper.setControlReadbackMessage(redisKey, "REJECTED_BETWEEN_PAIR!")
                             return
                     setattr(self, attribute, valueStr)
                     self.log.info(f"Updating {attribute} to {valueStr} from RubinTV control")
-                    self.redisHelper.redis.set(f"{redisKey}_READBACK", valueStr)
+                    # persist as the live value (and mirror to readback) so it
+                    # survives a restart, see restoreAosPipelinesFromRedis
+                    self.redisHelper.setControlState(redisKey, valueStr)
                 else:
                     self.log.info(f"Skipped setting {attribute} to {valueStr} as it was already set")
 
@@ -822,9 +848,8 @@ class HeadProcessController:
         # UNPAIRED_DANISH
         # TARTS_UNPAIRED
 
-        updateFromKey("RUBINTV_CONTROL_AOS_PIPELINE", "currentAosPipeline")
-
-        updateFromKey("RUBINTV_CONTROL_AOS_FAM_PIPELINE", "currentAosFamPipeline")
+        for controlKey, attribute, _ in self._aosPipelineControls:
+            updateFromKey(controlKey, attribute)
 
         _processingMode = self.redisHelper.redis.getdel("RUBINTV_CONTROL_VISIT_PROCESSING_MODE")
         if _processingMode is not None:
@@ -841,6 +866,60 @@ class HeadProcessController:
                 self.redisHelper.setDetectorsIgnoredByHeadNode(
                     self.instrument, self.focalPlaneControl.getDisabledDetIds(excludeCwfs=True)
                 )
+
+    def restoreAosPipelinesFromRedis(self) -> None:
+        """Restore the RubinTV-controlled AOS pipeline selections from Redis.
+
+        The head node is restarted routinely (rolling updates, etc.). Without
+        this, every restart would silently reset the AOS pipeline selections to
+        their defaults while RubinTV carried on displaying the last value the
+        operator chose, leaving the head node and the frontend disagreeing. The
+        live selection is persisted on every change (see
+        `updateConfigsFromRubinTV`), so reinstate it here on startup.
+
+        The persisted state is the source of truth. When it is entirely absent
+        — e.g. the first startup after this feature was deployed — the value
+        RubinTV last displayed (the readback) is adopted instead, so existing
+        selections aren't lost on the upgrade. The readback is only a one-time
+        migration bridge: once a ``_STATE`` key exists it is used verbatim and
+        the readback is no longer consulted. Whichever value is chosen is
+        validated against the known pipelines, and anything unrecognised (a
+        corrupt key, or a stale ``REJECTED_BETWEEN_PAIR!`` message) falls back
+        to the ``AOS_DANISH`` default already set in ``__init__``. That
+        guarantees a corrupt, stale, or absent key can never leave the head
+        node running an invalid pipeline.
+        """
+        if self.instrument != "LSSTCam":
+            # matches updateConfigsFromRubinTV: only the LSSTCam head node
+            # consumes these controls
+            return
+
+        for controlKey, attribute, default in self._aosPipelineControls:
+            candidate = self.redisHelper.getControlState(controlKey)
+            source = "persisted state"
+            if candidate is None:
+                # migrate selections made before the persisted-state key
+                # existed; once _STATE is present this branch is skipped, so a
+                # corrupt _STATE does not silently fall through to the readback
+                candidate = self.redisHelper.getControlReadback(controlKey)
+                source = "readback"
+
+            if candidate is not None and candidate in self.pipelines:
+                value = candidate
+                self.log.info(f"Restored {attribute} to {value} from {source} after restart")
+            else:
+                if candidate is not None:
+                    self.log.warning(
+                        f"Stored {attribute}={candidate!r} ({source}) is not a known pipeline;"
+                        f" falling back to default {default}"
+                    )
+                value = default
+
+            setattr(self, attribute, value)
+            # re-assert state and readback so memory, the persisted value and
+            # what RubinTV displays all agree, healing a corrupt value and
+            # clearing any stale rejection message left in readback
+            self.redisHelper.setControlState(controlKey, value)
 
     def getPipelineConfig(self, expRecord: DimensionRecord) -> tuple[bytes, PipelineGraph, str]:
         """Get the pipeline config for the given expRecord.

@@ -213,6 +213,27 @@ RUBINTV_CONTROL_WITNESS_DETECTOR    -> set reference detector for AOS
 - Set to `"REJECTED_BETWEEN_PAIR!"` if rejected (e.g., mid-FAM-pair)
 - RubinTV frontend polls these to confirm commands were processed
 
+**Persisted-state keys (STRING):**
+```
+{control_key}_STATE
+```
+- Currently used for the two AOS pipeline controls
+  (`RUBINTV_CONTROL_AOS_PIPELINE`, `RUBINTV_CONTROL_AOS_FAM_PIPELINE`)
+- Holds the live selected value (e.g. `"AOS_TIE"`), written in lockstep
+  with `_READBACK` whenever the value actually changes (`setControlState`)
+- The command key itself is consumed with `getdel()`, so it cannot survive a
+  restart; this key is the durable source of truth the head node reloads on
+  startup (`restoreAosPipelinesFromRedis`) so a RubinTV selection persists
+  across the routine head-node restarts instead of resetting to the default
+- Restore cascade: persisted `_STATE` -> `_READBACK` (migrates selections
+  made before `_STATE` existed) -> hard-coded `AOS_DANISH` default, validated
+  against the known pipelines so a corrupt/stale value can never select an
+  invalid pipeline. Restore re-asserts `_STATE` and `_READBACK` so memory,
+  the persisted value, and the frontend display all agree (clearing any stale
+  `"REJECTED_BETWEEN_PAIR!"` left on `_READBACK`)
+- A rejection writes only `_READBACK` (`setControlReadbackMessage`), leaving
+  `_STATE` untouched so the real value is what survives a restart
+
 ### 11. Head Node State
 
 **Ignored detectors:**
