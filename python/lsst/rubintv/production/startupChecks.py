@@ -31,6 +31,7 @@ away entirely).
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
 import sentry_sdk
@@ -40,6 +41,7 @@ if TYPE_CHECKING:
 
 
 __all__ = [
+    "getSentryEnvironment",
     "setupSentry",
     "checkRubinTvExternalPackages",
 ]
@@ -55,13 +57,39 @@ GOOGLE_CLOUD_MISSING_MSG = (
 )
 
 
+def getSentryEnvironment() -> str | None:
+    """Get the environment name to report to Sentry for this process.
+
+    ``SENTRY_ENVIRONMENT`` takes precedence when set, falling back to
+    ``RAPID_ANALYSIS_LOCATION``, which every deployed pod sets (e.g.
+    ``SUMMIT``, ``BTS``, ``USDF``). Empty strings are treated as unset.
+
+    Returns
+    -------
+    environment : `str` or `None`
+        The environment name, or `None` if neither variable is set, in
+        which case the Sentry SDK falls back to its default of
+        ``production``.
+    """
+    return os.environ.get("SENTRY_ENVIRONMENT") or os.environ.get("RAPID_ANALYSIS_LOCATION") or None
+
+
 def setupSentry() -> None:
-    """Set up sentry"""
-    sentry_sdk.init()
+    """Set up sentry.
+
+    Initializes the Sentry SDK with the reporting environment set to the
+    deployment site (e.g. ``SUMMIT``, ``BTS``) so that events and alert
+    emails identify where they came from, rather than carrying the SDK's
+    default environment of ``production``.
+    """
+    logger = logging.getLogger(__name__)
+    environment = getSentryEnvironment()
+    if environment is None:
+        logger.warning("No Sentry environment found - events will be reported as 'production'")
+    sentry_sdk.init(environment=environment)
     client = sentry_sdk.get_client()  # never None, but inactive if failing to initialize
     if not client.is_active() or client.dsn is None:
-        logger = logging.getLogger(__name__)
-        logger.warning("Sentry DSN not found or client inactive — events will not be reported")
+        logger.warning("Sentry DSN not found or client inactive - events will not be reported")
 
 
 def checkRubinTvExternalPackages(exitIfNotFound: bool = True, logger: Logger | None = None) -> None:
