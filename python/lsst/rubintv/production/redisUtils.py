@@ -868,7 +868,7 @@ class RedisHelper:
         expRecord : `lsst.daf.butler.dimensions.ExposureRecord`
             The exposure record to push to the list.
         """
-        expRecordJson = expRecord.to_simple().json()
+        expRecordJson = expRecord.to_simple().model_dump_json()
         self.redis.lpush(getButlerWatcherListKey(instrument), expRecordJson)
 
     def reportTaskFinished(
@@ -1040,7 +1040,7 @@ class RedisHelper:
         seenBefore : `bool`
             Whether the exposure record has already been processed.
         """
-        expRecordJson = expRecord.to_simple().json()
+        expRecordJson = expRecord.to_simple().model_dump_json()
 
         data = self.redis.lrange(getButlerWatcherListKey(instrument), 0, -1)
         recordStrings = decode_list(data)
@@ -1071,7 +1071,7 @@ class RedisHelper:
         """
         instrument = expRecord.instrument
         queueName = getNewDataQueueName(instrument)
-        expRecordJson = expRecord.to_simple().json()
+        expRecordJson = expRecord.to_simple().model_dump_json()
         self.redis.lpush(queueName, expRecordJson)
 
     def announceResultInConsDb(self, instrument: str, table: str, obsId: int) -> None:
