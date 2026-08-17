@@ -653,7 +653,7 @@ class RedisHelper:
             The amount of time after which the pod will be considered dead if
             not reaffirmed.
         """
-        self.redis.setex(getPodRunningKey(pod.queueName), timedelta(seconds=timePeriod), value=1)
+        self.redis.set(getPodRunningKey(pod.queueName), value=1, ex=timedelta(seconds=timePeriod))
 
     def confirmRunning(self, pod: PodDetails) -> bool:
         """Check whether the named pod is running or should be considered dead.
@@ -679,7 +679,7 @@ class RedisHelper:
         pod : `PodDetails`
             The pod that is announcing it is busy.
         """
-        self.redis.setex(getPodBusyKey(pod.queueName), time=BUSY_EXPIRY, value=1)
+        self.redis.set(getPodBusyKey(pod.queueName), value=1, ex=BUSY_EXPIRY)
 
     def announceFree(self, pod: PodDetails) -> None:
         """Announce that a worker is free to process a queue.
@@ -717,7 +717,7 @@ class RedisHelper:
         """
         existsKey = getPodExistsKey(pod.queueName)
         if not remove:
-            self.redis.setex(existsKey, timedelta(seconds=POD_EXISTENCE_TIMEOUT), value=1)
+            self.redis.set(existsKey, value=1, ex=timedelta(seconds=POD_EXISTENCE_TIMEOUT))
         else:
             self.redis.delete(existsKey)
 
