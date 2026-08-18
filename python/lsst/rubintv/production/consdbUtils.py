@@ -397,7 +397,8 @@ class ConsDBPopulator:
             )
         except HTTPError as e:
             try:
-                print(e.response.json())
+                if e.response is not None:
+                    print(e.response.json())
             except Exception:
                 logger.exception("HTTPError during consDB insert and response JSON parse failed.")
             raise RuntimeError from e
