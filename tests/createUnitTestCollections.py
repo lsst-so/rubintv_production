@@ -84,8 +84,10 @@ def runCommand(cmd: list[str]) -> subprocess.CompletedProcess[str]:
 def runCommands(pipelineCommands: dict[str, list[str]]) -> None:
     """Run pipeline commands in parallel.
 
-    All pipelines run to completion and have their status reported before
-    this raises if any of them failed.
+    Each pipeline's status is logged as it completes, and once they have all
+    run a summary of every pipeline's result is printed in one block, so the
+    results can be read without picking them out from the interleaved pipeline
+    output. Raises at the end if any pipeline failed.
 
     Parameters
     ----------
@@ -98,14 +100,14 @@ def runCommands(pipelineCommands: dict[str, list[str]]) -> None:
             _LOG.info(f"Submitting pipeline '{pipelineName}':\n{' '.join(command)}\n")
             futures[pool.submit(runCommand, command)] = pipelineName
 
-        failed = []
+        results: dict[str, subprocess.CompletedProcess[str]] = {}
         for fut in as_completed(futures):
             pipelineName = futures[fut]
             result = fut.result()
+            results[pipelineName] = result
             if result.returncode == 0:
                 _LOG.info(f"✅ Pipeline '{pipelineName}' completed successfully")
             else:
-                failed.append(pipelineName)
                 _LOG.error(
                     "❌ Pipeline '%s' failed (exit code %s)\nstdout:\n%s\nstderr:\n%s",
                     pipelineName,
@@ -114,6 +116,16 @@ def runCommands(pipelineCommands: dict[str, list[str]]) -> None:
                     result.stderr,
                 )
 
+    summaryLines = ["Summary of all pipeline runs:"]
+    for pipelineName in pipelineCommands:  # original submission order, not completion order
+        result = results[pipelineName]
+        if result.returncode == 0:
+            summaryLines.append(f"✅ {pipelineName}")
+        else:
+            summaryLines.append(f"❌ {pipelineName} (exit code {result.returncode})")
+    _LOG.info("\n".join(summaryLines))
+
+    failed = [name for name, result in results.items() if result.returncode != 0]
     if failed:
         raise RuntimeError(f"{len(failed)}/{len(pipelineCommands)} pipelines failed: {', '.join(failed)}")
 
