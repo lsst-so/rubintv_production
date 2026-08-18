@@ -31,10 +31,10 @@ from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
 from lsst.rubintv.production.processingControl import PIPELINE_NAMES, PipelineComponents, buildPipelines
 from lsst.summit.utils.utils import setupLogging
 
-ALL_VISIT_QUERY = "visit in (202511150026,2025111500227,2025111500228)"
 FAM_VISIT_QUERY = "visit in (2025111500227,2025111500228)"
 SFM_VISIT_QUERY = "visit in (2025111500226)"
-CALIB_VISIT_QUERY = "visit in (2025111500436)"
+# calib frames don't get visit records defined, so query on exposure
+CALIB_EXPOSURE_QUERY = "exposure in (2025111500436)"
 
 INTRA_IDS = (192, 196, 200, 204)
 EXTRA_IDS = (191, 195, 199, 203)
@@ -84,6 +84,9 @@ def runCommand(cmd: list[str]) -> subprocess.CompletedProcess[str]:
 def runCommands(pipelineCommands: dict[str, list[str]]) -> None:
     """Run pipeline commands in parallel.
 
+    All pipelines run to completion and have their status reported before
+    this raises if any of them failed.
+
     Parameters
     ----------
     pipelineCommands : `dict[str, list[str]]`
@@ -95,12 +98,14 @@ def runCommands(pipelineCommands: dict[str, list[str]]) -> None:
             _LOG.info(f"Submitting pipeline '{pipelineName}':\n{' '.join(command)}\n")
             futures[pool.submit(runCommand, command)] = pipelineName
 
+        failed = []
         for fut in as_completed(futures):
             pipelineName = futures[fut]
             result = fut.result()
             if result.returncode == 0:
                 _LOG.info(f"✅ Pipeline '{pipelineName}' completed successfully")
             else:
+                failed.append(pipelineName)
                 _LOG.error(
                     "❌ Pipeline '%s' failed (exit code %s)\nstdout:\n%s\nstderr:\n%s",
                     pipelineName,
@@ -108,7 +113,9 @@ def runCommands(pipelineCommands: dict[str, list[str]]) -> None:
                     result.stdout,
                     result.stderr,
                 )
-                raise RuntimeError(f"Pipeline '{pipelineName}' failed: {' '.join(map(str, result.args))}")
+
+    if failed:
+        raise RuntimeError(f"{len(failed)}/{len(pipelineCommands)} pipelines failed: {', '.join(failed)}")
 
 
 def getDataQueryForPipeline(pipeline: PipelineComponents, pipelineName: str) -> tuple[str, int]:
@@ -118,6 +125,8 @@ def getDataQueryForPipeline(pipeline: PipelineComponents, pipelineName: str) -> 
     ----------
     pipeline : `PipelineComponents`
         The pipeline components object for which to generate the data query.
+    pipelineName : `str`
+        The name of the pipeline, e.g. "SFM", "BIAS", "AOS_DANISH".
 
     Returns
     -------
@@ -132,29 +141,22 @@ def getDataQueryForPipeline(pipeline: PipelineComponents, pipelineName: str) -> 
     query = ""
 
     detectors: tuple[int, ...] = ()
-    if pipeline.isFullArrayMode:  # FAM gets science detectors and FAM images
+    if pipelineName in ("BIAS", "DARK", "FLAT"):  # calibs get the calib frame on the full focal plane
+        detectors = ALL_DETECTOR_IDS
+        query += CALIB_EXPOSURE_QUERY
+    elif pipeline.isFullArrayMode:  # FAM gets science detectors and FAM images
         detectors = SFM_DETECTORS
         query += FAM_VISIT_QUERY
-        query += f" AND detector IN ({','.join(str(d) for d in detectors)})"
     elif not pipeline.isAosPipeline:  # non-AOS pipelines get inFocus image + science detectors
         detectors = SFM_DETECTORS
         query += SFM_VISIT_QUERY
-        query += f" AND detector IN ({','.join(str(d) for d in detectors)})"
-    elif pipeline.isAosPipeline and not pipeline.isFullArrayMode:
+    elif pipeline.isAosPipeline and not pipeline.isFullArrayMode:  # CWFS pipelines get corner chips
         detectors = CORNER_DETECTORS
         query += SFM_VISIT_QUERY
-        query += f" AND detector IN ({','.join(str(d) for d in detectors)})"
-    elif pipeline.isCalibrationPipeline:
-        detectors = SFM_DETECTORS
-        query += SFM_VISIT_QUERY
-        query += f" AND detector IN ({','.join(str(d) for d in detectors)})"
-    elif pipelineName in ["BIAS", "DARK", "FLAT"]:
-        detectors = ALL_DETECTOR_IDS
-        query += CALIB_VISIT_QUERY
-        query += f" AND detector IN ({','.join(str(d) for d in detectors)})"
     else:
         raise RuntimeError(f"Unknown pipeline type for {pipelineName}")
 
+    query += f" AND detector IN ({','.join(str(d) for d in detectors)})"
     query += " AND instrument='LSSTCam'"
     return query, len(detectors)
 
