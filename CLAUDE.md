@@ -54,6 +54,38 @@ exceptions.
   the human directs otherwise. Do not spin up a second branch to keep things
   "clean" — ask first.
 
+## ⚠️ No remote access with the user's credentials — ever, without asking
+
+Development for this package is strictly local to this machine. Using the
+user's personal ssh keys — or any other ambient credentials: a loaded
+ssh-agent, host aliases in `~/.ssh/config`, tokens found in the
+environment — to reach **any** remote system (USDF, the summit, anywhere)
+is **totally unacceptable under any circumstances without express user
+permission**, granted in the current conversation for the specific action.
+This is a hard rule with no exceptions, and none of the following soften
+it:
+
+- **The task mentions a remote site.** "At USDF, running X works", a
+  pasted command with remote paths, or dataIds that only exist remotely
+  are *context about where things run*, **not** authorization to go
+  there.
+- **The command is "read-only" or "just a connectivity test".** Acting
+  under the user's identity on a remote (often shared, multi-user)
+  system is the problem, not what the command does once it's there.
+- **The access happens to work.** Keys being loaded in the agent and
+  passwordless ssh succeeding means the door is unlocked, not that you
+  may walk through it. Do not probe `~/.ssh/` or the agent looking for a
+  way in at all.
+- **An earlier remote command was permitted.** Permission is per-action;
+  it does not carry forward, and it never escalates from "query" to
+  "write".
+
+The only remote access ever legitimately granted for this work has been
+via temporary, expiring credentials (e.g. 24-hour tokens to sandboxed k8s
+clusters) explicitly handed over by the user for a specific task. If
+validating a change appears to need a remote system, **stop and ask**, or
+hand the user the exact commands to run themselves.
+
 ## This is an application, not a library
 
 `rubintv_production` is the *end consumer* of everything it imports. Nothing
