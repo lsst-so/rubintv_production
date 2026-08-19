@@ -88,6 +88,32 @@ class RubinTVUtilsTestCase(lsst.utils.tests.TestCase):
         noneKeyedDict = {None: 1.0, "b": {"c": float("nan"), "d": 2.0}}
         self.assertEqual(sanitizeNans(noneKeyedDict), {None: 1.0, "b": {"c": None, "d": 2.0}})
 
+        # pin the numeric coercion for ordinary cells: the frontend relies on
+        # numeric-looking strings becoming JSON numbers for column sorting
+        self.assertEqual(sanitizeNans({"a": "1.25"}), {"a": 1.25})
+
+    def test_sanitizeNansLeavesBookCellStringsAlone(self) -> None:
+        # Regression test: the shard merge passes every cell through
+        # sanitizeNans, whose numeric coercion used to recurse into book cells
+        # (dicts marked with DISPLAY_VALUE). The package-versions book cell is
+        # read back out of the merged metadata by the ConsDB backfill and
+        # re-hashed, so a version like "1.1" coming back as the float 1.1
+        # corrupted the blob and changed the version-set hash. Book-cell
+        # strings must survive verbatim.
+        bookCell = {"DISPLAY_VALUE": "📖", "danish": "1.1", "tag": "20250624", "other": "2.0"}
+        cellDict = {"Package versions": dict(bookCell), "PSF": "1.25"}
+        result = sanitizeNans(cellDict)
+        self.assertEqual(result["Package versions"], bookCell)
+        self.assertEqual(result["PSF"], 1.25)  # ordinary cells still coerce
+
+        # NaNs inside a book cell must still be sanitized - they are not
+        # JSON-serialisable, which is the whole reason sanitizeNans exists
+        withNan = {"DISPLAY_VALUE": "⏱", "time": float("nan"), "nested": {"t": float("nan")}}
+        self.assertEqual(
+            sanitizeNans({"cell": withNan}),
+            {"cell": {"DISPLAY_VALUE": "⏱", "time": None, "nested": {"t": None}}},
+        )
+
     def test_getSite(self) -> None:
         site = getSite()
         # "local" is the new fallback for developer machines; "unknown" /
