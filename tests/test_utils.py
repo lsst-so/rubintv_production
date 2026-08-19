@@ -39,6 +39,7 @@ from lsst.rubintv.production.formatters import (
 )
 from lsst.rubintv.production.parsers import sanitizeNans
 from lsst.rubintv.production.predicates import (
+    completesWepPair,
     getDoRaise,
     hasRaDec,
     isCalibration,
@@ -145,6 +146,78 @@ class IsWepImageTestCase(lsst.utils.tests.TestCase):
     def test_notCwfs(self) -> None:
         for obsType in ("science", "bias", "dark", "flat", "engtest", "focus"):
             self.assertFalse(isWepImage(_fakeRecord(observation_type=obsType)))
+
+
+class CompletesWepPairTestCase(lsst.utils.tests.TestCase):
+    """Tests for `completesWepPair`, which is the trigger for LATISS AOS.
+
+    This predicate is what makes CWFS pair processing self-triggering on the
+    head node: the extra-focal image landing directly after its intra-focal
+    partner is the dispatch signal. These tests catch (1) the trigger firing
+    on the wrong image of the pair (which would dispatch before both raws
+    exist), (2) it firing on adjacent-but-unrelated CWFS images, and (3) it
+    failing to fire on a real pair. The fixture values mirror real records
+    from latiss_wep_align: observation_type "cwfs" with observation_reason
+    "intra" then "extra" on consecutive exposure IDs.
+    """
+
+    def _makeCwfsRecord(self, expId: int, reason: str) -> DimensionRecord:
+        return _fakeRecord(observation_type="cwfs", observation_reason=reason, id=expId)
+
+    def test_realPair(self) -> None:
+        # the happy path: intra then extra on consecutive IDs is a pair
+        intra = self._makeCwfsRecord(2026062500012, "intra")
+        extra = self._makeCwfsRecord(2026062500013, "extra")
+        self.assertTrue(completesWepPair(intra, extra))
+
+    def test_caseInsensitiveReasons(self) -> None:
+        # the reason matching must not depend on header case conventions
+        intra = self._makeCwfsRecord(2026062500012, "INTRA")
+        extra = self._makeCwfsRecord(2026062500013, "Extra")
+        self.assertTrue(completesWepPair(intra, extra))
+
+    def test_intraImageDoesNotTrigger(self) -> None:
+        # the intra-focal image must never complete a pair - triggering on it
+        # would dispatch processing before the extra-focal raw exists. This is
+        # the back-to-back pairs case: (intraA, extraA, intraB, extraB), where
+        # intraB directly follows extraA but must not fire.
+        extraA = self._makeCwfsRecord(2026062500013, "extra")
+        intraB = self._makeCwfsRecord(2026062500014, "intra")
+        self.assertFalse(completesWepPair(extraA, intraB))
+
+    def test_twoExtrasDoNotPair(self) -> None:
+        # e.g. an aborted sequence retaken: extra following extra is not a pair
+        extraA = self._makeCwfsRecord(2026062500012, "extra")
+        extraB = self._makeCwfsRecord(2026062500013, "extra")
+        self.assertFalse(completesWepPair(extraA, extraB))
+
+    def test_nonAdjacentIdsDoNotPair(self) -> None:
+        # an exposure landed between the two (e.g. the intra was retaken or
+        # something else interleaved), so they didn't land back-to-back
+        intra = self._makeCwfsRecord(2026062500011, "intra")
+        extra = self._makeCwfsRecord(2026062500013, "extra")
+        self.assertFalse(completesWepPair(intra, extra))
+
+    def test_noneReasonsDoNotPairOrRaise(self) -> None:
+        # observation_reason is nullable, and this predicate runs unguarded in
+        # the head node's main loop, so a None must give False, never raise
+        noReason = _fakeRecord(observation_type="cwfs", observation_reason=None, id=2026062500012)
+        extra = self._makeCwfsRecord(2026062500013, "extra")
+        self.assertFalse(completesWepPair(noReason, extra))
+
+        intra = self._makeCwfsRecord(2026062500012, "intra")
+        noReasonSecond = _fakeRecord(observation_type="cwfs", observation_reason=None, id=2026062500013)
+        self.assertFalse(completesWepPair(intra, noReasonSecond))
+
+    def test_nonCwfsImagesDoNotPair(self) -> None:
+        # both images must have the CWFS bits set, whatever the reasons say
+        science = _fakeRecord(observation_type="science", observation_reason="intra", id=2026062500012)
+        extra = self._makeCwfsRecord(2026062500013, "extra")
+        self.assertFalse(completesWepPair(science, extra))
+
+        intra = self._makeCwfsRecord(2026062500012, "intra")
+        acq = _fakeRecord(observation_type="acq", observation_reason="extra", id=2026062500013)
+        self.assertFalse(completesWepPair(intra, acq))
 
 
 class HasRaDecTestCase(lsst.utils.tests.TestCase):
