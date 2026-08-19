@@ -31,10 +31,10 @@ from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
 from lsst.rubintv.production.processingControl import PIPELINE_NAMES, PipelineComponents, buildPipelines
 from lsst.summit.utils.utils import setupLogging
 
-ALL_VISIT_QUERY = "visit in (202511150026,2025111500227,2025111500228)"
 FAM_VISIT_QUERY = "visit in (2025111500227,2025111500228)"
 SFM_VISIT_QUERY = "visit in (2025111500226)"
-CALIB_VISIT_QUERY = "visit in (2025111500436)"
+# calib frames don't get visit records defined, so query on exposure
+CALIB_EXPOSURE_QUERY = "exposure in (2025111500436)"
 
 INTRA_IDS = (192, 196, 200, 204)
 EXTRA_IDS = (191, 195, 199, 203)
@@ -68,7 +68,10 @@ PER_PIPELINE_EXTRAS: dict[str, list[str]] = {
     "AOS_REFIT_WCS": [
         "reassignCwfsCutoutsPairTask:customQG=False",
     ],
-    "AOS_AI_DONUT": [
+    "AOS_AI_DONUT_BINNED2": [
+        "reassignCwfsCutoutsPairTask:customQG=False",
+    ],
+    "AOS_AI_DONUT_UNBINNED": [
         "reassignCwfsCutoutsPairTask:customQG=False",
     ],
 }
@@ -81,6 +84,11 @@ def runCommand(cmd: list[str]) -> subprocess.CompletedProcess[str]:
 def runCommands(pipelineCommands: dict[str, list[str]]) -> None:
     """Run pipeline commands in parallel.
 
+    Each pipeline's status is logged as it completes, and once they have all
+    run a summary of every pipeline's result is printed in one block, so the
+    results can be read without picking them out from the interleaved pipeline
+    output. Raises at the end if any pipeline failed.
+
     Parameters
     ----------
     pipelineCommands : `dict[str, list[str]]`
@@ -92,9 +100,11 @@ def runCommands(pipelineCommands: dict[str, list[str]]) -> None:
             _LOG.info(f"Submitting pipeline '{pipelineName}':\n{' '.join(command)}\n")
             futures[pool.submit(runCommand, command)] = pipelineName
 
+        results: dict[str, subprocess.CompletedProcess[str]] = {}
         for fut in as_completed(futures):
             pipelineName = futures[fut]
             result = fut.result()
+            results[pipelineName] = result
             if result.returncode == 0:
                 _LOG.info(f"✅ Pipeline '{pipelineName}' completed successfully")
             else:
@@ -105,7 +115,19 @@ def runCommands(pipelineCommands: dict[str, list[str]]) -> None:
                     result.stdout,
                     result.stderr,
                 )
-                raise RuntimeError(f"Pipeline '{pipelineName}' failed: {' '.join(map(str, result.args))}")
+
+    summaryLines = ["Summary of all pipeline runs:"]
+    for pipelineName in pipelineCommands:  # original submission order, not completion order
+        result = results[pipelineName]
+        if result.returncode == 0:
+            summaryLines.append(f"✅ {pipelineName}")
+        else:
+            summaryLines.append(f"❌ {pipelineName} (exit code {result.returncode})")
+    _LOG.info("\n".join(summaryLines))
+
+    failed = [name for name, result in results.items() if result.returncode != 0]
+    if failed:
+        raise RuntimeError(f"{len(failed)}/{len(pipelineCommands)} pipelines failed: {', '.join(failed)}")
 
 
 def getDataQueryForPipeline(pipeline: PipelineComponents, pipelineName: str) -> tuple[str, int]:
@@ -115,6 +137,8 @@ def getDataQueryForPipeline(pipeline: PipelineComponents, pipelineName: str) -> 
     ----------
     pipeline : `PipelineComponents`
         The pipeline components object for which to generate the data query.
+    pipelineName : `str`
+        The name of the pipeline, e.g. "SFM", "BIAS", "AOS_DANISH".
 
     Returns
     -------
@@ -129,29 +153,22 @@ def getDataQueryForPipeline(pipeline: PipelineComponents, pipelineName: str) -> 
     query = ""
 
     detectors: tuple[int, ...] = ()
-    if pipeline.isFullArrayMode:  # FAM gets science detectors and FAM images
+    if pipelineName in ("BIAS", "DARK", "FLAT"):  # calibs get the calib frame on the full focal plane
+        detectors = ALL_DETECTOR_IDS
+        query += CALIB_EXPOSURE_QUERY
+    elif pipeline.isFullArrayMode:  # FAM gets science detectors and FAM images
         detectors = SFM_DETECTORS
         query += FAM_VISIT_QUERY
-        query += f" AND detector IN ({','.join(str(d) for d in detectors)})"
     elif not pipeline.isAosPipeline:  # non-AOS pipelines get inFocus image + science detectors
         detectors = SFM_DETECTORS
         query += SFM_VISIT_QUERY
-        query += f" AND detector IN ({','.join(str(d) for d in detectors)})"
-    elif pipeline.isAosPipeline and not pipeline.isFullArrayMode:
+    elif pipeline.isAosPipeline and not pipeline.isFullArrayMode:  # CWFS pipelines get corner chips
         detectors = CORNER_DETECTORS
         query += SFM_VISIT_QUERY
-        query += f" AND detector IN ({','.join(str(d) for d in detectors)})"
-    elif pipeline.isCalibrationPipeline:
-        detectors = SFM_DETECTORS
-        query += SFM_VISIT_QUERY
-        query += f" AND detector IN ({','.join(str(d) for d in detectors)})"
-    elif pipelineName in ["BIAS", "DARK", "FLAT"]:
-        detectors = ALL_DETECTOR_IDS
-        query += CALIB_VISIT_QUERY
-        query += f" AND detector IN ({','.join(str(d) for d in detectors)})"
     else:
         raise RuntimeError(f"Unknown pipeline type for {pipelineName}")
 
+    query += f" AND detector IN ({','.join(str(d) for d in detectors)})"
     query += " AND instrument='LSSTCam'"
     return query, len(detectors)
 
