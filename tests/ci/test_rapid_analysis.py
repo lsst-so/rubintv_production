@@ -1278,6 +1278,14 @@ class ResultCollector:
             ("LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.jpg", 5000),
             ("LATISS/20240813/LATISS_imexam_dayObs_20240813_seqNum_000632.png", 5000),
             ("LATISS/20240813/LATISS_specexam_dayObs_20240813_seqNum_000632.png", 5000),
+            # the CWFS pair gets per-exposure ISR, so monitor/imexam/mount
+            # plots for both images, but no specexam as they're not spectra
+            ("LATISS/20260625/LATISS_mount_dayObs_20260625_seqNum_000012.png", 5000),
+            ("LATISS/20260625/LATISS_mount_dayObs_20260625_seqNum_000013.png", 5000),
+            ("LATISS/20260625/LATISS_monitor_dayObs_20260625_seqNum_000012.jpg", 5000),
+            ("LATISS/20260625/LATISS_monitor_dayObs_20260625_seqNum_000013.jpg", 5000),
+            ("LATISS/20260625/LATISS_imexam_dayObs_20260625_seqNum_000012.png", 5000),
+            ("LATISS/20260625/LATISS_imexam_dayObs_20260625_seqNum_000013.png", 5000),
         ]
 
         # Create a set of the expected plot paths for comparison
