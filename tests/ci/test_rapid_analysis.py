@@ -36,6 +36,7 @@ CliLog.initLog = do_nothing  # type: ignore
 from ciutils import Check, TestScript, conditional_redirect  # type: ignore # noqa: E402
 
 # Only import from lsst packages after logging is configured
+from lsst.daf.butler import Butler  # noqa: E402
 from lsst.rubintv.production.locationConfig import LocationConfig, findMissingConfigKeys  # noqa: E402
 from lsst.rubintv.production.predicates import getDoRaise, runningCI  # noqa: E402
 from lsst.rubintv.production.redisUtils import (  # noqa: E402
@@ -635,6 +636,52 @@ class RedisManager:
             )
         else:
             checks.append(Check(True, f"{n_step1b_sfm}x {inst} SFM step1b finished"))
+
+        # The AOS (WEP monolith) processing for the CWFS pair: a single
+        # payload covering the pair, dispatched when the extra-focal image
+        # landed, and tracked against that image's exposure ID
+        cwfsExtraExpId = 2026062500013
+        info = redisHelper.getExposureProcessingInfo(inst, cwfsExtraExpId)
+        if info is None:
+            checks.append(Check(False, f"No exposure tracking info found for {inst} {cwfsExtraExpId}"))
+        else:
+            finished = info.getFinishedDetectors("AOS")
+            failed = info.getFailedDetectors("AOS")
+            if finished == {0} and not failed:
+                checks.append(Check(True, f"{inst} AOS (WEP) processing finished for {cwfsExtraExpId}"))
+            else:
+                checks.append(
+                    Check(
+                        False,
+                        f"{inst} AOS (WEP) processing for {cwfsExtraExpId}: expected detector 0 finished"
+                        f" and nothing failed, got {finished=}, {failed=}",
+                    )
+                )
+
+        self._check_latiss_aos_outputs(checks)
+
+    def _check_latiss_aos_outputs(self, checks: list[Check]) -> None:
+        """Check the WEP monolith outputs landed in the butler.
+
+        The monolith keys all its outputs on the extra-focal image's visit.
+        """
+        locationConfig = LocationConfig("usdf_testing")
+        butler = Butler.from_config(
+            locationConfig.auxtelButlerPath,
+            instrument="LATISS",
+            collections=[locationConfig.getOutputChain("LATISS")],
+        )
+        dataId = {"instrument": "LATISS", "visit": 2026062500013, "detector": 0}
+        for datasetType in ("zernikes", "donutStampsExtra", "donutStampsIntra"):
+            try:
+                ref = butler.find_dataset(datasetType, dataId)
+            except Exception as e:
+                checks.append(Check(False, f"Error looking up LATISS AOS {datasetType} for {dataId}: {e}"))
+                continue
+            if ref is not None:
+                checks.append(Check(True, f"Found LATISS AOS output {datasetType} for {dataId}"))
+            else:
+                checks.append(Check(False, f"Did not find LATISS AOS output {datasetType} for {dataId}"))
 
     def _check_failure_keys(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
         """Check for failure keys in Redis."""

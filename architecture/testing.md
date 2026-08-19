@@ -161,7 +161,14 @@ Post-processing and visualization:
    - Then 436 (bias), 226 (SFM), 228 (extra-focal)
    - 2 s delays between pushes
 4. Announces FAM pair via `LSSTCam-FROM-OCS_DONUTPAIR`
-5. Also tests LATISS with exposure 20240813/632
+5. Also tests LATISS:
+   - exposure 20240813/632 (on-sky science, exercises SFM)
+   - exposures 20260625/12+13 (a CWFS intra/extra pair, pushed intra
+     first; the extra-focal image landing triggers the `AOS_LATISS`
+     WEP monolith processing of the pair). The final checks assert the
+     AOS detector finished in the tracking hash and that `zernikes`,
+     `donutStampsExtra` and `donutStampsIntra` landed in the butler for
+     the extra-focal visit
 
 ### Redis in CI
 
@@ -189,7 +196,9 @@ Features:
 `tests/createUnitTestCollections.py` builds Butler collections for CI:
 - Sets `RAPID_ANALYSIS_LOCATION=usdf_testing`
 - Runs pipelines in parallel via `ThreadPoolExecutor`
-- Creates collections for: FAM, AOS, SFM, calibration pipelines
+- Creates collections for: FAM, AOS, SFM, calibration pipelines (LSSTCam),
+  plus `AOS_LATISS` (the LATISS WEP monolith, run on the CWFS pair
+  20260625/12+13)
 - Used to create the underlying collections for `test_pipelines.py` unit tests
 - Only needs to be rerun when outputs change
 
