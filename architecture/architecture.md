@@ -121,9 +121,14 @@ Each detector is processed independently on its own worker pod.
 
 **AOS (Adaptive Optics System):**
 - Donut detection and Zernike wavefront estimation
-- Runs only on 8 corner wavefront sensors (detectors 191-204)
-- Handles paired (intra/extra focal) and FAM (full array mode) observations
-- Special quantum graph builder handles donut pair merging
+- LSSTCam: runs only on 8 corner wavefront sensors (detectors 191-204);
+  handles paired (intra/extra focal) and FAM (full array mode) observations,
+  with a special quantum graph builder handling donut pair merging
+- LATISS: a single hard-coded pipeline (`AOS_LATISS`, the ts_wep
+  `LatissMonolithTask`) processes a whole CWFS intra/extra pair - both
+  raws - in one quantum on the SFM worker. Dispatch is self-triggered by
+  the extra-focal image of the pair landing (see `doLatissAosFanout()`);
+  there is no step1b and no RubinTV pipeline selection
 
 ### Step1b (per-visit, sequential)
 
@@ -146,8 +151,17 @@ The head node's `getPipelineConfig()` routes exposures:
 | Observation Type | Pipeline | Workers |
 |-----------------|----------|---------|
 | BIAS, DARK, FLAT | ISR-only | SFM_WORKER |
-| CWFS (FAM) | AOS FAM | AOS_WORKER |
+| CWFS (LSSTCam, FAM) | AOS FAM | SFM_WORKER |
+| CWFS (LATISS) | ISR-only | SFM_WORKER |
 | Science images | SFM | SFM_WORKER + AOS_WORKER (corner chips) |
+
+LATISS CWFS images get per-exposure ISR only (they are donut images, so
+SFM would fail downstream); the wavefront processing itself is dispatched
+outside `getPipelineConfig()`, by `doLatissAosFanout()`: when the
+extra-focal image of a pair lands directly after its intra-focal partner
+(checked with the `completesWepPair()` predicate against the previous
+exposure record), a single `who="AOS"` payload carrying the `AOS_LATISS`
+pipeline is sent to the detector-0 SFM worker, covering both exposures.
 
 ## Head Node Event Loop
 
@@ -161,7 +175,9 @@ The head node's `getPipelineConfig()` routes exposures:
 4. **Write exposure record metadata shard** - for the frontend
 5. **Detector fanout** - `doDetectorFanout()` creates a Payload per enabled
    detector and enqueues to the matching `SFM_WORKER` queue; it also calls
-   `doAosFanout()` internally for LSSTCam corner chips (8 detectors)
+   `doAosFanout()` internally for LSSTCam corner chips (8 detectors), and
+   `doLatissAosFanout()` for LATISS CWFS images (which dispatches the
+   pair-covering `AOS_LATISS` payload when the extra-focal image lands)
 6. **Guider dispatch** - for on-sky LSSTCam observations, send the
    expRecord to `GUIDER_WORKER`
 7. **PostISR mosaic** - `dispatchPostIsrMosaic()` fires when every
@@ -191,7 +207,11 @@ currently triggered.*
 5. **Deserialize payload** - reconstruct PipelineGraph from base64 bytes
 6. **Wait for raw data** - poll Butler until raw exposure is available
 7. **Build quantum graph** - `TrivialQuantumGraphBuilder` (step1a) or
-   `AllDimensionsQuantumGraphBuilder` (step1b)
+   `AllDimensionsQuantumGraphBuilder` (step1b). LATISS AOS payloads are the
+   step1a exception: `makeLatissAosQgBuilder()` uses an
+   `AllDimensionsQuantumGraphBuilder` constrained to
+   `exposure IN (intra, extra)`, because the monolith's single quantum
+   spans both raws of the CWFS pair
 8. **Execute quanta** - iterate through quantum graph nodes:
    - Run quantum via `SingleQuantumExecutor`
    - Post-process: write binned images, metadata shards, ConsDB rows
