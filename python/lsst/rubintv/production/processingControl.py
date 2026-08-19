@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import enum
+import functools
 import logging
 import operator
 import re
@@ -50,10 +51,18 @@ from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.obs.lsst import LsstCam
 from lsst.pex.config.configurableField import ConfigurableInstance
 from lsst.pipe.base import Instrument, Pipeline, PipelineGraph, TaskFactory
+from lsst.summit.utils.packageVersions import PackageVersions
 from lsst.utils import getPackageDir
 from lsst.utils.packages import Packages
 
 from .locationConfig import LocationConfig
+from .packageVersions import (
+    PACKAGE_VERSIONS_SHARD_KEY,
+    checkVersionsAgainstDockerfile,
+    findDockerfile,
+    getCurrentPackageVersions,
+    makePackageVersionShardDict,
+)
 from .payloads import Payload, pipelineGraphToBytes
 from .podDefinition import PodDetails, PodFlavor
 from .predicates import isCalibration, isWepImage, runningCI
@@ -737,6 +746,73 @@ class HeadProcessController:
             f" Data will be written to {self.outputRun}"
         )
 
+        # Compute and cache the tracked package versions at startup, so the
+        # dispatch loop never pays for the git calls, and cross-check them
+        # against the Dockerfile (advisory only, never fatal).
+        self.log.info(
+            f"Tracked package versions (hash {self.packageVersions.versionHash()}):"
+            f" {self.packageVersions.versions}"
+        )
+        self._checkPackageVersionsAgainstDockerfile()
+
+    @functools.cached_property
+    def packageVersions(self) -> PackageVersions:
+        """The git versions of the tracked packages.
+
+        Fixed for the lifetime of the pod, so computed once on first access
+        and cached thereafter. A version set is identified by its
+        ``versionHash``; no state is needed to derive it.
+        """
+        return getCurrentPackageVersions()
+
+    def _checkPackageVersionsAgainstDockerfile(self) -> None:
+        """Warn if the running package versions disagree with the Dockerfile.
+
+        Advisory only: locates the Dockerfile and cross-checks, but never
+        raises - a missing or reformatted Dockerfile must not take the head
+        node down.
+        """
+        try:
+            dockerfilePath = findDockerfile()  # logs the reason if it returns None
+            if dockerfilePath is None:
+                self.log.warning("Skipping package-version cross-check")
+                return
+            checkVersionsAgainstDockerfile(self.packageVersions, dockerfilePath, log=self.log)
+        except Exception:
+            self.log.exception("Package-version cross-check against the Dockerfile failed unexpectedly")
+
+    def writePackageVersionShard(self, expRecord: DimensionRecord) -> None:
+        """Record the tracked package versions for a dispatched image.
+
+        Writes the cached package versions to the AOS metadata page as a single
+        book-marked, dict-like cell, alongside the content hash that identifies
+        the version set as a plain cell. This merged metadata is the source the
+        ConsDB backfill reads from. There is no AOS metadata page for
+        LATISS, so this is a no-op there. Never raises - recording provenance
+        must not be able to disrupt dispatch.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record being dispatched.
+        """
+        if expRecord.instrument == "LATISS":
+            return  # no AOS metadata page for LATISS
+        try:
+            aosShardPath = getShardPath(self.locationConfig, expRecord, isAos=True)
+            writeMetadataShard(
+                aosShardPath,
+                expRecord.day_obs,
+                {
+                    expRecord.seq_num: {
+                        PACKAGE_VERSIONS_SHARD_KEY: makePackageVersionShardDict(self.packageVersions),
+                        "Package version hash": self.packageVersions.versionHash(),
+                    }
+                },
+            )
+        except Exception:
+            self.log.exception(f"Failed to write package-version shard for {expRecord.id}")
+
     def getLatestRunAndPrep(self, forceNewRun: bool) -> str:
         if runningCI():  # always need a new run for CI for timing plots
             self.log.warning("Forcing new run because this is running in CI")  # check we don't see in prod
@@ -884,7 +960,7 @@ class HeadProcessController:
         `updateConfigsFromRubinTV`), so reinstate it here on startup.
 
         The persisted state is the source of truth. When it is entirely absent
-        — e.g. the first startup after this feature was deployed — the value
+        - e.g. the first startup after this feature was deployed - the value
         RubinTV last displayed (the readback) is adopted instead, so existing
         selections aren't lost on the upgrade. The readback is only a one-time
         migration bridge: once a ``_STATE`` key exists it is used verbatim and
@@ -1309,7 +1385,7 @@ class HeadProcessController:
         for expId in activeIds:
             info = self.redisHelper.getExposureProcessingInfo(self.instrument, expId)
             if info is None:
-                # Tracking hash expired — clean up stale active set entry
+                # Tracking hash expired - clean up stale active set entry
                 self.redisHelper.completeExposure(self.instrument, expId)
                 continue
 
@@ -1552,6 +1628,7 @@ class HeadProcessController:
                 assert self.instrument == expRecord.instrument
                 self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.ONE_OFF_EXPRECORD_WORKER)
                 writeExpRecordMetadataShard(expRecord, getShardPath(self.locationConfig, expRecord))
+                self.writePackageVersionShard(expRecord)
                 self.doDetectorFanout(expRecord)
                 if self.instrument == "LSSTCam":
                     self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.GUIDER_WORKER)

@@ -125,6 +125,25 @@ The CI suite has its own mini-framework:
 - **`ProcessManager`** - launches test scripts as `multiprocessing.Process`
 - **`ResultCollector`** - aggregates pass/fail results
 
+### Package Version Validation
+
+At startup the suite scrapes the versions of the tracked science packages —
+git tags/SHAs for the checkouts (`ts_wep`, `donut_viz`, `rubintv_production`,
+`tarts`, located via their `*_DIR` env var) and the installed distribution
+version for `danish` (conda-installed, no env var) — and cross-checks them
+against the refs pinned in the `Dockerfile` (`ARG <name>_ref` for the git
+packages, the `name=version` conda spec for `danish`):
+
+- A mismatch on a Dockerfile-pinned package prints a loud bold-red banner up
+  front and is shown again, scarily, in a version summary printed beneath the
+  test results at the end. This is **advisory** — git is the source of truth
+  and the Dockerfile can legitimately be mid-edit, so it is **not** a failure.
+  `rubintv_production` is excluded from the loud warning (it tracks a SHA
+  under development).
+- A package whose version can't be determined **is** a hard failure: a missing
+  `*_DIR` env var (a git package isn't set up) or an unimportable `danish`
+  means the running image is broken, so the run goes red.
+
 ### Test Phases
 
 **Phase 1: Meta Tests** (30 s timeout)
