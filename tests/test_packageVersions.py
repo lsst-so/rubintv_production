@@ -55,6 +55,7 @@ from lsst.rubintv.production.packageVersions import (
     parseDockerfileRefs,
     versionsMatch,
 )
+from lsst.rubintv.production.parsers import sanitizeNans
 from lsst.summit.utils.packageVersions import UNKNOWN_VERSION, PackageVersions
 
 # The real Dockerfile, located relative to this test file rather than via an
@@ -225,6 +226,20 @@ class PackageVersionsTestCase(lsst.utils.tests.TestCase):
         # inverse must recover exactly the versions that were rendered
         pv = PackageVersions(versions={"ts_wep": "v1", "donut_viz": "v2", "danish": "1.1.1"})
         recovered = packageVersionsFromShardDict(makePackageVersionShardDict(pv))
+        self.assertEqual(recovered, pv)
+        self.assertEqual(recovered.versionHash(), pv.versionHash())
+
+    def test_shardDictSurvivesMetadataMergeSanitization(self) -> None:
+        # Regression test: the metadata merge (mergeShardsAndUpload) passes
+        # every cell through sanitizeNans, which coerces numeric-looking
+        # strings to floats. That used to recurse into the versions book cell,
+        # so a version like danish "1.1" reached the backfill as the float
+        # 1.1: a non-string in the ConsDB blob, and a recomputed hash that no
+        # longer matched the one recorded at dispatch time. The full
+        # write -> merge -> read round-trip must be byte-exact.
+        pv = PackageVersions(versions={"danish": "1.1", "ts_wep": "20250624", "donut_viz": "2.0"})
+        merged = sanitizeNans(makePackageVersionShardDict(pv))
+        recovered = packageVersionsFromShardDict(merged)
         self.assertEqual(recovered, pv)
         self.assertEqual(recovered.versionHash(), pv.versionHash())
 
