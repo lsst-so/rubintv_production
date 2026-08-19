@@ -42,6 +42,11 @@ from lsst.afw.image import ExposureSummaryStats  # type: ignore
 from lsst.afw.table import ExposureCatalog, SourceCatalog  # type: ignore
 from lsst.daf.butler import Butler, DatasetNotFoundError, DimensionRecord
 from lsst.summit.utils import ConsDbClient
+from lsst.summit.utils.packageVersions import (
+    PACKAGE_VERSIONS_COLUMN,
+    PACKAGE_VERSIONS_TABLE,
+    PackageVersions,
+)
 from lsst.summit.utils.simonyi.mountAnalysis import MountErrors
 from lsst.summit.utils.utils import computeCcdExposureId, getDetectorIds
 
@@ -275,7 +280,10 @@ class ConsDBPopulator:
         key = (instrument.lower(), table)
         typeMapping = self._schemaCache.get(key)
         if typeMapping is None:
-            schema = cast(dict[str, tuple[str, str]], self.client.schema(instrument.lower(), table))
+            schema = cast(
+                dict[str, tuple[str, str]],
+                self.client.schema(instrument.lower(), table),
+            )
             typeMapping = {k: v[0] for k, v in schema.items()}
             self._schemaCache[key] = typeMapping  # only cache successful fetches
         return typeMapping
@@ -467,7 +475,10 @@ class ConsDBPopulator:
         )
 
     def _createCcdExposureRows(
-        self, expRecord: DimensionRecord, detectorNum: int | None = None, allowUpdate: bool = False
+        self,
+        expRecord: DimensionRecord,
+        detectorNum: int | None = None,
+        allowUpdate: bool = False,
     ) -> None:
         """Create rows in all the relevant ccdexposure tables for the exp.
 
@@ -508,7 +519,9 @@ class ConsDBPopulator:
     ) -> bool:
         try:
             summaryStats = butler.get(
-                "preliminary_visit_image.summaryStats", visit=expRecord.id, detector=detectorNum
+                "preliminary_visit_image.summaryStats",
+                visit=expRecord.id,
+                detector=detectorNum,
             )
         except DatasetNotFoundError:
             return False
@@ -623,7 +636,11 @@ class ConsDBPopulator:
         )
 
     def populateAllCcdVisitRowsWithButler(
-        self, butler: Butler, expRecord: DimensionRecord, createRows: bool = False, allowUpdate: bool = False
+        self,
+        butler: Butler,
+        expRecord: DimensionRecord,
+        createRows: bool = False,
+        allowUpdate: bool = False,
     ) -> int:
         if createRows:
             self._createExposureRow(expRecord, allowUpdate=allowUpdate)
@@ -645,7 +662,10 @@ class ConsDBPopulator:
         self.populateVisitRow(visitSummary, expRecord, allowUpdate=allowUpdate)
 
     def populateVisitRow(
-        self, visitSummary: ExposureCatalog, expRecord: DimensionRecord, allowUpdate: bool = False
+        self,
+        visitSummary: ExposureCatalog,
+        expRecord: DimensionRecord,
+        allowUpdate: bool = False,
     ) -> None:
         instrument: str = expRecord.instrument
         if not self._shouldInsert():  # ugly but need to check this before accessing the schema
@@ -822,3 +842,65 @@ class ConsDBPopulator:
             # table which will always already be populated
             allowUpdate=True,
         )
+
+    def populatePackageVersions(
+        self,
+        expRecord: DimensionRecord,
+        packageVersions: PackageVersions,
+        allowUpdate: bool = True,
+    ) -> bool:
+        """Write the tracked package versions for an exposure to ConsDB.
+
+        Writing lives here, in Rapid Analysis, rather than in summit_utils, so
+        that ordinary summit_utils users only ever see a way to *read* the
+        versions, never to write them. The blob shape (``toDict``) and the
+        table/column constants still come from summit_utils, and the read there
+        uses the same ones, so the write and the read cannot drift.
+        Used by the backfill tooling (see
+        ``highLevelTools.backfillPackageVersions``), whose source is the merged
+        AOS metadata written at processing time. Location-gated like the other
+        populate methods; the write is a direct, synchronous insert, since the
+        value is a JSON blob (not the scalar columns the shared insert helper
+        is typed for) and package versions are only ever written by backfill.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record to write the versions for. The dataId and the
+            exposure id (which ConsDB requires in the row values for an
+            update) all come straight off the record, so nothing is computed
+            or guessed.
+        packageVersions : `lsst.summit.utils.packageVersions.PackageVersions`
+            The versions to write.
+        allowUpdate : `bool`, optional
+            Allow updating an existing row. Defaults to `True`.
+
+        Returns
+        -------
+        written : `bool`
+            Whether the write was attempted (``False`` if skipped because
+            inserts are not allowed at this location).
+        """
+        instrument: str = expRecord.instrument
+        if not self._shouldInsert():
+            location = self.locationConfig.location
+            logger.info(
+                f"Skipping consDB package-version insert at {location} for {instrument}"
+                f" dayObs={expRecord.day_obs}"
+            )
+            return False
+
+        self.client.insert(
+            instrument=instrument,
+            table=f"cdb_{instrument.lower()}.{PACKAGE_VERSIONS_TABLE}",
+            obs_id=(
+                expRecord.day_obs,
+                expRecord.seq_num,
+            ),  # tuple-form required for updating non ccd-type tables
+            values={
+                PACKAGE_VERSIONS_COLUMN: packageVersions.toDict(),
+                "exposure_id": expRecord.id,
+            },
+            allow_update=allowUpdate,
+        )
+        return True
