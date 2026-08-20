@@ -1121,7 +1121,9 @@ class HeadProcessController:
         record = self._lastProcessedExp
         if record is None:
             return False
-        if isWepImage(record) and "intra" in record.reason.lower():
+        # `or ""` because observation_reason is nullable, and this is called
+        # from the head node's main loop, which must never raise
+        if isWepImage(record) and "intra" in (record.observation_reason or "").lower():
             return True
         return False
 
