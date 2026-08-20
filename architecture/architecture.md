@@ -60,7 +60,8 @@ type, optional depth, and optional detector number.
 
 **Per-detector workers (step1a):**
 - `SFM_WORKER` - Source Finding & Measurement (one per detector)
-- `AOS_WORKER` - Adaptive Optics (corner wavefront sensors only)
+- `AOS_WORKER` - Adaptive Optics (LSSTCam: corner wavefront sensors only;
+  LATISS: a small detector-0 set running the WEP monolith on CWFS pairs)
 
 **Per-instrument workers (step1b / aggregation):**
 - `STEP1B_WORKER` - visit-level SFM gather
@@ -126,9 +127,11 @@ Each detector is processed independently on its own worker pod.
   with a special quantum graph builder handling donut pair merging
 - LATISS: a single hard-coded pipeline (`AOS_LATISS`, the ts_wep
   `LatissMonolithTask`) processes a whole CWFS intra/extra pair - both
-  raws - in one quantum on the SFM worker. Dispatch is self-triggered by
-  the extra-focal image of the pair landing (see `doLatissAosFanout()`);
-  there is no step1b and no RubinTV pipeline selection
+  raws - in one quantum on the dedicated LATISS AOS worker, so the
+  potentially-slow wavefront processing never contends with the SFM
+  workers' queues. Dispatch is self-triggered by the extra-focal image
+  of the pair landing (see `doLatissAosFanout()`); there is no step1b
+  and no RubinTV pipeline selection
 
 ### Step1b (per-visit, sequential)
 
@@ -161,7 +164,7 @@ outside `getPipelineConfig()`, by `doLatissAosFanout()`: when the
 extra-focal image of a pair lands directly after its intra-focal partner
 (checked with the `completesWepPair()` predicate against the previous
 exposure record), a single `who="AOS"` payload carrying the `AOS_LATISS`
-pipeline is sent to the detector-0 SFM worker, covering both exposures.
+pipeline is sent to the detector-0 `AOS_WORKER`, covering both exposures.
 
 ## Head Node Event Loop
 

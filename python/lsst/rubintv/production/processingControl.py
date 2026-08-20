@@ -1063,6 +1063,10 @@ class HeadProcessController:
         monolith task consumes both raws in one quantum. The pipeline is
         always ``AOS_LATISS`` - there is no RubinTV control for LATISS AOS.
 
+        The payload goes to the dedicated LATISS AOS worker rather than the
+        SFM workers, so the potentially-slow wavefront processing never
+        queues behind the per-exposure ISR work (or vice versa).
+
         Parameters
         ----------
         expRecord : `lsst.daf.butler.DimensionRecord`
@@ -1105,7 +1109,7 @@ class HeadProcessController:
         # as for LSSTCam, even though it's the only option for LATISS
         self.redisHelper.setAosPipelineConfig(self.instrument, expRecord.id, "AOS_LATISS")
         self.log.info(f"Dispatching AOS_LATISS for CWFS pair {previousExpId}+{expRecord.id}")
-        self._dispatchPayloads({detectorId: payload}, PodFlavor.SFM_WORKER)
+        self._dispatchPayloads({detectorId: payload}, PodFlavor.AOS_WORKER)
 
     def isBetweenFamPair(self) -> bool:
         """Check if we've received an intra-focal FAM image and not yet
