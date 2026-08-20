@@ -20,7 +20,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.daf.butler import Butler
-from lsst.rubintv.production.formatters import getPodWorkerNumber
 from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
@@ -34,10 +33,13 @@ instrument = "LATISS"
 
 # Runs the AOS_LATISS (WEP monolith) payloads dispatched by the head node for
 # completed CWFS intra/extra pairs, keeping the potentially-slow wavefront
-# processing off the SFM workers' queues.
-workerNum = getPodWorkerNumber()
-detectorNum = 0
-detectorDepth = workerNum
+# processing off the SFM workers' queues. These pods are interchangeable
+# replicas with no per-pod identity: every replica uses the same PodDetails
+# and therefore consumes from the same queue, with each payload atomically
+# popped by exactly one of them, so they can be scaled with a plain
+# Deployment's replica count rather than a StatefulSet.
+detectorNum = 0  # LATISS's only detector
+detectorDepth = 0  # deliberately shared by all replicas, see above
 
 locationConfig = getAutomaticLocationConfig()
 podDetails = PodDetails(

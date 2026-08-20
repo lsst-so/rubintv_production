@@ -61,7 +61,9 @@ type, optional depth, and optional detector number.
 **Per-detector workers (step1a):**
 - `SFM_WORKER` - Source Finding & Measurement (one per detector)
 - `AOS_WORKER` - Adaptive Optics (LSSTCam: corner wavefront sensors only;
-  LATISS: a small detector-0 set running the WEP monolith on CWFS pairs)
+  LATISS: identity-less replicas all sharing the detector-0 depth-0 queue,
+  running the WEP monolith on CWFS pairs - each payload is atomically
+  popped by exactly one replica, so they scale by plain replica count)
 
 **Per-instrument workers (step1b / aggregation):**
 - `STEP1B_WORKER` - visit-level SFM gather
