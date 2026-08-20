@@ -140,7 +140,9 @@ Small scripts validating the test framework itself:
 
 **Phase 2: Round 1** (900 s / 15 min timeout)
 Full pipeline execution:
-- Head node + SFM workers + step1b workers for LATISS and LSSTCam
+- Head node + SFM workers + step1b workers for LATISS and LSSTCam,
+  plus the dedicated LATISS AOS worker (detector 0) for the WEP
+  monolith pair processing
 - 18 SFM detectors for LSSTCam (90-98, 144-152)
 - Real Butler queries against test data (dayObs=20251115)
 - Test exposures: 226 (SFM), 227+228 (FAM CWFS pair), 436 (bias)
