@@ -219,7 +219,7 @@ class TestConfig:
             ),
             TestScript(
                 "scripts/LATISS/runAosWorker.py",
-                ["usdf_testing", "0"],
+                ["usdf_testing"],
                 display_on_pass=True,
                 tee_output=False,
             ),
