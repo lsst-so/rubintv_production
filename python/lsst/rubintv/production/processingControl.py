@@ -497,7 +497,9 @@ def buildPipelines(
         if set(pipelines.keys()) != set(LATISS_PIPELINE_NAMES):
             missing = set(LATISS_PIPELINE_NAMES) - set(pipelines.keys())
             extra = set(pipelines.keys()) - set(LATISS_PIPELINE_NAMES)
-            raise ValueError(f"LATISS pipeline names don't match expected. Missing: {missing}, {extra=}")
+            raise ValueError(
+                f"LATISS pipeline names don't match expected. Missing: {missing}, extra: {extra}"
+            )
     else:
         pipelines["AOS_DANISH"] = PipelineComponents(
             butler.registry, aosFileDanish, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
