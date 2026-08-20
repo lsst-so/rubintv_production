@@ -447,6 +447,56 @@ class RestoreAosPipelinesTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(self.helper.getControlReadback(self.AOS[0]), "AOS_TIE")
 
 
+class IsBetweenFamPairTestCase(lsst.utils.tests.TestCase):
+    """`HeadProcessController.isBetweenFamPair` — the guard that rejects
+    RubinTV FAM-pipeline switches between the two images of a FAM pair.
+
+    The method only consults ``self._lastProcessedExp``, so it is invoked
+    unbound against a duck-typed ``self``, as in
+    `RestoreAosPipelinesTestCase`. These tests catch (1) the guard failing
+    to engage after an intra-focal FAM image, (2) it wrongly engaging on
+    other image types, and (3) the regression where reading the record's
+    reason crashed the head node instead of applying the guard.
+    """
+
+    def _check(self, record: SimpleNamespace | None) -> bool:
+        controller = SimpleNamespace(_lastProcessedExp=record)
+        return HeadProcessController.isBetweenFamPair(cast(HeadProcessController, controller))
+
+    def test_intraFamImageEngagesGuard(self) -> None:
+        # the happy path: the last image was the intra-focal half of a FAM
+        # pair, so pipeline switches must be rejected until the extra lands.
+        # Regression: this used to read ``record.reason``, an attribute which
+        # doesn't exist on exposure records (the field is
+        # ``observation_reason``), so the guard had never worked: it raised
+        # AttributeError in the head node's main loop — crashing the head
+        # node — the moment an operator switched the FAM pipeline right after
+        # a CWFS image, which is exactly the situation it exists to protect.
+        record = SimpleNamespace(observation_type="cwfs", observation_reason="intra")
+        self.assertTrue(self._check(record))
+
+    def test_noLastExposureDoesNotEngage(self) -> None:
+        # fresh head node: nothing processed yet, so no pair to be between
+        self.assertFalse(self._check(None))
+
+    def test_extraFamImageDoesNotEngage(self) -> None:
+        # the extra-focal image completes the pair, so switching is safe again
+        record = SimpleNamespace(observation_type="cwfs", observation_reason="extra")
+        self.assertFalse(self._check(record))
+
+    def test_nonFamImageDoesNotEngage(self) -> None:
+        # a non-CWFS image can't be half of a FAM pair, whatever its reason
+        record = SimpleNamespace(observation_type="science", observation_reason="intra")
+        self.assertFalse(self._check(record))
+
+    def test_noneReasonDoesNotRaise(self) -> None:
+        # observation_reason is nullable, and this method runs unguarded in
+        # the head node's main loop (via updateConfigsFromRubinTV), so a None
+        # must give False, never raise
+        record = SimpleNamespace(observation_type="cwfs", observation_reason=None)
+        self.assertFalse(self._check(record))
+
+
 class TestMemory(lsst.utils.tests.MemoryTestCase):
     pass
 
