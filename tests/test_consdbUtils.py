@@ -30,6 +30,7 @@ import numpy as np
 
 import lsst.utils.tests
 from lsst.afw.image import ExposureSummaryStats
+from lsst.daf.butler import DimensionRecord
 from lsst.rubintv.production.consdbUtils import (
     CCD_VISIT_MAPPING,
     VISIT_MIN_MED_MAX_MAPPING,
@@ -41,6 +42,11 @@ from lsst.rubintv.production.consdbUtils import (
 from lsst.rubintv.production.locationConfig import LocationConfig
 from lsst.rubintv.production.redisUtils import RedisHelper
 from lsst.summit.utils.consdbClient import ConsDbClient
+from lsst.summit.utils.packageVersions import (
+    PACKAGE_VERSIONS_COLUMN,
+    PACKAGE_VERSIONS_TABLE,
+    PackageVersions,
+)
 
 
 class MappingShapeTestCase(lsst.utils.tests.TestCase):
@@ -293,6 +299,43 @@ class AsyncWriteTestCase(lsst.utils.tests.TestCase):
             asyncWrites=asyncWrites,
         )
 
+    def test_populatePackageVersions(self) -> None:
+        # the write path: the summit_utils blob (toDict) must reach the client
+        # at the summit_utils table/column, keyed by the record's
+        # (dayObs, seqNum) with the record's exposure id alongside. The id is
+        # taken verbatim from expRecord.id - it used to be recomputed with a
+        # hard-coded "O" controller, which lied for exposures taken under any
+        # other controller - so a value no recomputation could produce is used
+        # here. Table/column come from the summit_utils constants the read
+        # side also uses, so this pins that the two agree.
+        client = _RecordingClient()
+        populator = self._makePopulator(client, asyncWrites=False)  # synchronous, like backfill
+        pv = PackageVersions(versions={"ts_wep": "v17.6.1-alpha", "danish": "1.1.1"})
+        expRecord = cast(
+            DimensionRecord,
+            SimpleNamespace(instrument="LSSTCam", day_obs=20250624, seq_num=123, id=5025062400123),
+        )
+        written = populator.populatePackageVersions(expRecord, pv)
+        self.assertTrue(written)
+        self.assertEqual(len(client.inserts), 1)
+        insert = client.inserts[0]
+        self.assertEqual(insert["table"], f"cdb_lsstcam.{PACKAGE_VERSIONS_TABLE}")
+        self.assertEqual(insert["values"][PACKAGE_VERSIONS_COLUMN], pv.toDict())
+        self.assertEqual(insert["values"]["exposure_id"], 5025062400123)
+        self.assertEqual(insert["obs_id"], (20250624, 123))
+
+    def test_populatePackageVersionsSkippedOffSummit(self) -> None:
+        # the location gate suppresses the write where inserts aren't allowed
+        client = _RecordingClient()
+        populator = self._makePopulator(client, location="usdf", asyncWrites=False)
+        expRecord = cast(
+            DimensionRecord,
+            SimpleNamespace(instrument="LSSTCam", day_obs=20250624, seq_num=123, id=5025062400123),
+        )
+        written = populator.populatePackageVersions(expRecord, PackageVersions(versions={"ts_wep": "v1"}))
+        self.assertFalse(written)
+        self.assertEqual(len(client.inserts), 0)
+
     def test_asyncWriteRunsOnBackgroundThread(self) -> None:
         client = _RecordingClient()
         populator = self._makePopulator(client)
@@ -374,7 +417,12 @@ class AsyncWriteTestCase(lsst.utils.tests.TestCase):
         called: list[bool] = []
         with self.assertLogs("lsst.rubintv.production.consdbUtils", level="ERROR"):
             populator._insertIfAllowed(
-                "LSSTCam", "t", 1, {"a": 1.0}, False, onSuccess=lambda: called.append(True)
+                "LSSTCam",
+                "t",
+                1,
+                {"a": 1.0},
+                False,
+                onSuccess=lambda: called.append(True),
             )
             populator.flush()
         self.assertEqual(called, [])

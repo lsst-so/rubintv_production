@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import enum
+import functools
 import logging
 import operator
 import re
@@ -50,13 +51,21 @@ from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.obs.lsst import LsstCam
 from lsst.pex.config.configurableField import ConfigurableInstance
 from lsst.pipe.base import Instrument, Pipeline, PipelineGraph, TaskFactory
+from lsst.summit.utils.packageVersions import PackageVersions
 from lsst.utils import getPackageDir
 from lsst.utils.packages import Packages
 
 from .locationConfig import LocationConfig
+from .packageVersions import (
+    PACKAGE_VERSIONS_SHARD_KEY,
+    checkVersionsAgainstDockerfile,
+    findDockerfile,
+    getCurrentPackageVersions,
+    makePackageVersionShardDict,
+)
 from .payloads import Payload, pipelineGraphToBytes
 from .podDefinition import PodDetails, PodFlavor
-from .predicates import isCalibration, isWepImage, runningCI
+from .predicates import completesWepPair, isCalibration, isWepImage, runningCI
 from .redisUtils import ExposureProcessingInfo, RedisHelper, decode_string
 from .shardIo import getShardPath, writeExpRecordMetadataShard, writeMetadataShard
 from .timing import BoxCarTimer
@@ -71,7 +80,8 @@ if TYPE_CHECKING:
 # NB: these must all be initializable or the head node will not come up.
 # Similarly, the head node will not initialize any pipelines that are not in
 # this list, so if you want to add a new pipeline, add it here and make sure it
-# is created in buildPipelines below. (This doesn't apply to LATISS though)
+# is created in buildPipelines below. (LATISS has its own list, see
+# LATISS_PIPELINE_NAMES below)
 PIPELINE_NAMES: tuple[str, ...] = (
     # Science pipeline processing
     "SFM",
@@ -94,6 +104,19 @@ PIPELINE_NAMES: tuple[str, ...] = (
     # Full-array-mode AOS pipelines
     "AOS_FAM_TIE",
     "AOS_FAM_DANISH",
+)
+
+# The equivalent list for LATISS, where the same rules apply. LATISS shares
+# the calib/ISR/SFM pipelines but has a single, hard-coded AOS pipeline: the
+# WEP monolith task, which processes a whole CWFS intra/extra pair in one
+# quantum. There is no RubinTV pipeline selection for LATISS.
+LATISS_PIPELINE_NAMES: tuple[str, ...] = (
+    "SFM",
+    "BIAS",
+    "DARK",
+    "FLAT",
+    "ISR",
+    "AOS_LATISS",
 )
 
 
@@ -447,6 +470,7 @@ def buildPipelines(
     unpairedDanishFile = locationConfig.aosLSSTCamUnpairedDanishPipelineFile
     aosWcsBin1DanishFile = locationConfig.aosLSSTCamWcsDanishBin1PipelineFile
     aosWcsBin2DanishFile = locationConfig.aosLSSTCamWcsDanishBin2PipelineFile
+    aosLatissFile = locationConfig.aosLATISSPipelineFile
 
     drpPipeDir = getPackageDir("drp_pipe")
     biasFile = (Path(drpPipeDir) / "pipelines" / instrument / "quickLookBias.yaml").as_posix()
@@ -473,9 +497,19 @@ def buildPipelines(
         ["step1a", "step1b"],
     )
 
-    if instrument != "LATISS":
-        # NOTE: there is no dict entry for LATISS for AOS as AOS runs
-        # differently there. It might change in the future, but not soon.
+    if instrument == "LATISS":
+        # LATISS runs a single, hard-coded AOS pipeline: the WEP monolith
+        # task, which consumes both raws of a CWFS intra/extra pair in one
+        # quantum, and so has no step1b. There is no RubinTV pipeline
+        # selection for LATISS.
+        pipelines["AOS_LATISS"] = PipelineComponents(butler.registry, aosLatissFile, ["step1a"], ["step1a"])
+        if set(pipelines.keys()) != set(LATISS_PIPELINE_NAMES):
+            missing = set(LATISS_PIPELINE_NAMES) - set(pipelines.keys())
+            extra = set(pipelines.keys()) - set(LATISS_PIPELINE_NAMES)
+            raise ValueError(
+                f"LATISS pipeline names don't match expected. Missing: {missing}, extra: {extra}"
+            )
+    else:
         pipelines["AOS_DANISH"] = PipelineComponents(
             butler.registry, aosFileDanish, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
@@ -737,6 +771,73 @@ class HeadProcessController:
             f" Data will be written to {self.outputRun}"
         )
 
+        # Compute and cache the tracked package versions at startup, so the
+        # dispatch loop never pays for the git calls, and cross-check them
+        # against the Dockerfile (advisory only, never fatal).
+        self.log.info(
+            f"Tracked package versions (hash {self.packageVersions.versionHash()}):"
+            f" {self.packageVersions.versions}"
+        )
+        self._checkPackageVersionsAgainstDockerfile()
+
+    @functools.cached_property
+    def packageVersions(self) -> PackageVersions:
+        """The git versions of the tracked science packages.
+
+        Fixed for the lifetime of the pod, so computed once on first access
+        and cached thereafter. A version set is identified by its
+        ``versionHash``; no state is needed to derive it.
+        """
+        return getCurrentPackageVersions()
+
+    def _checkPackageVersionsAgainstDockerfile(self) -> None:
+        """Warn if the running package versions disagree with the Dockerfile.
+
+        Advisory only: locates the Dockerfile and cross-checks, but never
+        raises — a missing or reformatted Dockerfile must not take the head
+        node down.
+        """
+        try:
+            dockerfilePath = findDockerfile()
+            if dockerfilePath is None:
+                self.log.warning("Could not locate the Dockerfile; skipping package-version cross-check")
+                return
+            checkVersionsAgainstDockerfile(self.packageVersions, dockerfilePath, log=self.log)
+        except Exception:
+            self.log.exception("Package-version cross-check against the Dockerfile failed unexpectedly")
+
+    def writePackageVersionShard(self, expRecord: DimensionRecord) -> None:
+        """Record the tracked package versions for a dispatched image.
+
+        Writes the cached package versions to the AOS metadata page as a single
+        book-marked, dict-like cell, alongside the content hash that identifies
+        the version set as a plain cell. This merged metadata is the source the
+        ConsDB backfill reads from. There is no AOS metadata page for
+        LATISS, so this is a no-op there. Never raises — recording provenance
+        must not be able to disrupt dispatch.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record being dispatched.
+        """
+        if expRecord.instrument == "LATISS":
+            return  # no AOS metadata page for LATISS
+        try:
+            aosShardPath = getShardPath(self.locationConfig, expRecord, isAos=True)
+            writeMetadataShard(
+                aosShardPath,
+                expRecord.day_obs,
+                {
+                    expRecord.seq_num: {
+                        PACKAGE_VERSIONS_SHARD_KEY: makePackageVersionShardDict(self.packageVersions),
+                        "Package version hash": self.packageVersions.versionHash(),
+                    }
+                },
+            )
+        except Exception:
+            self.log.exception(f"Failed to write package-version shard for {expRecord.id}")
+
     def getLatestRunAndPrep(self, forceNewRun: bool) -> str:
         if runningCI():  # always need a new run for CI for timing plots
             self.log.warning("Forcing new run because this is running in CI")  # check we don't see in prod
@@ -962,12 +1063,13 @@ class HeadProcessController:
                 pipelineKey = self.currentAosFamPipeline
                 who = "AOS"
             else:
-                # TODO: once we move LATISS WEP to RA this will do the real
-                # dispatch. For now, just send off and probably fail
-                # downstream in SFM somewhere, but this will stop the
-                # LATISS head node crashing.
-                self.log.info(f"Sending LATISS CWFS image {expRecord.id} {imageType=} for step1a SFM")
-                pipelineKey, who = "SFM", "SFM"
+                # LATISS CWFS images get per-exposure ISR only: they are
+                # donut images, so SFM would just fail downstream at step1b.
+                # The WEP processing for the pair is dispatched separately in
+                # doLatissAosFanout, triggered by the extra-focal image
+                # landing.
+                self.log.info(f"Sending LATISS CWFS image {expRecord.id} {imageType=} for step1a ISR")
+                pipelineKey, who = "ISR", "ISR"
         else:  # all non-calib, properly headered images
             self.log.info(f"Sending {expRecord.id} {imageType=} for full step1a SFM")
             pipelineKey, who = "SFM", "SFM"
@@ -1027,6 +1129,64 @@ class HeadProcessController:
         # fire for every image this is probably fine.
         writeExpRecordMetadataShard(expRecord, aosShardPath)
 
+    def doLatissAosFanout(self, expRecord: DimensionRecord) -> None:
+        """Dispatch the AOS processing for a completed LATISS CWFS pair.
+
+        LATISS CWFS pairs land as consecutive exposures, intra-focal first.
+        Nothing is dispatched here for the intra-focal image: the processing
+        is self-triggering off the extra-focal image landing, at which point
+        a single payload covering the whole pair is sent, because the WEP
+        monolith task consumes both raws in one quantum. The pipeline is
+        always ``AOS_LATISS`` - there is no RubinTV control for LATISS AOS.
+
+        The payload goes to the dedicated LATISS AOS worker rather than the
+        SFM workers, so the potentially-slow wavefront processing never
+        queues behind the per-exposure ISR work (or vice versa).
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record to process. Must be a CWFS image.
+        """
+        if "extra" not in (expRecord.observation_reason or "").lower():
+            return  # the pair is only complete once the extra-focal image lands
+
+        previousExpId = expRecord.id - 1
+        previousRecords = list(
+            self.butler.registry.queryDimensionRecords(
+                "exposure", instrument=self.instrument, exposure=previousExpId
+            )
+        )
+        previousRecord = previousRecords[0] if previousRecords else None
+        if previousRecord is None or not completesWepPair(previousRecord, expRecord):
+            self.log.warning(
+                f"Got extra-focal CWFS image {expRecord.id} but exposure {previousExpId} is not its"
+                " intra-focal partner - skipping AOS dispatch"
+            )
+            return
+        if previousRecord.group != expRecord.group:
+            # pairs are expected to share a group, but the pairing inside the
+            # task is done on focusZ, so warn and carry on
+            self.log.warning(
+                f"CWFS pair {previousExpId}+{expRecord.id} have differing groups"
+                f" ({previousRecord.group} vs {expRecord.group}) - dispatching anyway"
+            )
+
+        detectorId = 0  # LATISS's only detector
+        dataId = DataCoordinate.standardize(expRecord.dataId, detector=detectorId)
+        payload = Payload(
+            dataId=dataId,
+            pipelineGraphBytes=self.pipelines["AOS_LATISS"].graphBytes["step1a"],
+            run=self.outputRun,
+            who="AOS",
+        )
+        self.redisHelper.setExpectedDetectors(self.instrument, expRecord.id, [detectorId], "AOS")
+        # record the pipeline so the step1b gather dispatch knows what ran,
+        # as for LSSTCam, even though it's the only option for LATISS
+        self.redisHelper.setAosPipelineConfig(self.instrument, expRecord.id, "AOS_LATISS")
+        self.log.info(f"Dispatching AOS_LATISS for CWFS pair {previousExpId}+{expRecord.id}")
+        self._dispatchPayloads({detectorId: payload}, PodFlavor.AOS_WORKER)
+
     def isBetweenFamPair(self) -> bool:
         """Check if we've received an intra-focal FAM image and not yet
         dispatched the extra-focal.
@@ -1043,7 +1203,9 @@ class HeadProcessController:
         record = self._lastProcessedExp
         if record is None:
             return False
-        if isWepImage(record) and "intra" in record.reason.lower():
+        # `or ""` because observation_reason is nullable, and this is called
+        # from the head node's main loop, which must never raise
+        if isWepImage(record) and "intra" in (record.observation_reason or "").lower():
             return True
         return False
 
@@ -1064,6 +1226,9 @@ class HeadProcessController:
         # and has a TTL, even for FAM images where doAosFanout is skipped.
         self.redisHelper.initExposureTracking(instrument, expRecord.id)
 
+        # record the science-package versions used to process this image
+        self.writePackageVersionShard(expRecord)
+
         if self.instrument != "LATISS":
             if not isFam:  # dispatch corner chips for normal images first
                 self.doAosFanout(expRecord)
@@ -1074,6 +1239,10 @@ class HeadProcessController:
                 # record pipeline config so the step1b dispatch knows what the
                 # active pipeline was
                 self.redisHelper.setAosPipelineConfig(instrument, expRecord.id, self.currentAosFamPipeline)
+        elif isFam:
+            # LATISS CWFS pairs are self-triggering: the extra-focal image
+            # landing dispatches the WEP processing for the whole pair
+            self.doLatissAosFanout(expRecord)
 
         # data driven section
         targetPipelineBytes, targetPipelineGraph, who = self.getPipelineConfig(expRecord)
@@ -1420,7 +1589,9 @@ class HeadProcessController:
                     self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_VISITIMAGE_WORKER)
                     self.log.info(f"Sending {expRecord.id} for radial plot processing")
                     self.dispatchRadialPlot(expRecord)
-            if who == "AOS":
+            if who == "AOS" and self.instrument != "LATISS":
+                # not for LATISS: the ISR gather for the same exposure has
+                # already dispatched its one-off postISR processing
                 (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoord)
                 self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
 

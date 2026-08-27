@@ -21,18 +21,27 @@
 
 """Test cases for highLevelTools."""
 
+import json
+import os
+import tempfile
 import unittest
+from types import SimpleNamespace
 from typing import cast
 from unittest.mock import patch
 
 from astropy.table import Table
 
 import lsst.utils.tests
+from lsst.daf.butler import Butler, DimensionRecord
+from lsst.rubintv.production.consdbUtils import ConsDBPopulator
 from lsst.rubintv.production.highLevelTools import (
+    backfillPackageVersions,
     checkCcdVisitQuicklookTable,
     checkVisitQuicklookTable,
 )
+from lsst.rubintv.production.packageVersions import PACKAGE_VERSIONS_SHARD_KEY
 from lsst.summit.utils.consdbClient import ConsDbClient
+from lsst.summit.utils.packageVersions import PackageVersions
 
 # Module path used when patching the ConsDB query helpers that the table-check
 # functions call, so the tests never need a live ConsDbClient.
@@ -130,6 +139,72 @@ class QuicklookTableCheckTestCase(lsst.utils.tests.TestCase):
 
         self.assertEqual(results.maxSeqNum, 5)
         self.assertTrue(results.exceedsButler)
+
+
+class _RecordingPopulator:
+    """A ``ConsDBPopulator`` stand-in that records package-version writes."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[DimensionRecord, PackageVersions]] = []
+
+    def populatePackageVersions(
+        self,
+        expRecord: DimensionRecord,
+        packageVersions: PackageVersions,
+        allowUpdate: bool = True,
+    ) -> bool:
+        self.calls.append((expRecord, packageVersions))
+        return True
+
+
+class _FakeButler:
+    """A ``Butler`` stand-in serving canned exposure records for the day."""
+
+    def __init__(self, records: list[DimensionRecord]) -> None:
+        self.records = records
+
+    def query_dimension_records(self, element: str, where: str = "") -> list[DimensionRecord]:
+        return self.records
+
+
+class BackfillPackageVersionsTestCase(lsst.utils.tests.TestCase):
+    def test_backfillPackageVersions(self) -> None:
+        # backfill reads the merged sidecar and writes only the version-bearing
+        # seqNums, recovering the exact versions (display marker stripped) and
+        # passing the matching exposure record through, so the populator gets
+        # the true exposure id off the record rather than recomputing it (the
+        # id used to be recomputed with a hard-coded "O" controller)
+        versions = {"ts_wep": "v17.6.1-alpha", "danish": "1.1.1"}
+        metadata = {
+            "12": {PACKAGE_VERSIONS_SHARD_KEY: {**versions, "DISPLAY_VALUE": "📖"}, "PSF": 1.2},
+            "13": {"PSF": 1.3},  # no package versions recorded -> skipped
+            "14": {PACKAGE_VERSIONS_SHARD_KEY: {**versions, "DISPLAY_VALUE": "📖"}},  # no record, below
+        }
+        record12 = cast(
+            DimensionRecord,
+            SimpleNamespace(instrument="LSSTCam", day_obs=20250624, seq_num=12, id=2025062400012),
+        )
+        record13 = cast(
+            DimensionRecord,
+            SimpleNamespace(instrument="LSSTCam", day_obs=20250624, seq_num=13, id=2025062400013),
+        )
+        # no record for seqNum 14: version-bearing metadata with no matching
+        # exposure record must be skipped with a warning, not raise or write
+        butler = _FakeButler([record12, record13])
+        populator = _RecordingPopulator()
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "dayObs_20250624.json"), "w") as f:
+                json.dump(metadata, f)
+            with self.assertLogs(level="WARNING"):
+                nWritten = backfillPackageVersions(
+                    cast(Butler, butler), cast(ConsDBPopulator, populator), tmp, 20250624, "LSSTCam"
+                )
+
+        self.assertEqual(nWritten, 1)
+        self.assertEqual(len(populator.calls), 1)
+        expRecord, packageVersions = populator.calls[0]
+        self.assertIs(expRecord, record12)  # the actual record, exposure id and all
+        self.assertEqual(packageVersions, PackageVersions(versions=versions))
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

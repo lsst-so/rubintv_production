@@ -38,7 +38,11 @@ from lsst.rubintv.production.locationConfig import LocationConfig, getAutomaticL
 from lsst.rubintv.production.payloads import Payload
 from lsst.rubintv.production.pipelineRunning import SingleCorePipelineRunner
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
-from lsst.rubintv.production.processingControl import PipelineComponents, buildPipelines
+from lsst.rubintv.production.processingControl import (
+    LATISS_PIPELINE_NAMES,
+    PipelineComponents,
+    buildPipelines,
+)
 from lsst.summit.utils.utils import getSite
 
 _LOG = logging.getLogger("lsst.rubintv.production.tests.test_pipelines")
@@ -467,6 +471,134 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
                             f" Found tasks: {quantaTaskList}"
                         ),
                     )
+
+
+@unittest.skipIf(not HAS_BUTLER, SKIP_NO_BUTLER_REASON)
+class TestLatissPipelineGeneration(lsst.utils.tests.TestCase):
+    """Pipeline building and QG generation for LATISS.
+
+    LATISS has a single, hard-coded AOS pipeline (the WEP monolith), whose
+    quantum consumes both raws of a CWFS intra/extra pair, dispatched on the
+    extra-focal image landing. These tests catch (1) the LATISS pipeline set
+    drifting from LATISS_PIPELINE_NAMES, (2) the pair-spanning quantum graph
+    no longer resolving to exactly one monolith quantum, and (3) the guards
+    against dispatching AOS payloads for the wrong image type or the wrong
+    half of the pair going soft.
+
+    The fixture data is a real CWFS pair: exposures 2026062500012 (intra)
+    and 2026062500013 (extra), the same pair the CI drip-feeds.
+    """
+
+    locationConfig: LocationConfig
+    instrument: str
+    butler: Butler
+    graphs: list[PipelineGraph]
+    pipelines: dict[str, PipelineComponents]
+    intraRecord: DimensionRecord
+    extraRecord: DimensionRecord
+    step1aRunner: SingleCorePipelineRunner
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls.locationConfig = getAutomaticLocationConfig()
+        cls.instrument = "LATISS"
+        cls.butler = Butler.from_config(
+            cls.locationConfig.auxtelButlerPath,
+            instrument=cls.instrument,
+            collections=[f"{cls.instrument}/defaults"],
+        )
+        cls.graphs, cls.pipelines = buildPipelines(cls.instrument, cls.locationConfig, cls.butler)
+
+        where = "exposure.day_obs=20260625 AND exposure.seq_num in (12, 13) AND instrument='LATISS'"
+        records = cls.butler.query_dimension_records("exposure", where=where)
+        assert len(records) == 2, f"Expected 2 fixture exposure records, got {len(records)}"
+        rd = {r.seq_num: r for r in records}
+        cls.intraRecord = rd[12]
+        cls.extraRecord = rd[13]
+
+        podDetails = PodDetails(
+            instrument="FAKE_INSTRUMENT", podFlavor=PodFlavor.SFM_WORKER, detectorNumber=0, depth=0
+        )
+        cls.step1aRunner = SingleCorePipelineRunner(
+            butler=cls.butler,
+            locationConfig=cls.locationConfig,
+            instrument=cls.instrument,
+            step="step1a",
+            awaitsDataProduct="raw",
+            podDetails=podDetails,
+            doRaise=False,
+        )
+
+    def _makeAosPayload(self, expRecord: DimensionRecord) -> Payload:
+        dataCoord = self.butler.registry.expandDataId(
+            exposure=expRecord.id, detector=0, instrument=self.instrument
+        )
+        payload = Payload(dataCoord, b"", "does not matter here", who="AOS")
+        return Payload.from_json(payload.to_json(), self.butler)  # fully formed
+
+    def testExpectedPipelinesArePresent(self) -> None:
+        # both directions, so that adding or renaming a LATISS pipeline fails
+        # loudly here until LATISS_PIPELINE_NAMES is updated to match
+        for pipelineName in LATISS_PIPELINE_NAMES:
+            self.assertIn(pipelineName, self.pipelines)
+        for pipelineName in self.pipelines.keys():
+            self.assertIn(pipelineName, LATISS_PIPELINE_NAMES, f"Unexpected pipeline {pipelineName} found")
+
+    def testLatissAosQuantumGraph(self) -> None:
+        # The pair-spanning quantum graph: a payload carrying the extra-focal
+        # image must resolve to exactly one monolith quantum, which consumes
+        # the raws of *both* images of the pair.
+        runCollection = getUserRunCollectionName("AOS_LATISS")
+        butler = Butler.from_config(
+            self.locationConfig.auxtelButlerPath,
+            instrument=self.instrument,
+            collections=[f"{self.instrument}/defaults", runCollection],
+            writeable=True,
+        )
+        runner = self.step1aRunner
+        runner.butler = butler
+        runner.runCollection = runCollection
+
+        payload = self._makeAosPayload(self.extraRecord)
+        graph = self.pipelines["AOS_LATISS"].graphs["step1a"]
+        with swallowLogs():
+            qgb, where, _, _ = runner.getQuantumGraphBuilder(payload, graph)
+            qg = qgb.finish().assemble()
+        self.assertIsInstance(qg, PredictedQuantumGraph)
+
+        # both exposures of the pair must be in the data query
+        self.assertIn(str(self.intraRecord.id), where)
+        self.assertIn(str(self.extraRecord.id), where)
+
+        taskNames = list(qg.quanta_by_task.keys())
+        self.assertEqual(len(taskNames), 1, f"Expected only the monolith task, got {taskNames}")
+        self.assertIn("latissmonolith", taskNames[0].lower())
+        self.assertEqual(len(qg.quanta_by_task[taskNames[0]]), 1)
+
+        executionQuanta = qg.build_execution_quanta()
+        (quantum,) = executionQuanta.values()
+        rawRefs = [ref for refs in quantum.inputs.values() for ref in refs if ref.datasetType.name == "raw"]
+        rawExpIds = {ref.dataId["exposure"] for ref in rawRefs}
+        self.assertEqual(rawExpIds, {self.intraRecord.id, self.extraRecord.id})
+
+    def testLatissAosRaisesOnIntraFocalPayload(self) -> None:
+        # AOS payloads are only ever dispatched on the extra-focal image; an
+        # intra-focal one means the head node trigger has gone wrong, so the
+        # worker must refuse it rather than build a graph for the wrong pair
+        payload = self._makeAosPayload(self.intraRecord)
+        graph = self.pipelines["AOS_LATISS"].graphs["step1a"]
+        with self.assertRaises(ValueError):
+            self.step1aRunner.getQuantumGraphBuilder(payload, graph)
+
+    def testLatissAosRaisesOnNonCwfsPayload(self) -> None:
+        # guard against AOS payloads for non-CWFS images entirely
+        where = "exposure.day_obs=20240813 AND exposure.seq_num=632 AND instrument='LATISS'"
+        (scienceRecord,) = self.butler.query_dimension_records("exposure", where=where)
+        payload = self._makeAosPayload(scienceRecord)
+        graph = self.pipelines["AOS_LATISS"].graphs["step1a"]
+        with self.assertRaises(ValueError):
+            self.step1aRunner.getQuantumGraphBuilder(payload, graph)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

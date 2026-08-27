@@ -35,6 +35,8 @@ FAM_VISIT_QUERY = "visit in (2025111500227,2025111500228)"
 SFM_VISIT_QUERY = "visit in (2025111500226)"
 # calib frames don't get visit records defined, so query on exposure
 CALIB_EXPOSURE_QUERY = "exposure in (2025111500436)"
+# a LATISS CWFS intra/extra pair, for the AOS_LATISS (WEP monolith) pipeline
+LATISS_AOS_EXPOSURE_QUERY = "exposure in (2026062500012, 2026062500013)"
 
 INTRA_IDS = (192, 196, 200, 204)
 EXTRA_IDS = (191, 195, 199, 203)
@@ -233,6 +235,32 @@ def main() -> None:
                 commands.extend(["-c", configOption])
 
         pipelineCommands[pipelineName] = commands
+
+    # LATISS runs its own, single AOS pipeline: the WEP monolith, which
+    # processes a whole CWFS pair (both raws) in one quantum on detector 0
+    _LOG.info("Preparing pipeline: AOS_LATISS")
+    latissButler = butlerUtils.makeDefaultButler("LATISS", embargo=False, writeable=True)
+    _, latissPipelines = buildPipelines("LATISS", locationConfig, latissButler)
+    latissRunCollection = getUserRunCollectionName("AOS_LATISS")
+    removeUserRunCollection(latissButler, "AOS_LATISS")
+    pipelineCommands["AOS_LATISS"] = [
+        "pipetask",
+        "run",
+        "-b",
+        "main",
+        "-i",
+        "LATISS/defaults",
+        "--register-dataset-types",
+        "--output-run",
+        f"{latissRunCollection}",
+        "-p",
+        f"{latissPipelines['AOS_LATISS'].pipelineFile}#step1a",
+        "-d",
+        f"{LATISS_AOS_EXPOSURE_QUERY} AND detector=0 AND instrument='LATISS'",
+        "-j",
+        "1",
+    ]
+    totalCores += 1
 
     _LOG.info(f"Running all pipelines using a total of {totalCores} cores 😅")
     runCommands(pipelineCommands)

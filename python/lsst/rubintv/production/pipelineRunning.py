@@ -353,6 +353,62 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         )
         return builder, "", {}, butlerToReturn
 
+    def makeLatissAosQgBuilder(
+        self, payload: Payload, pipelineGraph: PipelineGraph, expRecord: DimensionRecord
+    ) -> tuple[QuantumGraphBuilder, str, dict[str, Any], LimitedButler]:
+        """Get the quantum graph builder for LATISS AOS processing.
+
+        The LATISS AOS pipeline is the WEP monolith task, which consumes both
+        raws of a CWFS intra/extra pair in a single quantum, so the trivial
+        per-dataId builder can't express it. The payload carries the
+        extra-focal image, and the intra-focal image is the exposure
+        immediately before it, so build an all-dimensions quantum graph
+        constrained to exactly that pair.
+
+        Parameters
+        ----------
+        payload : `lsst.rubintv.production.payloads.Payload`
+            The payload to process. Carries the extra-focal image's dataId.
+        pipelineGraph : `lsst.pipe.base.PipelineGraph`
+            The pipeline graph.
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record for the payload's dataId.
+
+        Returns
+        -------
+        builder : `lsst.pipe.base.quantum_graph_builder.QuantumGraphBuilder`
+            The quantum graph builder to use.
+        where : `str`
+            The where clause used for building the quantum graph.
+        bind : `dict` [`str`, `Any`]
+            The bind parameters used for building the quantum graph.
+        butlerToUse : `lsst.daf.butler.LimitedButler`
+            The butler to use for executing the quantum graph.
+        """
+        assert self.step == "step1a"
+        if expRecord.observation_type.lower() != "cwfs":
+            raise ValueError(f"LATISS AOS payloads must be CWFS images, got {expRecord.observation_type}")
+        if "extra" not in (expRecord.observation_reason or "").lower():
+            raise ValueError("LATISS AOS payloads are dispatched on the extra-focal image of the pair")
+
+        extraExpId = getExpIdOrVisitId(payload.dataId)
+        intraExpId = extraExpId - 1  # pairs land as consecutive exposures, intra-focal first
+        detector = int(payload.dataId["detector"])
+        where = (
+            f"instrument='{self.instrument}' AND exposure IN ({intraExpId}, {extraExpId})"
+            f" AND detector={detector}"
+        )
+        collections = self.getCollections()
+        builder = AllDimensionsQuantumGraphBuilder(
+            pipelineGraph,
+            self.butler,
+            where=where,
+            clobber=True,
+            input_collections=collections,
+            output_run=self.runCollection,
+        )
+        return builder, where, {}, self.cachingButler
+
     def getCollections(self) -> list[str]:
         """Get the collections to use for this payload.
 
@@ -426,6 +482,11 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             return builder, where, bind, self.cachingButler
 
         else:  # all step1as
+            if payload.who == "AOS" and self.instrument == "LATISS":
+                # hard-coded to the WEP monolith pair pipeline, which needs
+                # its own builder - see makeLatissAosQgBuilder
+                return self.makeLatissAosQgBuilder(payload, pipelineGraph, expRecord)
+
             dataIds: dict[DimensionGroup, DataCoordinate] = {dataId.dimensions: dataId}
             self.log.info(f"Making TrivialQG builder for {self.step} for expId {expId} for {payload.who}")
 
