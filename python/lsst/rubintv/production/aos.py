@@ -23,8 +23,9 @@ from __future__ import annotations
 __all__ = [
     "DonutLauncher",
     "PsfAzElPlotter",
-    "FocalPlaneFWHMPlotter",
     "ZernikePredictedFWHMPlotter",
+    "FocalPlaneFWHMPlotter",
+    "FourPanelFocalPlanePlotter",
     "FocusSweepAnalysis",
     "RadialPlotter",
 ]
@@ -47,6 +48,10 @@ from lsst.summit.extras.plotting.focusSweep import (
     plotSweepParabola,
 )
 from lsst.summit.extras.plotting.fwhmFocalPlane import getFwhmValues, makeFocalPlaneFWHMPlot
+from lsst.summit.extras.plotting.metricValueFocalPlane import (
+    getMetricValues,
+    makeFocalPlanePlot,
+)
 from lsst.summit.extras.plotting.psfPlotting import (
     makeAzElPlot,
     makeFigureAndAxes,
@@ -736,6 +741,184 @@ class FocalPlaneFWHMPlotter:
         self.plotAndUpload(visitRecord)
         t1 = time()
         self.log.info(f"Finished making FWHMFocalPlane plot in {(t1 - t0):.2f}s for {visitRecord.id}")
+
+    def run(self) -> None:
+        """Start the event loop, listening for data and launching plotting."""
+        self.watcher.run(self.callback)
+
+
+class FourPanelFocalPlanePlotter:
+    """The plotter, for automatically plotting a four panel plot of four
+    different metrics in the Focal Plane.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The Butler object used for data access.
+    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
+        The locationConfig containing the path configs.
+    instrument : `str`
+        The instrument.
+    podDetails : `lsst.rubintv.production.podDefinition.PodDetails`
+        The pod identity that selects which Redis queue to consume from.
+    """
+
+    def __init__(
+        self,
+        *,
+        butler: Butler,
+        locationConfig: LocationConfig,
+        instrument: str,
+        podDetails: PodDetails,
+    ) -> None:
+        self.butler = butler
+        self.locationConfig = locationConfig
+        self.instrument = instrument
+        self.podDetails = podDetails
+        self.camera = getCameraFromInstrumentName(self.instrument)
+        self.log = logging.getLogger("lsst.rubintv.production.aos.FourPanelFocalPlanePlotter")
+        self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
+        self.watcher = RedisWatcher(butler=butler, locationConfig=locationConfig, podDetails=podDetails)
+        self.s3Uploader = MultiUploader()
+        self.efdClient = makeEfdClient()
+
+    def plotAndUpload(self, visitRecord: DimensionRecord) -> None:
+        """Make the Four Panel Focal Plane plot for the given visit.
+
+        Makes the plot by getting the available data from the butler, saves it
+        to a temporary file, and uploads it to RubinTV.
+
+        Parameters
+        ----------
+        visitRecord : `lsst.daf.butler.DimensionRecord`
+            The visit record for which to make the plot.
+        """
+        visitSummary = None
+        try:
+            # might not be the best query here
+            visitSummary = self.butler.get("preliminary_visit_summary", visit=visitRecord.id)
+        except DatasetNotFoundError:
+            pass
+
+        if visitSummary is None:
+            self.log.error(f"Could not find visitInfo for visitId {visitRecord.id}")
+            return
+
+        fwhmValues = getMetricValues(visitSummary, metricName="fwhm", log=self.log, butler=self.butler)
+        shapeletsIqScoreValues = getMetricValues(visitSummary, metricName="shapeletsIqScore")
+        momentsScoreValues = getMetricValues(visitSummary, metricName="momentsScore")
+        effTimeZeroPointScaleValues = getMetricValues(visitSummary, metricName="effTimeZeroPointScale")
+
+        plotName = "four_panel_focal_plane"
+        plotFile = makePlotFile(
+            self.locationConfig, self.instrument, visitRecord.day_obs, visitRecord.seq_num, plotName, "png"
+        )
+        fig = make_figure(figsize=(12, 9))
+        axes = fig.subplots(nrows=2, ncols=2)
+        title = self.makeTitle(visitRecord)
+        # Upper Left.
+        fig = makeFocalPlanePlot(
+            fig,
+            axes[0][0],
+            fwhmValues,
+            self.camera,
+            vMin=None,
+            vMax=None,
+            metricLabel="PSF FWHM (arcsec)",
+            coordPlane="Field Angle",
+        )
+        # Upper right.
+        fig = makeFocalPlanePlot(
+            fig,
+            axes[0][1],
+            shapeletsIqScoreValues,
+            self.camera,
+            doMilli=True,
+            vMin=1.0,
+            vMax=10.0,
+            doUnderColor=False,
+            metricLabel="shapeletsIqScore * 1e3",
+        )
+        # Lower Left.
+        fig = makeFocalPlanePlot(
+            fig,
+            axes[1][0],
+            effTimeZeroPointScaleValues,
+            self.camera,
+            vMin=0.5,
+            vMax=1.15,
+            doUnderColor=True,
+            underColor="magenta",
+            metricLabel="effTimeZeroPointScale",
+            coordPlane="Field Angle",
+        )
+        # Lower Right (add plot title to this last panel entry).
+        fig = makeFocalPlanePlot(
+            fig,
+            axes[1][1],
+            momentsScoreValues,
+            self.camera,
+            doMilli=True,
+            vMin=3,
+            vMax=35.0,
+            metricLabel="momentsIqScore * 1e3",
+            title=title,
+        )
+        fig.savefig(plotFile, dpi=180, bbox_inches="tight")
+
+        self.s3Uploader.uploadPerSeqNumPlot(
+            instrument=getRubinTvInstrumentName(self.instrument),
+            plotName=plotName,
+            dayObs=visitRecord.day_obs,
+            seqNum=visitRecord.seq_num,
+            filename=plotFile,
+        )
+
+    def makeTitle(self, visitRecord: DimensionRecord) -> str:
+        """Create the title for the Four Panel Image IQ Focal Plane plot,
+        including EFD data.
+
+        Parameters
+        ----------
+        visitRecord : `lsst.daf.butler.DimensionRecord`
+            The visit record.
+
+        Returns
+        -------
+        title : `str`
+            The title for the plot.
+        """
+        title = f"Focal Plane Image Quality: dayObs={visitRecord.day_obs}; "
+        title += f"seqNum={visitRecord.seq_num}; physicalFilter={visitRecord.physical_filter}\n"
+        (expRecord,) = self.butler.query_dimension_records("exposure", visit=visitRecord.id)
+        title += f"Sky angle = {expRecord.sky_angle:.2f}°; "
+        title += f"elevation = {90 - expRecord.zenith_angle:.2f}°"
+
+        data = getEfdData(self.efdClient, "lsst.sal.MTRotator.rotation", expRecord=expRecord)
+        if not data.empty:
+            rotPos = np.mean(data["actualPosition"])
+            title += f"; physical rotation = {rotPos:.2f}°"
+
+        return title
+
+    def callback(self, payload: Payload) -> None:
+        """Run the plot for an incoming payload.
+
+        Parameters
+        ----------
+        payload : `lsst.rubintv.production.payloads.Payload`
+            The payload to process. The payload's ``dataId`` is expected to
+            contain a ``visit`` key.
+        """
+        visitId = int(payload.dataId["visit"])
+        (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", visit=visitId)
+        t0 = time()
+        self.log.info(f"Making FourPanelFocalPlane plot for visitId {visitRecord.id}")
+        self.plotAndUpload(visitRecord)
+        t1 = time()
+        self.log.info(
+            f"Finished making FourPanelFocalPlane plot in {(t1 - t0):.2f}s for {visitRecord.id}"
+        )
 
     def run(self) -> None:
         """Start the event loop, listening for data and launching plotting."""

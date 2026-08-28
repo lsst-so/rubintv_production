@@ -389,7 +389,7 @@ pod's queue:
 SFM step1b completion:
   HSET {instrument}-TRACKING-{expId} SFM:step1bFinished 1
   enqueuePayload(visit dataId) -> PSF_PLOTTER pod
-  enqueuePayload(visit dataId) -> FWHM_PLOTTER pod
+  enqueuePayload(visit dataId) -> FOURPANELFOCALPLANE_PLOTTER pod
   enqueuePayload(visit dataId) -> ZERNIKE_PREDICTED_FWHM_PLOTTER pod
   INCR {instrument}-step1b-SFM-VISIT_FINISIHED_COUNTER
 
