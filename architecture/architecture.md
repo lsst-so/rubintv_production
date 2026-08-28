@@ -87,6 +87,37 @@ the standard payload queues):**
 - `FOCUS_SWEEP_ANALYZER` - focus-sweep analysis on OCS command
 - `DONUT_LAUNCHER` - launches donut processing on OCS command
 
+### Standalone services (no Redis coordination)
+
+Some pods run a single long-lived service that does not consume payloads
+from Redis queues or register a `PodFlavor`. They loop on their own cadence
+and are launched by pointing the pod's `RUN_ARG` at their script:
+
+- **Cleanup** (`TempFileCleaner`, `scripts/LSSTCam/runCleanup.py`) - daily
+  housekeeping of stale Butler datasets, NFS dirs, and S3 buckets.
+- **AOS sync exporter** (`SummitSyncExporter`,
+  `scripts/LSSTCam/runSummitSyncExporter.py`) - runs at the summit. Exports
+  AOS data products (`zernikes`, `donutStamps*`, `donutTable`,
+  `donutQualityTable`, `aggregateAOSVisitTable*`) from the
+  `LSSTCam/runs/quickLook` chain one `dayObs` at a time via the Butler
+  Python export API, then uploads each self-contained bundle to an S3
+  scratch prefix (`summit_sync/...` in the summit embargo bucket) using the
+  `MultiUploader`'s remote uploader. A local JSON ledger tracks per-day
+  status, so passes are idempotent and gap-filling over an intermittent link.
+- **AOS sync importer** (`SummitSyncImporter`,
+  `scripts/LSSTCam/runSummitSyncImporter.py`) - runs at USDF. Reads completed
+  bundles from that S3 prefix with a dedicated client (built from the
+  summit embargo profile, which the USDF pods must have installed), downloads
+  and imports them into the `main` repo (`mainButlerPath`), keeps the
+  destination CHAINED collection pointed at the imported runs, and tracks
+  imported days in its own local ledger.
+
+See `summitSync.py`. These services use no Redis keys and add no pipeline
+stages; the local staging path, destination repo, and optional isolation
+prefix are `LocationConfig` entries (`summitSync*`, `mainButlerPath`), while
+the S3 bundle prefix, bucket, and read profile are module constants in
+`summitSync.py`.
+
 ### Queue Naming
 
 Redis queue names follow the pattern:
