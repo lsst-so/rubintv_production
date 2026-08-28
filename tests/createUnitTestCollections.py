@@ -45,11 +45,25 @@ ALL_DETECTOR_IDS = tuple([d for d in INTRA_IDS] + [d for d in EXTRA_IDS] + [d fo
 
 _LOG = logging.getLogger("lsst.rubintv.tests.createUnitTestCollections")
 
+_REQUIRED_USER_ENV_VARS = (
+    "RA_CI_DATA_ROOT",
+    "RA_CI_STAR_TRACKER_DATA_PATH",
+    "RA_CI_ASTROMETRY_NET_REF_CAT_PATH",
+    "TARTS_DATA_DIR",
+    "AI_DONUT_DATA_DIR",
+    "RA_CI_REDIS_PORT",
+)
+_missing = [v for v in _REQUIRED_USER_ENV_VARS if not os.environ.get(v)]
+if _missing:
+    raise RuntimeError(
+        f"The following per-user CI environment variables are not set: {_missing}. "
+        "Source tests/ci/setup_ci_env.sh (after editing it for your user) "
+        "before running this script."
+    )
+
 os.environ["RAPID_ANALYSIS_LOCATION"] = "usdf_testing"
 os.environ["RAPID_ANALYSIS_CI"] = "true"
 os.environ["RAPID_ANALYSIS_DO_RAISE"] = "True"
-os.environ["TARTS_DATA_DIR"] = "/sdf/home/m/mfl/temp/TARTS"
-os.environ["AI_DONUT_DATA_DIR"] = "/sdf/home/m/mfl/u/rubintv/aos_data/AI_DONUT"
 
 
 PER_PIPELINE_EXTRAS: dict[str, list[str]] = {

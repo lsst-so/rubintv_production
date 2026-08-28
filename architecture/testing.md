@@ -1,5 +1,29 @@
 # Testing Guide
 
+## Terminology
+
+This repo has two layers of testing that the on-disk naming
+unfortunately conflates with conventional CI:
+
+- **Unit tests** — `pytest tests/test_*.py` and `mypy`. Run on every
+  Python change, on any machine with the LSST stack sourced. This is
+  the routine validation gate. Nothing automated runs them; manual
+  invocation is required and the `rapid-analysis-testing` skill is
+  the checklist.
+- **Integration suite** — `tests/ci/test_rapid_analysis.py`. Spins up
+  a real Redis server, runs the distributed pipeline scripts as
+  subprocesses against a real Butler. Requires a SLAC dev node; run
+  manually as part of pre-deployment validation.
+
+There is **no automated CI in the conventional sense** for this repo.
+`.github/workflows/build_and_push.yaml` only builds and publishes the
+Docker image. Despite that, the integration suite is named "CI" on
+disk (`tests/ci/`, `RA_CI_*` env vars, `runningCI()` predicate, etc.)
+— that's a misnomer kept for now to avoid churn. See
+[claudePlans/backlog.md](../claudePlans/backlog.md). Whenever this
+doc says "integration suite", that's the thing that lives in
+`tests/ci/`.
+
 ## Type Checking (mypy)
 
 `mypy` is the type checker for this repo. Neither pre-commit nor CI runs it
@@ -102,25 +126,101 @@ price worth paying for that early, honest failure.
 module scope even though only two tests use it — see the third-party
 import group at the top of that file.)
 
-## CI Integration Suite (`tests/ci/`)
+## Integration Suite (`tests/ci/`)
 
-The CI suite is a custom test framework (not pytest) that spins up a real Redis
-server and runs actual processing scripts as subprocesses. It validates the
-full distributed system and pipelines end-to-end, including all work
-distribution, payload handling, and S3 uploads (mocked).
+> **Naming reminder:** the on-disk directory is `tests/ci/` and many
+> related artefacts use "CI" in their names, but this is the
+> *integration suite*, **not** conventional CI. Nothing about it runs
+> in GitHub Actions or k8s. The name is kept on disk for now to avoid
+> churn — see [the rename backlog item](../claudePlans/backlog.md).
+
+The integration suite is a custom test framework (not pytest) that spins up
+a real Redis server and runs actual processing scripts as subprocesses. It
+validates the full distributed system and pipelines end-to-end, including
+all work distribution, payload handling, and S3 uploads (mocked).
+
+### Per-user setup (one-time)
+
+The CI suite is designed to be runnable by anyone, not just the original
+author. Two scripts in `tests/ci/` handle the per-user setup:
+
+- **`tests/ci/preinstall_ci_deps.sh`** — installs CI dependencies that are
+  not in rubinenv (`sentry-sdk`, `redis` python client, `batoid`, `danish`,
+  `timm`, `peft`, `google-cloud-storage`, `lsst-efd-client`,
+  `pytorch_lightning`) via `pip install --user`, plus builds the
+  `redis-server` binary from source into `${HOME}/local/bin`. Run once per
+  user; idempotent on re-run. Mirrors the production Dockerfile's
+  conda+pip lists, minus `rubin-libradtran` (conda-only; only matters for
+  the LATISS spectral pipeline).
+- **`tests/ci/setup_ci_env.sh`** — exports the per-user environment
+  variables the suite needs and prepends `${HOME}/local/bin` to `PATH` so
+  the source-built redis-server is found. Edit the values at the top of
+  the file for your account, then `source` it in any shell session before
+  running CI.
+
+The required env vars (listed in `_REQUIRED_USER_ENV_VARS` at the top of
+both `tests/ci/test_rapid_analysis.py` and `tests/createUnitTestCollections.py`):
+
+| Env var | Purpose |
+|---|---|
+| `RA_CI_DATA_ROOT` | Root for plots, sidecar metadata, shards, AOS data, dimension universe file. Substituted as `${RA_CI_DATA_ROOT}` in `config/config_usdf_testing.yaml`. |
+| `RA_CI_STAR_TRACKER_DATA_PATH` | Star-tracker raw data root. |
+| `RA_CI_ASTROMETRY_NET_REF_CAT_PATH` | astrometry.net reference-catalogue base. |
+| `TARTS_DATA_DIR` | TARTS pipeline data dir (read by the AOS worker). |
+| `AI_DONUT_DATA_DIR` | AI-donut model data dir. |
+| `RA_CI_REDIS_PORT` | Port for the CI's private redis-server (default 6111; bump if a colleague is using it on the same node). |
+
+Both scripts (`test_rapid_analysis.py` and `createUnitTestCollections.py`)
+hard-fail at startup if any of these are unset, with a message pointing
+the user at `setup_ci_env.sh`. There are **no** hard-coded user paths
+left in either script.
+
+The YAML config supports `${VAR}` substitution in any string value because
+`locationConfig._loadConfigFile` runs `os.path.expandvars` recursively
+over the loaded YAML before returning it.
+
+`LocationConfig.__post_init__` then touches every `cached_property` on
+the class so that every `_checkDir` / `_checkFile` runs at construction
+time. This is the eager-fail contract: if any path declared in the YAML
+cannot be created or read, `LocationConfig(...)` raises - construction
+*never* succeeds with a half-validated object. The intent is that the
+error message points at the misconfigured location rather than at
+whichever pod first happens to access the bad path. Touching every
+property is safe because the CI suite's `check_yaml_files` step
+enforces that every `config_<location>.yaml` has the same set of keys -
+a missing key is a real bug and propagates as a `KeyError`.
 
 ### Entry Point
 
 ```bash
+source tests/ci/setup_ci_env.sh           # required, per shell session
 python tests/ci/test_rapid_analysis.py -l <label_name>
 ```
+
+### Concurrent-run isolation
+
+The CI suite is *partially* safe to run concurrently with another user on
+the same dev node:
+
+- **S3 scratch is per-user** — `config/config_usdf_testing.yaml` sets
+  `scratchPath: rapidAnalysisScratchCi-${USER}`, so `getBasePath` resolves
+  to a user-specific S3 prefix.
+- **Redis is per-user** — port comes from `RA_CI_REDIS_PORT`, and
+  `RedisManager.is_redis_running` uses `pgrep -u $USER` so a colleague's
+  redis on the same node doesn't trip the "already running" guard.
+- **Butler output chains are NOT per-user** — `outputChains` in the YAML
+  (`LSSTCam/runs/quickLookTesting`, etc.) are still shared. Concurrent
+  runs that hit step1b will fight over these collections. Coordinate with
+  collaborators if you both need to run at the same time.
 
 ### Architecture
 
 The CI suite has its own mini-framework:
 
-- **`TestConfig`** - centralized config (timeouts, Redis port, test scripts)
-- **`RedisManager`** - starts/stops a local Redis server on port 6111
+- **`TestConfig`** - centralized config (timeouts, redis port from
+  `RA_CI_REDIS_PORT`, test scripts)
+- **`RedisManager`** - starts/stops a local Redis server on the user's
+  configured port; `is_redis_running` is scoped to `$USER`
 - **`LogManager`** - creates timestamped log directories under `ci_logs/`
 - **`ProcessManager`** - launches test scripts as `multiprocessing.Process`
 - **`ResultCollector`** - aggregates pass/fail results
@@ -153,19 +253,31 @@ Post-processing and visualization:
 
 ### Data Feeding
 
-`drip_feed_data.py` pre-loads test exposures into Redis:
+`tests/ci/ci_dataset.py` is the single source of truth for the data driving
+the suite: it defines the input exposures (with their roles: science, FAM
+intra/extra, bias), the order they are dispatched in, and derives from them
+every end-of-run expectation — the plots checked for on disk (as `PlotSpec`s
+keyed by exposure kind, sharing the on-disk layout with production code via
+`formatters.getPlotRelativePath`) and the Redis data products (step1b
+completion counts, MTAOS Zernike counts). Changing the inputs or expected
+outputs means editing `ci_dataset.py` only; the feeding and checking ends
+cannot drift apart. The `PlotSpec` grouping is also the intended hook for
+making the expected plot set depend on which pipeline file the suite runs.
+
+`drip_feed_data.py` is the delivery mechanism, pre-loading those exposures
+into Redis:
 1. Initializes Butler and RedisHelper
 2. Waits for SFM workers and head node to come online
-3. Pushes exposures to Redis with specific ordering and delays:
+3. Pushes the exposures in `LSSTCAM_DISPATCH_ORDER` with 2 s delays:
    - 227 first (intra-focal, must arrive before 228)
    - Then 436 (bias), 226 (SFM), 228 (extra-focal)
-   - 2 s delays between pushes
-4. Announces FAM pair via `LSSTCam-FROM-OCS_DONUTPAIR`
-5. Also tests LATISS with exposure 20240813/632
+4. Announces the FAM pair via `LSSTCam-FROM-OCS_DONUTPAIR`
+5. Also feeds the LATISS exposure (20240813/632)
 
 ### Redis in CI
 
-- Real Redis server started on `127.0.0.1:6111` with password `redis_password`
+- Real Redis server started on `127.0.0.1:${RA_CI_REDIS_PORT}` with password
+  `redis_password`
 - `FLUSHALL` between test phases for isolation
 - All S3 uploaders are mocked via `MockUploader` (tracks uploads without I/O)
 
@@ -187,6 +299,8 @@ Features:
 ### Test Collection Setup
 
 `tests/createUnitTestCollections.py` builds Butler collections for CI:
+- Requires the same `RA_CI_*` / `TARTS_DATA_DIR` / `AI_DONUT_DATA_DIR`
+  env vars as the main suite — `source tests/ci/setup_ci_env.sh` first.
 - Sets `RAPID_ANALYSIS_LOCATION=usdf_testing`
 - Runs pipelines in parallel via `ThreadPoolExecutor`
 - Creates collections for: FAM, AOS, SFM, calibration pipelines

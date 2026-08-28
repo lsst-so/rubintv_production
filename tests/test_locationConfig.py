@@ -19,16 +19,29 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Tests for LocationConfig YAML-backed accessors and dispatch helpers.
+"""Tests for LocationConfig YAML-backed accessors and the eager-fail contract.
 
 LocationConfig is the central frozen-dataclass that every pod consults
 for filesystem paths, butler repos, bucket names and pipeline files.
 Each accessor is a `cached_property` that pulls a key from the loaded
 YAML and runs `_checkDir` / `_checkFile` against it.
 
-The tests here monkey-patch `_loadConfigFile` to return a fixture dict
-keyed on `tmp_path`-rooted directories, so every accessor can be
-walked without touching the on-disk per-site YAMLs in `config/`.
+LocationConfig must also fail fast: `__post_init__` touches every
+accessor so that a path which cannot be created or read makes
+construction raise, rather than letting some unrelated pod blow up
+later when it happens to read the offending property. The tests here
+pin both halves of that contract.
+
+Two complementary styles are used:
+
+- `LocationConfigTestCase` and friends monkey-patch `_loadConfigFile`
+  to return a fixture dict keyed on `tmp_path`-rooted directories, so
+  every accessor can be walked without touching the on-disk per-site
+  YAMLs in `config/`.
+- `LocationConfigInitTestCase` and `RealYamlSanityTestCase` exercise the
+  real `config_usdf_testing.yaml` with the CI env vars redirected to a
+  tmpdir, checking the eager-validation and `${VAR}`-expansion machinery
+  against the genuine config the integration suite relies on.
 
 Walking each accessor against a fixture dict catches three kinds of
 regression that are otherwise only seen at pod startup:
@@ -56,41 +69,35 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import yaml
+
 import lsst.utils.tests
 from lsst.rubintv.production import locationConfig as locationConfigModule
 from lsst.rubintv.production.locationConfig import (
     LocationConfig,
+    _expandEnvVars,
     findMissingConfigKeys,
     getAutomaticLocationConfig,
 )
 from lsst.utils import getPackageDir
 
-# These three directory accessors call _checkDir(createIfMissing=False)
-# and so the test must precreate them. Every other dir accessor will
-# create on demand under tmp_path.
-_NON_CREATING_DIR_KEYS = (
-    "starTrackerDataPath",
-    "astrometryNetRefCatPath",
-    "allSkyRootDataPath",
-)
-
-# These two accessors run _checkFile, not _checkDir, so the test must
-# create real files at those paths.
-_FILE_KEYS = ("ts8ButlerPath", "botButlerPath")
+# This directory accessor calls _checkDir(createIfMissing=False) and so
+# the test must precreate it. Every other dir accessor will create on
+# demand under tmp_path.
+_NON_CREATING_DIR_KEYS = ("astrometryNetRefCatPath",)
 
 # Directory keys that are created on demand. Listed explicitly so the
 # test fails when a new accessor is added without being classified.
 _CREATED_DIR_KEYS = (
-    "metadataPath",
     "auxTelMetadataPath",
     "auxTelMetadataShardPath",
-    "ts8MetadataPath",
-    "ts8MetadataShardPath",
     "plotPath",
+    "starTrackerDataPath",
     "starTrackerMetadataPath",
     "starTrackerMetadataShardPath",
     "starTrackerOutputPath",
     "moviePngPath",
+    "allSkyRootDataPath",
     "allSkyOutputPath",
     "nightReportPath",
     "comCamMetadataPath",
@@ -107,8 +114,6 @@ _CREATED_DIR_KEYS = (
     "raPerformanceShardsDirectory",
     "guiderDirectory",
     "guiderShardsDirectory",
-    "botMetadataPath",
-    "botMetadataShardPath",
     "lsstCamMetadataPath",
     "lsstCamMetadataShardPath",
     "tmaMetadataPath",
@@ -125,13 +130,6 @@ def _buildFixtureConfig(rootDir: str) -> dict:
         config[key] = os.path.join(rootDir, key)
     for key in _NON_CREATING_DIR_KEYS:
         os.makedirs(config[key], exist_ok=True)
-
-    # File accessors — create a real empty file for each.
-    for key in _FILE_KEYS:
-        path = os.path.join(rootDir, f"{key}.yaml")
-        with open(path, "w") as f:
-            f.write("")
-        config[key] = path
 
     # Pure string passthroughs (no _checkDir / _checkFile validation).
     config["dimensionUniverseFile"] = os.path.join(rootDir, "dimensionUniverse.json")
@@ -172,6 +170,22 @@ def _buildFixtureConfig(rootDir: str) -> dict:
         "LSSTCam": "LSSTCam/runs/quickLook",
     }
     return config
+
+
+def _ciEnvForTmpdir(tmpdir: str) -> dict[str, str]:
+    """Map the CI env vars in ``config_usdf_testing.yaml`` to ``tmpdir``."""
+    return {
+        "RA_CI_DATA_ROOT": os.path.join(tmpdir, "data_root"),
+        "RA_CI_STAR_TRACKER_DATA_PATH": os.path.join(tmpdir, "star_tracker"),
+        "RA_CI_ASTROMETRY_NET_REF_CAT_PATH": os.path.join(tmpdir, "astrometry"),
+    }
+
+
+def _preCreateNonAutoCreatedDirs(env: dict[str, str]) -> None:
+    """Pre-create the directories whose ``_checkDir(createIfMissing=False)``
+    calls in ``LocationConfig`` require them to exist before construction.
+    """
+    os.makedirs(env["RA_CI_ASTROMETRY_NET_REF_CAT_PATH"], exist_ok=True)
 
 
 class LocationConfigTestCase(lsst.utils.tests.TestCase):
@@ -217,47 +231,30 @@ class LocationConfigTestCase(lsst.utils.tests.TestCase):
                 self.assertTrue(os.path.isdir(value))
 
     def test_nonCreatingDirRaisesIfMissing(self) -> None:
-        # If the precondition isn't met (the dir doesn't exist), the
-        # accessor must raise rather than silently returning a bad path.
-        # Build a fresh LocationConfig without precreating starTrackerDataPath.
+        # A non-creating dir accessor must fail loudly when its directory
+        # is absent. Because __post_init__ now touches every accessor, this
+        # surfaces at construction time rather than on first access.
+        # Uses astrometryNetRefCatPath as the exemplar since it is the only
+        # remaining accessor that calls _checkDir(createIfMissing=False).
         with tempfile.TemporaryDirectory() as tmp:
             cfgDict = _buildFixtureConfig(tmp)
-            os.rmdir(cfgDict["starTrackerDataPath"])
+            os.rmdir(cfgDict["astrometryNetRefCatPath"])
             with patch.object(locationConfigModule, "_loadConfigFile", return_value=cfgDict):
-                cfg = LocationConfig("fixture")
                 with self.assertRaises(RuntimeError):
-                    cfg.starTrackerDataPath
-
-    def test_fileAccessorsValidate(self) -> None:
-        for key in _FILE_KEYS:
-            with self.subTest(key=key):
-                value = getattr(self.locationConfig, key)
-                self.assertEqual(value, self.config[key])
-
-    def test_fileAccessorRaisesIfFileMissing(self) -> None:
-        # _checkFile must fail loudly rather than silently returning a
-        # path that doesn't resolve — pods rely on construction-time
-        # detection of missing butler files.
-        with tempfile.TemporaryDirectory() as tmp:
-            cfgDict = _buildFixtureConfig(tmp)
-            os.remove(cfgDict["ts8ButlerPath"])
-            with patch.object(locationConfigModule, "_loadConfigFile", return_value=cfgDict):
-                cfg = LocationConfig("fixture")
-                with self.assertRaises(RuntimeError):
-                    cfg.ts8ButlerPath
+                    LocationConfig("fixture")
 
     def test_emptyBucketNameRaises(self) -> None:
         # Production guard: an empty bucketName has previously meant the
         # YAML key was added but never set for this site. The accessor
         # must raise rather than hand back "", which would later show up
-        # as silently-failing S3 uploads.
+        # as silently-failing S3 uploads. Eager validation makes this
+        # surface at construction time.
         with tempfile.TemporaryDirectory() as tmp:
             cfgDict = _buildFixtureConfig(tmp)
             cfgDict["bucketName"] = ""
             with patch.object(locationConfigModule, "_loadConfigFile", return_value=cfgDict):
-                cfg = LocationConfig("fixture")
                 with self.assertRaises(RuntimeError):
-                    cfg.bucketName
+                    LocationConfig("fixture")
 
     def test_getOutputChainDispatch(self) -> None:
         # Pure dict-lookup; pin all four supported instruments.
@@ -380,6 +377,97 @@ class ConfigYamlKeyConsistencyTestCase(lsst.utils.tests.TestCase):
                 rel = os.path.relpath(filename, packageDir)
                 lines.append(f"  {rel} is missing: {sorted(keys)}")
             self.fail("\n".join(lines))
+
+
+class LocationConfigInitTestCase(unittest.TestCase):
+    """Verify LocationConfig validates every YAML-declared path at __init__."""
+
+    def test_initSucceedsAgainstRealConfigWithEnvVarsRedirected(self) -> None:
+        """A real config with the CI env vars redirected to a tmpdir
+        should construct cleanly and create the auto-created dirs."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = _ciEnvForTmpdir(tmpdir)
+            _preCreateNonAutoCreatedDirs(env)
+
+            with patch.dict(os.environ, env):
+                cfg = LocationConfig("usdf_testing")
+
+            self.assertTrue(os.path.isdir(cfg.plotPath))
+            self.assertTrue(cfg.plotPath.startswith(env["RA_CI_DATA_ROOT"]))
+
+    def test_initFailsEagerlyOnUnreachablePath(self) -> None:
+        """If any path in the YAML cannot be created, init must raise.
+
+        Regression test for the previous behaviour where only
+        ``self._config`` and ``self.plotPath`` were touched in
+        ``__post_init__``: an unreachable directory could be missed at
+        init and only blow up much later when some unrelated pod first
+        accessed the property.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = _ciEnvForTmpdir(tmpdir)
+            _preCreateNonAutoCreatedDirs(env)
+            # /dev/null is a char device, so makedirs under it raises.
+            env["RA_CI_DATA_ROOT"] = "/dev/null/cannot_create_under_this"
+
+            with patch.dict(os.environ, env):
+                with self.assertRaises((RuntimeError, OSError)):
+                    LocationConfig("usdf_testing")
+
+    def test_initFailsWhenAYamlKeyIsMissing(self) -> None:
+        """All configs share the same key set (enforced by the CI yaml-check),
+        so a missing key is a real bug and must surface as a KeyError at
+        init, not be silently swallowed."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # A minimal config that's missing nearly every required key.
+            sparseConfig = {"plotPath": os.path.join(tmpdir, "plots")}
+            with patch.object(locationConfigModule, "_loadConfigFile", return_value=sparseConfig):
+                with self.assertRaises(KeyError):
+                    LocationConfig("sparse")
+
+
+class ExpandEnvVarsTestCase(unittest.TestCase):
+    """Verify ``${VAR}`` refs in YAML strings get expanded at load time."""
+
+    def test_expandsTopLevelStringValues(self) -> None:
+        with patch.dict(os.environ, {"_RA_TEST_ROOT": "/tmp/some/where"}):
+            self.assertEqual(
+                _expandEnvVars({"plotPath": "${_RA_TEST_ROOT}/plots"}),
+                {"plotPath": "/tmp/some/where/plots"},
+            )
+
+    def test_recursesIntoNestedDictsAndLists(self) -> None:
+        with patch.dict(os.environ, {"_RA_TEST_ROOT": "/tmp/x"}):
+            node = {
+                "outer": "${_RA_TEST_ROOT}/a",
+                "nested": {"inner": "${_RA_TEST_ROOT}/b"},
+                "listy": ["${_RA_TEST_ROOT}/c", "${_RA_TEST_ROOT}/d"],
+            }
+            self.assertEqual(
+                _expandEnvVars(node),
+                {
+                    "outer": "/tmp/x/a",
+                    "nested": {"inner": "/tmp/x/b"},
+                    "listy": ["/tmp/x/c", "/tmp/x/d"],
+                },
+            )
+
+    def test_leavesNonStringValuesAlone(self) -> None:
+        node = {"port": 6111, "enabled": True, "ratio": 0.5, "missing": None}
+        self.assertEqual(_expandEnvVars(node), node)
+
+
+class RealYamlSanityTestCase(unittest.TestCase):
+    """Sanity-check that the on-disk ``config_usdf_testing.yaml`` parses
+    and contains the env-var placeholders we depend on for redirection."""
+
+    def test_configUsdfTestingHasRedirectableEnvVars(self) -> None:
+        cfgPath = os.path.join(os.path.dirname(__file__), "..", "config", "config_usdf_testing.yaml")
+        with open(cfgPath) as f:
+            raw = yaml.safe_load(f)
+        # plotPath should be expressed in terms of RA_CI_DATA_ROOT so the
+        # env-var-redirection trick used by the init tests is valid.
+        self.assertIn("${RA_CI_DATA_ROOT}", raw["plotPath"])
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
