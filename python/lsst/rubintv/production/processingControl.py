@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import enum
+import functools
 import logging
 import operator
 import re
@@ -54,6 +55,14 @@ from lsst.utils import getPackageDir
 from lsst.utils.packages import Packages
 
 from .locationConfig import LocationConfig
+from .packageVersions import (
+    UNKNOWN_VERSION_NUMBER,
+    PackageVersions,
+    checkVersionsAgainstDockerfile,
+    findDockerfile,
+    getRegistryPath,
+    resolveVersionNumber,
+)
 from .payloads import Payload, pipelineGraphToBytes
 from .podDefinition import PodDetails, PodFlavor
 from .predicates import isCalibration, isWepImage, runningCI
@@ -737,6 +746,90 @@ class HeadProcessController:
             f" Data will be written to {self.outputRun}"
         )
 
+        # Resolve and cache the tracked package versions and their overall
+        # version number now, at startup, so the dispatch loop never pays for
+        # the git calls or the registry read, and cross-check the versions
+        # against the Dockerfile (advisory only, never fatal).
+        self.log.info(
+            f"Tracked package versions (overall number {self.packageVersionNumber}):"
+            f" {self.packageVersions.versions}"
+        )
+        self._checkPackageVersionsAgainstDockerfile()
+
+    @functools.cached_property
+    def packageVersions(self) -> PackageVersions:
+        """The git versions of the tracked science packages.
+
+        Fixed for the lifetime of the pod, so computed once on first access
+        and cached thereafter.
+        """
+        return PackageVersions.fromPackages()
+
+    @functools.cached_property
+    def packageVersionNumber(self) -> int:
+        """The overall version number for this pod's package set.
+
+        A single integer that increments whenever the combined set of tracked
+        package versions changes. The integer -> versions mapping is recorded
+        per-instrument in the location's registry. Fixed for the lifetime of
+        the pod, so resolved once and cached; falls back to
+        ``UNKNOWN_VERSION_NUMBER`` if the registry can't be reached.
+        """
+        try:
+            registryDir = self.locationConfig.packageVersionRegistryPath
+        except Exception:
+            self.log.exception("Could not resolve the package-version registry path")
+            return UNKNOWN_VERSION_NUMBER
+        registryPath = getRegistryPath(registryDir, self.instrument)
+        return resolveVersionNumber(registryPath, self.packageVersions, log=self.log)
+
+    def _checkPackageVersionsAgainstDockerfile(self) -> None:
+        """Warn if the running package versions disagree with the Dockerfile.
+
+        Advisory only: locates the Dockerfile and cross-checks, but never
+        raises — a missing or reformatted Dockerfile must not take the head
+        node down.
+        """
+        try:
+            dockerfilePath = findDockerfile()
+            if dockerfilePath is None:
+                self.log.warning("Could not locate the Dockerfile; skipping package-version cross-check")
+                return
+            checkVersionsAgainstDockerfile(self.packageVersions, dockerfilePath, log=self.log)
+        except Exception:
+            self.log.exception("Package-version cross-check against the Dockerfile failed unexpectedly")
+
+    def writePackageVersionShard(self, expRecord: DimensionRecord) -> None:
+        """Record the tracked package versions for a dispatched image.
+
+        Writes the cached package versions to the AOS metadata page as a single
+        book-marked, dict-like cell, alongside the overall version number as a
+        plain integer cell. There is no AOS metadata page for LATISS, so this
+        is a no-op there. Never raises — recording provenance must not be able
+        to disrupt dispatch.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record being dispatched.
+        """
+        if expRecord.instrument == "LATISS":
+            return  # no AOS metadata page for LATISS
+        try:
+            aosShardPath = getShardPath(self.locationConfig, expRecord, isAos=True)
+            writeMetadataShard(
+                aosShardPath,
+                expRecord.day_obs,
+                {
+                    expRecord.seq_num: {
+                        "Package versions": self.packageVersions.toShardDict(self.packageVersionNumber),
+                        "Package version number": self.packageVersionNumber,
+                    }
+                },
+            )
+        except Exception:
+            self.log.exception(f"Failed to write package-version shard for {expRecord.id}")
+
     def getLatestRunAndPrep(self, forceNewRun: bool) -> str:
         if runningCI():  # always need a new run for CI for timing plots
             self.log.warning("Forcing new run because this is running in CI")  # check we don't see in prod
@@ -1063,6 +1156,9 @@ class HeadProcessController:
         # Initialize tracking before any writes to ensure the hash exists
         # and has a TTL, even for FAM images where doAosFanout is skipped.
         self.redisHelper.initExposureTracking(instrument, expRecord.id)
+
+        # record the science-package versions used to process this image
+        self.writePackageVersionShard(expRecord)
 
         if self.instrument != "LATISS":
             if not isFam:  # dispatch corner chips for normal images first

@@ -145,6 +145,17 @@ class LocationConfig:
         return self._config["scratchPath"]
 
     @cached_property
+    def packageVersionRegistryPath(self) -> str:
+        """Persistent directory holding the package-version registry files.
+
+        Must survive pod restarts and the nightly cleanup so the overall
+        version number stays monotonic. Created on demand if missing.
+        """
+        directory = self._config["packageVersionRegistryPath"]
+        self._checkDir(directory)
+        return directory
+
+    @cached_property
     def auxtelButlerPath(self) -> str:
         return self._config["auxtelButlerPath"]
 
