@@ -44,6 +44,45 @@ jobs:
           fi
           echo "tag=${ref//\//-}" >> "$GITHUB_OUTPUT"
 
+      - name: "Match dependency ticket branches"
+        id: deps
+        shell: bash
+        # Cross-repo tickets: a change here often needs an unmerged change in
+        # summit_utils (or ts_wep, ...), but the Dockerfile pins those repos to
+        # a fixed ref, so mypy and pytest fail on the missing code until the
+        # other repo has merged and the pin has been bumped -- i.e. the PR can
+        # never be green when it is reviewed. So, on a ``tickets/`` PR, if a
+        # dependency repo has a branch of the same name, build against that
+        # branch instead of the pinned ref. Only PR builds are affected; tag
+        # builds (the images that actually get deployed) always use the pins.
+        run: |
+          set -euo pipefail
+          ref="${GITHUB_HEAD_REF:-}"
+          args=""
+          if [[ "${ref}" == tickets/* ]]; then
+            for pair in \
+              summit_utils=lsst-so/summit_utils \
+              summit_extras=lsst-so/summit_extras \
+              ts_wep=lsst-ts/ts_wep \
+              donut_viz=lsst-ts/donut_viz; do
+              name="${pair%%=*}"
+              repo="${pair#*=}"
+              if git ls-remote --exit-code --heads \
+                  "https://github.com/${repo}.git" "${ref}" > /dev/null 2>&1; then
+                echo "Overriding ${name}_ref: building against ${repo}@${ref}"
+                args+="${name}_ref=${ref}"$'\n'
+              fi
+            done
+          fi
+          if [ -z "${args}" ]; then
+            echo "No dependency ticket branches matched; using the Dockerfile pins."
+          fi
+          {
+            echo "build-args<<DEPS_EOF"
+            printf '%s' "${args}"
+            echo "DEPS_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
@@ -67,6 +106,8 @@ jobs:
           context: .
           file: Dockerfile
           push: true
+          # Empty unless the step above matched a dependency ticket branch.
+          build-args: ${{ steps.deps.outputs.build-args }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # GHA-managed buildx cache. Capped at 10 GB / repo (FIFO
@@ -117,10 +158,11 @@ jobs:
           # ``python $RUN_ARG`` (guarded inside startup.sh).
           source /repos/.startup.sh
           cd /repos/rubintv_production
-          # mypy + types-requests are pre-installed in the image (see
-          # Dockerfile's CI dev tooling RUN block) so there's nothing to
-          # pip install here. Note: no types-redis - redis-py 8.x ships its
-          # own inline (py.typed) types and the stub would shadow them.
+          # mypy + its stub packages (types-requests, types-PyYAML) are
+          # pre-installed in the image (see Dockerfile's CI dev tooling RUN
+          # block) so there's nothing to pip install here. Note: no
+          # types-redis - redis-py 8.x ships its own inline (py.typed) types
+          # and the stub would shadow them.
           mypy
 
   coverage:
