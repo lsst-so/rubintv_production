@@ -1167,14 +1167,20 @@ class ResultCollector:
             ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000228.png", 5000),
             ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000226.png", 5000),
             ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000436.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000437.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000438.png", 5000),
             # post ISR mosaics for all images
             ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000227.jpg", 5000),
             ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000228.jpg", 5000),
             ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000226.jpg", 5000),
             ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000436.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000437.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000438.jpg", 5000),
             # witness detector images for all with postISR that aren't CWFS
             ("LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000226.jpg", 5000),
             ("LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000436.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000437.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000438.jpg", 5000),
             # calexp mosaic for the only in-focus image
             ("LSSTCam/20251115/LSSTCam_calexp_mosaic_dayObs_20251115_seqNum_000226.jpg", 5000),
             # mount plots for the three on-sky images
@@ -1223,6 +1229,8 @@ class ResultCollector:
             ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000227.jpg", 5000),
             ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000228.jpg", 5000),
             ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000436.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000437.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000438.jpg", 5000),
             # AOS performance plots
             ("LSSTCam/20251115/LSSTCam_aos_timing_dayObs_20251115_seqNum_000226.jpg", 5000),
             ("LSSTCam/20251115/LSSTCam_aos_timing_dayObs_20251115_seqNum_000228.jpg", 5000),
@@ -1371,6 +1379,10 @@ class TestRunner:
         os.environ["TARTS_DATA_DIR"] = "/sdf/home/m/mfl/temp/TARTS"
         os.environ["AI_DONUT_DATA_DIR"] = "/sdf/home/m/mfl/u/rubintv/aos_data/AI_DONUT"
         os.environ["LIMITS_CPU"] = "4"  # this should roughly match the lsstcamAosWorkerSet LIMITS_CPU value
+        # The CI butlers are the +sasquatch_dev ones, so metric bundles really
+        # are published to the dev Sasquatch. Tag them so they can be told
+        # apart from (and filtered out of) the production rapid analysis data.
+        os.environ["SASQUATCH_EXTRAS"] = "dataset_tag=rapid_analysis_ci"
 
         # Verify environment settings
         if getDoRaise() is not True:
