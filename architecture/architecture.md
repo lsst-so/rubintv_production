@@ -114,6 +114,16 @@ Each detector is processed independently on its own worker pod.
 - Produces `post_isr_image`
 - Always runs first in any pipeline
 
+**Calibration verification (bias/dark/flat exposures only):**
+- cp_verify's ISR configuration (`verifyBiasIsr` etc., writing
+  `post_isr_image`) plus the per-detector verification task
+  (`verifyBiasDet` etc.), which measures per-amp statistics of the
+  residual calibration frame
+- Built from `pipelines/<instrument>/verify<Type>.yaml` in this package,
+  which wraps drp_pipe's `quickLook<Type>.yaml`; the label split between
+  step1a and step1b is `CALIBRATION_PIPELINE_LABELS` in
+  `processingControl.py`
+
 **SFM (Source Finding & Measurement):**
 - Source detection, astrometry, photometry
 - Produces `preliminary_visit_image` at end of step1a
@@ -139,13 +149,34 @@ Triggered by the head node when all expected detectors finish step1a.
 - Applies OFC Y2 correction per detector
 - Computes residual AOS FWHM prediction
 
+**Calibration Step1b (bias/dark/flat):**
+- Dispatched under `who="ISR"` to a regular `STEP1B_WORKER`, but on an
+  *exposure* dataId rather than a visit one, because calibs have no
+  visits and cp_verify's merge tasks use exposure dimensions. The head
+  node picks the BIAS/DARK/FLAT pipeline from the exposure's
+  `observation_type` (`getIsrStep1bPipelineKey()`); other ISR-only image
+  types (e.g. `unknown`) have no step1b.
+- `verifyBiasExp` etc. merge the per-detector cp_verify results for the
+  exposure, then `verifyBias` etc. (cp_verify's *run* merge) and the
+  analysis_tools `analyzeBiasCore` etc. run on top. Those last two have
+  instrument-only dimensions (instrument + filter for flats), so they
+  rewrite the same dataset for every exposure: the worker enables output
+  clobbering for any graph containing such tasks
+  (`predicates.needsOutputClobbering()`), and the previous exposure's
+  copy is pruned before each run.
+- `analyzeBiasCore`/`analyzeDarkCore` write a `MetricMeasurementBundle`
+  (per-amp medians across the focal plane) which the butler's Sasquatch
+  datastore publishes to Chronograf; see "Sasquatch metric publishing"
+  below. `analyzeFlatDetCore` currently only produces plots.
+
 ### Pipeline Selection Logic
 
 The head node's `getPipelineConfig()` routes exposures:
 
 | Observation Type | Pipeline | Workers |
 |-----------------|----------|---------|
-| BIAS, DARK, FLAT | ISR-only | SFM_WORKER |
+| BIAS, DARK, FLAT | cp_verify `verify<Type>`: step1a ISR + per-detector verify, step1b exposure merge + metrics | SFM_WORKER, then STEP1B_WORKER |
+| UNKNOWN | ISR-only | SFM_WORKER |
 | CWFS (FAM) | AOS FAM | AOS_WORKER |
 | Science images | SFM | SFM_WORKER + AOS_WORKER (corner chips) |
 
@@ -170,7 +201,10 @@ The head node's `getPipelineConfig()` routes exposures:
    exposure in the active set when the last step1a completes
 8. **Check gather readiness** - `dispatchGatherSteps()` for SFM, AOS,
    ISR: compares finished detector count vs expected; dispatches step1b
-   when ready. `dispatchGatherSteps("ISR")` also fans out downstream
+   when ready. For ISR the step1b dispatched is the calibration
+   pipeline's (bias/dark/flat, chosen from the exposure's
+   `observation_type`, on an exposure dataId); other ISR-only images have
+   none. `dispatchGatherSteps("ISR")` also fans out downstream
    one-off/plotter work from within itself
 9. **Repattern** - LSSTCam only, apply the focal plane detector pattern if
    configured (runs after fanout so commands apply to the next image)
@@ -438,6 +472,41 @@ which was incremented once per ISR quantum — and therefore overcounted
 for on-sky images, since every step1a pipeline (SFM, AOS, ISR)
 contains an ISR quantum.
 
+## Sasquatch metric publishing
+
+Every `MetricMeasurementBundle` a pipeline task writes (the calibration
+`analyze*Core` tasks, and the many analysis_tools tasks in the SFM
+nightly-validation pipeline) is forwarded to Sasquatch, and so to
+Chronograf, by the butler itself rather than by any rapid analysis code:
+
+- The butler configs in `config/config_*.yaml` point at the
+  `+sasquatch` (`+sasquatch_dev` at USDF) variants of each repo. These
+  are the same repo (same registry, same file datastore) with the
+  datastore wrapped in a `ChainedDatastore` whose second child is
+  analysis_tools' `SasquatchDatastore`. That child only accepts the
+  `MetricMeasurementBundle` storage class, so every other dataset is
+  untouched, and it is write-only: reads never touch Sasquatch.
+- At USDF the `/repo/embargo+sasquatch_dev` and `/repo/main+sasquatch_dev`
+  configs already exist. At the summit, base and Tucson test stands the
+  `LSSTCam+sasquatch` / `LATISS+sasquatch` repos must be created by hand
+  next to the originals and registered in the site's repository index;
+  `scripts/admin/makeSasquatchButlerConfig.py` writes the config, pointing
+  at that site's REST proxy (`https://<site>-lsp.lsst.codes/sasquatch-rest-proxy`).
+- Records are tagged: `dataset_tag=<Instrument>/rapid_analysis` (set via
+  `extra_fields` in the generated config at the summit sites, and via the
+  `SASQUATCH_EXTRAS` env var in phalanx at USDF), and
+  `dataset_tag=rapid_analysis_ci` for the CI suite so test data can be
+  filtered out. Timestamps are the dispatch time, since our run names
+  carry no timestamp of their own.
+- Publishing is best-effort and must never break processing. The
+  datastore swallows dispatch failures and applies an HTTP timeout, and
+  on top of that the workers' `MetricTolerantCachingLimitedButler`
+  (`pipelineRunning.py`) logs and swallows *any* exception from a
+  metric-bundle put, so a task's remaining outputs are still written and
+  the quantum still succeeds. The head node and butler watcher never
+  write bundles and constructing the butler never contacts Sasquatch, so
+  an outage only ever costs the metrics themselves.
+
 ## External Dependencies
 
 - **Butler**: LSST data access framework (read/write datasets)
@@ -445,5 +514,7 @@ contains an ISR quantum.
 - **S3**: Object storage for frontend consumption
 - **ConsDB**: Consolidated database for engineering metrics
 - **EFD**: Engineering Facilities Database (telescope telemetry)
+- **Sasquatch**: Metrics/time-series service behind Chronograf; receives
+  `MetricMeasurementBundle`s via the butler (see above)
 - **Sentry**: Error tracking and monitoring
 - **Google Cloud Storage**: Legacy upload path (being replaced by S3)

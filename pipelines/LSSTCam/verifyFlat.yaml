@@ -1,0 +1,22 @@
+description: |
+    Rapid analysis flat verification for LSSTCam.
+
+    Imports drp_pipe's quickLook flat pipeline (cp_verify's ISR, per-detector
+    verification, per-exposure merge and per-filter run merge, configured to
+    write post_isr_image) and adds the analysis_tools task for the merged
+    results. Note that unlike the bias and dark tools, analyzeFlatDetCore
+    currently only produces plots, so its MetricMeasurementBundle is empty
+    and nothing reaches Chronograf for flats until analysis_tools grows a
+    metric-producing flat tool (see DM-52068).
+
+    Rapid analysis never runs this file as a whole: the head node builds the
+    per-detector labels as step1a and the per-exposure labels as step1b (see
+    processingControl.CALIBRATION_PIPELINE_LABELS), so the run-level tasks
+    run once per exposure and their per-filter outputs are clobbered each
+    time.
+instrument: lsst.obs.lsst.LsstCam
+imports:
+  - location: $DRP_PIPE_DIR/pipelines/LSSTCam/quickLookFlat.yaml
+  - location: $ANALYSIS_TOOLS_DIR/pipelines/cpCore.yaml
+    include:
+      - analyzeFlatDetCore

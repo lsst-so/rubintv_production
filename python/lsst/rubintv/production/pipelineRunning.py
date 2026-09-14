@@ -64,7 +64,7 @@ from .consdbUtils import ConsDBPopulator
 from .payloads import Payload, pipelineGraphFromBytes
 from .plotting.mosaicing import writeBinnedImage
 from .podDefinition import PodFlavor
-from .predicates import raiseIf
+from .predicates import needsOutputClobbering, raiseIf
 from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
 from .shardIo import getShardPath, writeMetadataShard
@@ -75,6 +75,7 @@ if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
 
     from lsst.afw.image import ExposureSummaryStats
+    from lsst.daf.butler import DatasetProvenance
     from lsst.pipe.base.graph.quantumNode import QuantumNode
     from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilder
 
@@ -108,6 +109,38 @@ PSF_GRADIENT_BAD = 0.85
 INTRA_IDS = (192, 196, 200, 204)
 EXTRA_IDS = (191, 195, 199, 203)
 
+# The storage class of analysis_tools metric bundles, which the butler's
+# Sasquatch datastore forwards to Chronograf on put.
+METRIC_BUNDLE_STORAGE_CLASS = "MetricMeasurementBundle"
+
+
+class MetricTolerantCachingLimitedButler(CachingLimitedButler):
+    """A `CachingLimitedButler` for which a failed put of a metric bundle is
+    not fatal.
+
+    Metric bundles (storage class ``MetricMeasurementBundle``) are forwarded
+    to Sasquatch by the butler's Sasquatch datastore as they are put. That
+    datastore is meant to swallow dispatch failures itself, but publishing
+    metrics is strictly best-effort in rapid analysis, and nothing on the
+    critical path may fail because Sasquatch is down or misbehaving. Any
+    exception from such a put is therefore logged and swallowed here, and
+    the task carries on writing its remaining outputs. All other puts raise
+    as normal.
+    """
+
+    def put(self, obj: Any, ref: DatasetRef, /, *, provenance: DatasetProvenance | None = None) -> DatasetRef:
+        try:
+            return super().put(obj, ref, provenance=provenance)
+        except Exception:
+            if ref.datasetType.storageClass_name != METRIC_BUNDLE_STORAGE_CLASS:
+                raise
+            log = logging.getLogger(__name__)
+            log.exception(
+                f"Failed to put metric bundle {ref}, so it will not be published to Sasquatch."
+                " Continuing regardless, as publishing metrics is best-effort."
+            )
+            return ref
+
 
 def makeCachingLimitedButler(butler: Butler, pipelineGraphs: list[PipelineGraph]) -> CachingLimitedButler:
     cachedOnGet = set()
@@ -123,7 +156,7 @@ def makeCachingLimitedButler(butler: Butler, pipelineGraphs: list[PipelineGraph]
     noCopyOnCache = NO_COPY_ON_CACHE
     log = logging.getLogger("lsst.rubintv.production.pipelineRunning.makeCachingLimitedButler")
     log.info(f"Creating CachingLimitedButler with {cachedOnPut=}, {cachedOnGet=}, {noCopyOnCache=}")
-    return CachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
+    return MetricTolerantCachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
 
 
 class SingleCorePipelineRunner(BaseButlerChannel):
@@ -567,11 +600,18 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             nCpus = int(os.getenv("LIMITS_CPU", 1))
             self.log.info(f"Using {nCpus} CPUs for {self.instrument} {self.step} {who}")
 
+            # Instrument-level tasks (cp_verify's run merges, the
+            # analysis_tools calib metrics) rewrite the same dataset for every
+            # exposure, so for graphs containing them let the executor look
+            # for and prune the previous exposure's outputs before running.
+            # Everywhere else the outputs are unique per exposure, so skip the
+            # existence check, which makes clobber_outputs mostly inoperative.
+            assumeNoExistingOutputs = not needsOutputClobbering(pipelineGraph)
             executor = SingleQuantumExecutor(
                 butler=butlerToUse,
                 task_factory=TaskFactory(),
                 clobber_outputs=True,
-                assume_no_existing_outputs=True,  # this makes *this* clobber (above) mostly inoperative
+                assume_no_existing_outputs=assumeNoExistingOutputs,
                 raise_on_partial_outputs=False,
                 resources=ExecutionResources(num_cores=nCpus),
             )
