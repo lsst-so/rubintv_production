@@ -28,7 +28,12 @@ from utils import getUserRunCollectionName, removeUserRunCollection
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
-from lsst.rubintv.production.processingControl import PIPELINE_NAMES, PipelineComponents, buildPipelines
+from lsst.rubintv.production.processingControl import (
+    CALIBRATION_PIPELINE_LABELS,
+    PIPELINE_NAMES,
+    PipelineComponents,
+    buildPipelines,
+)
 from lsst.summit.utils.utils import setupLogging
 
 FAM_VISIT_QUERY = "visit in (2025111500227,2025111500228)"
@@ -201,16 +206,14 @@ def main() -> None:
         runCollection = getUserRunCollectionName(pipelineName)
         removeUserRunCollection(butler, pipelineName)
 
-        # hard coding for now because we can't use #isr for bias/dark/flat
-        # pipelines as they don't have these steps/labels, but we need #isr
-        # for the isr pipeline because that will drop the quanta otherwise
-        substep = "#isr" if pipelineName == "ISR" else ""  # TODO: remove hardcoding later
-        if pipelineName == "BIAS":
-            substep = "#verifyBiasIsr"
-        if pipelineName == "DARK":
-            substep = "#verifyDarkIsr"
-        if pipelineName == "FLAT":
-            substep = "#verifyFlatIsr"
+        # The ISR pipeline is built from the SFM file so needs #isr to avoid
+        # running all of SFM. The calib pipelines run both their step1a
+        # labels (ISR + per-detector verify) so that the collections hold the
+        # inputs the step1b (merge + metrics) tests need to build graphs from.
+        substep = "#isr" if pipelineName == "ISR" else ""
+        if pipelineName in CALIBRATION_PIPELINE_LABELS:
+            step1aLabels, _ = CALIBRATION_PIPELINE_LABELS[pipelineName]
+            substep = f"#{step1aLabels}"
 
         commands.extend(
             [

@@ -30,6 +30,7 @@ from unittest.mock import patch
 
 import lsst.utils.tests
 from lsst.daf.butler import DimensionRecord
+from lsst.pipe.base import PipelineGraph
 from lsst.rubintv.production.formatters import (
     AOS_CCDS,
     AOS_WORKER_MAPPING,
@@ -44,6 +45,7 @@ from lsst.rubintv.production.predicates import (
     isCalibration,
     isDayObsContiguous,
     isWepImage,
+    needsOutputClobbering,
     raiseIf,
     runningCI,
     runningPyTest,
@@ -342,6 +344,54 @@ class RaiseIfTestCase(lsst.utils.tests.TestCase):
         with self.assertLogs(logger, level="ERROR") as cm:
             raiseIf(False, error, logger, msg="custom prefix")
         self.assertTrue(any("custom prefix" in line for line in cm.output))
+
+
+class NeedsOutputClobberingTestCase(lsst.utils.tests.TestCase):
+    """Tests for `needsOutputClobbering`.
+
+    The predicate only reads ``tasks[label].raw_dimensions`` off the graph,
+    so pipeline graphs are stood in for by namespaces rather than built for
+    real, which would need task classes and a dimension universe.
+    """
+
+    @staticmethod
+    def _fakeGraph(**taskDimensions: set[str]) -> PipelineGraph:
+        tasks = {
+            label: SimpleNamespace(raw_dimensions=frozenset(dims)) for label, dims in taskDimensions.items()
+        }
+        return cast(PipelineGraph, SimpleNamespace(tasks=tasks))
+
+    def test_perDetectorGraphDoesNotNeedClobbering(self) -> None:
+        # a calib step1a: everything is per exposure and detector
+        graph = self._fakeGraph(
+            verifyBiasIsr={"instrument", "exposure", "detector"},
+            verifyBiasDet={"instrument", "exposure", "detector"},
+        )
+        self.assertFalse(needsOutputClobbering(graph))
+
+    def test_visitAndGroupCountAsPerExposure(self) -> None:
+        # SFM step1b gathers per visit, AOS pair merging works per group
+        self.assertFalse(needsOutputClobbering(self._fakeGraph(consolidate={"instrument", "visit"})))
+        self.assertFalse(
+            needsOutputClobbering(self._fakeGraph(pairMerge={"instrument", "group", "detector"}))
+        )
+
+    def test_instrumentLevelTaskNeedsClobbering(self) -> None:
+        # a calib step1b: the run merge and the metrics task are instrument-
+        # only, so one such task in the graph is enough to require clobbering
+        graph = self._fakeGraph(
+            verifyBiasExp={"instrument", "exposure"},
+            verifyBias={"instrument"},
+            analyzeBiasCore={"instrument"},
+        )
+        self.assertTrue(needsOutputClobbering(graph))
+
+    def test_perFilterTaskNeedsClobbering(self) -> None:
+        # the flat run merge is per filter, which is still not per exposure
+        self.assertTrue(needsOutputClobbering(self._fakeGraph(verifyFlat={"instrument", "physical_filter"})))
+
+    def test_emptyGraph(self) -> None:
+        self.assertFalse(needsOutputClobbering(self._fakeGraph()))
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

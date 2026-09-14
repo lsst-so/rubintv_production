@@ -57,6 +57,7 @@ __all__ = [
     "hasRaDec",
     "isFileWorldWritable",
     "isFamPipeline",
+    "needsOutputClobbering",
     "runningCI",
     "runningScons",
     "runningPyTest",
@@ -263,6 +264,32 @@ def isFamPipeline(pipelineGraph: PipelineGraph) -> bool:
         ``True`` if the pipeline graph is a FAM pipeline, else ``False``.
     """
     return pipelineGraph.task_subsets.get("visit-pair-merge-task") is not None
+
+
+def needsOutputClobbering(pipelineGraph: PipelineGraph) -> bool:
+    """Check whether running this pipeline for a new exposure would rewrite
+    outputs it already wrote for a previous one.
+
+    Tasks whose dimensions include none of ``exposure``, ``visit`` or
+    ``group`` (for example cp_verify's run-level merges and the analysis_tools
+    calibration metrics, which are instrument-only) produce the very same
+    dataset for every exposure. Rapid analysis writes everything into one
+    long-lived run collection, so such outputs must be found and pruned before
+    each run rather than assumed absent, otherwise the second exposure
+    conflicts with the first.
+
+    Parameters
+    ----------
+    pipelineGraph : `lsst.pipe.base.PipelineGraph`
+        The pipeline graph to check. Need not be resolved.
+
+    Returns
+    -------
+    needsOutputClobbering : `bool`
+        ``True`` if any task in the graph has no per-exposure dimension.
+    """
+    perExposureDimensions = {"exposure", "visit", "group"}
+    return any(not perExposureDimensions & set(task.raw_dimensions) for task in pipelineGraph.tasks.values())
 
 
 def runningCI() -> bool:

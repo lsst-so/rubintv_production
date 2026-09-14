@@ -1,0 +1,20 @@
+description: |
+    Rapid analysis bias verification for LATISS.
+
+    Imports drp_pipe's quickLook bias pipeline (cp_verify's ISR, per-detector
+    verification, per-exposure merge and run merge, configured to write
+    post_isr_image) and adds the analysis_tools task that turns the merged
+    results into a MetricMeasurementBundle. That bundle is what the butler's
+    Sasquatch datastore publishes to Chronograf.
+
+    Rapid analysis never runs this file as a whole: the head node builds the
+    per-detector labels as step1a and the per-exposure labels as step1b (see
+    processingControl.CALIBRATION_PIPELINE_LABELS), so the run-level tasks
+    run once per exposure and their instrument-level outputs are clobbered
+    each time.
+instrument: lsst.obs.lsst.Latiss
+imports:
+  - location: $DRP_PIPE_DIR/pipelines/LATISS/quickLookBias.yaml
+  - location: $ANALYSIS_TOOLS_DIR/pipelines/cpCore.yaml
+    include:
+      - analyzeBiasCore
