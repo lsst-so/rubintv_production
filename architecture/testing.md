@@ -143,7 +143,12 @@ Full pipeline execution:
 - Head node + SFM workers + step1b workers for LATISS and LSSTCam
 - 18 SFM detectors for LSSTCam (90-98, 144-152)
 - Real Butler queries against test data (dayObs=20251115)
-- Test exposures: 226 (SFM), 227+228 (FAM CWFS pair), 436 (bias)
+- Test exposures: 226 (SFM), 227+228 (FAM CWFS pair), 436 (bias), 437+438
+  (stand-ins for a dark and a flat, to exercise the other two calib
+  pipelines; to be swapped for real ones)
+- The butlers are the `+sasquatch_dev` ones, so metric bundles really are
+  published to the USDF dev Sasquatch, tagged `dataset_tag=rapid_analysis_ci`
+  (set in `setup_environment()`) so they can be filtered out
 
 **Phase 3: Round 2** (200 s timeout)
 Post-processing and visualization:
@@ -158,7 +163,7 @@ Post-processing and visualization:
 2. Waits for SFM workers and head node to come online
 3. Pushes exposures to Redis with specific ordering and delays:
    - 227 first (intra-focal, must arrive before 228)
-   - Then 436 (bias), 226 (SFM), 228 (extra-focal)
+   - Then 436, 437, 438 (calibs), 226 (SFM), 228 (extra-focal)
    - 2 s delays between pushes
 4. Announces FAM pair via `LSSTCam-FROM-OCS_DONUTPAIR`
 5. Also tests LATISS with exposure 20240813/632
@@ -190,6 +195,10 @@ Features:
 - Sets `RAPID_ANALYSIS_LOCATION=usdf_testing`
 - Runs pipelines in parallel via `ThreadPoolExecutor`
 - Creates collections for: FAM, AOS, SFM, calibration pipelines
+- The calibration pipelines are run with both their step1a labels (cp_verify
+  ISR plus the per-detector verify task) so that the collections hold the
+  inputs the calib step1b tests (`testCalibPipelinesStep1b`) build their
+  graphs from
 - Used to create the underlying collections for `test_pipelines.py` unit tests
 - Only needs to be rerun when outputs change
 

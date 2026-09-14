@@ -30,14 +30,17 @@ redisHelper = RedisHelper(butler, locationConfig)
 # 227 - FAM CWFS image, goes as a FAM pair, but to the SFM pods
 # 228 - FAM CWFS image, goes as a FAM pair, but to the SFM pods
 # CWFS goes to AOS pods
-# 437 - a bias, to test cpVerify pipelines and mosaicing
+# 436 - a bias, to test the cp_verify calib pipelines (step1a + step1b) and
+#       mosaicing
+# 437, 438 - stand-ins for a dark and a flat, to test the other two cp_verify
+#            calib pipelines. TODO: point these at a real dark and a real flat.
 
 where = (
-    "exposure.day_obs=20251115 AND exposure.seq_num in (226..228,436)"
+    "exposure.day_obs=20251115 AND exposure.seq_num in (226..228,436..438)"
     f" AND instrument='{instrument}'"  # on sky!
 )
 records = list(butler.registry.queryDimensionRecords("exposure", where=where))
-assert len(records) == 4, f"Expected 4 records, got {len(records)}"
+assert len(records) == 6, f"Expected 6 records, got {len(records)}"
 records = sorted(records, key=lambda x: (x.day_obs, x.seq_num))  # always dispatch in order
 assert len(set(r.day_obs for r in records)) == 1, "Expected all records to have the same day_obs"
 recordDict = {r.seq_num: r for r in records}  # so we can dispatch in specific order
@@ -75,16 +78,24 @@ time.sleep(3)  # make sure it's fully online
 # 436, but the only part that should matter is 227 before 228.
 
 # NB: Do not add something before 227 without carefully reading all comments
-for record in (recordDict[227], recordDict[436], recordDict[226], recordDict[228]):
+for record in (
+    recordDict[227],
+    recordDict[436],
+    recordDict[437],
+    recordDict[438],
+    recordDict[226],
+    recordDict[228],
+):
     assert isinstance(record, DimensionRecord)
     redisHelper.pushNewExposureToHeadNode(record)
     redisHelper.pushToButlerWatcherList(instrument, record)
 
     # We are dispatching 227 first specifically to make sure it beats 228.
     # Recall though, that this only works correctly because the first payload
-    # is landing on empty pods. We dispatch by the headnode as 227, 436, 226,
-    # 228, and 227 is picked up first. These pods are then busy. The rest get
-    # fanned out by the head node much quicker than the processing succeeds,
+    # is landing on empty pods. We dispatch by the headnode as 227, 436, 437,
+    # 438, 226, 228, and 227 is picked up first. These pods are then busy. The
+    # rest get fanned out by the head node much quicker than the processing
+    # succeeds,
     # building up queues for each pod. These are then processed last-in,
     # first-out, so the last one to be dispatched (228) is the next one to be
     # processed after 227. If the pods were not empty at the start, then 227

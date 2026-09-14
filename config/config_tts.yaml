@@ -6,7 +6,7 @@ dimensionUniverseFile: '/project/rubintv/butlerDimensionUniverse.json'
 nightReportPath:     '/project/rubintv/nightReportData'
 
 # AuxTel
-auxtelButlerPath: LATISS
+auxtelButlerPath: LATISS+sasquatch
 auxTelMetadataPath: '/project/rubintv/sidecar_metadata'
 auxTelMetadataShardPath: '/project/rubintv/sidecar_metadata/shards'
 
@@ -47,7 +47,7 @@ lsstCamMetadataPath: /project/rubintv/LSSTCam/sidecar_metadata
 lsstCamMetadataShardPath: /project/rubintv/LSSTCam/sidecar_metadata/shards
 lsstCamAosMetadataPath: /project/rubintv/LSSTCamAos/sidecar_metadata/shards
 lsstCamAosMetadataShardPath: /project/rubintv/LSSTCamAos/sidecar_metadata/shards
-lsstCamButlerPath: /repo/LSSTCam/butler.yaml
+lsstCamButlerPath: /repo/LSSTCam/butler+sasquatch.yaml
 
 scratchPath : rapidAnalysisScratch
 plotPath: '/project/rubintv/LSSTComCam/plots'
