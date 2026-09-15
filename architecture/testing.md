@@ -149,6 +149,20 @@ Full pipeline execution:
 - The butlers are the `+sasquatch_dev` ones, so metric bundles really are
   published to the USDF dev Sasquatch, tagged `dataset_tag=rapid_analysis_ci`
   (set in `setup_environment()`) so they can be filtered out
+- The exposure list lives in `ciutils.py` (`CI_LSSTCAM_SEQ_NUMS`), shared by
+  the drip feed and the result checks
+
+**Result checks** (all must pass): every script exits cleanly, the expected
+plots exist, the Redis step1b counters match, no `FAILED` keys, and
+`check_calib_step1b_datasets()` finds every step1b output of each
+calibration exposure's pipeline in the CI output run (the dataset types are
+read off the pipeline graphs). It also fails outright if the fed exposures
+do not include a bias, a dark and a flat, so all three calibration
+pipelines are always exercised, and warns if a pipeline writes no
+`MetricMeasurementBundle` (currently true of flats, see DM-52068).
+That last check exists because a step1b whose inputs never landed builds an
+empty quantum graph and "finishes" with nothing written, which no other
+check can see.
 
 **Phase 3: Round 2** (200 s timeout)
 Post-processing and visualization:
@@ -198,7 +212,14 @@ Features:
 - The calibration pipelines are run with both their step1a labels (cp_verify
   ISR plus the per-detector verify task) so that the collections hold the
   inputs the calib step1b tests (`testCalibPipelinesStep1b`) build their
-  graphs from
+  graphs from; the fixture exposures are `CALIB_FIXTURE_EXPOSURES` in
+  `tests/utils.py`, shared with `test_pipelines.py`
+- The step1b tests pin their input collections to the pipeline's own test
+  collection and first check it holds the step1a products the step1b
+  consumes, failing with a "rebuild the collections" message rather than an
+  empty graph if it doesn't. Without that a stale collection shows up as a
+  bare `0 != 1` quanta count, and a test could pass by finding outputs the CI
+  happened to leave in the output chain instead
 - Used to create the underlying collections for `test_pipelines.py` unit tests
 - Only needs to be rerun when outputs change
 

@@ -24,7 +24,7 @@ import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from utils import getUserRunCollectionName, removeUserRunCollection
+from utils import CALIB_FIXTURE_EXPOSURES, getUserRunCollectionName, removeUserRunCollection
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
@@ -38,8 +38,8 @@ from lsst.summit.utils.utils import setupLogging
 
 FAM_VISIT_QUERY = "visit in (2025111500227,2025111500228)"
 SFM_VISIT_QUERY = "visit in (2025111500226)"
-# calib frames don't get visit records defined, so query on exposure
-CALIB_EXPOSURE_QUERY = "exposure in (2025111500436)"
+# calib frames don't get visit records defined, so query on exposure, using
+# the same fixture exposures as test_pipelines.py (see CALIB_FIXTURE_EXPOSURES)
 
 INTRA_IDS = (192, 196, 200, 204)
 EXTRA_IDS = (191, 195, 199, 203)
@@ -158,9 +158,9 @@ def getDataQueryForPipeline(pipeline: PipelineComponents, pipelineName: str) -> 
     query = ""
 
     detectors: tuple[int, ...] = ()
-    if pipelineName in ("BIAS", "DARK", "FLAT"):  # calibs get the calib frame on the full focal plane
+    if pipelineName in CALIB_FIXTURE_EXPOSURES:  # calibs get the calib frame on the full focal plane
         detectors = ALL_DETECTOR_IDS
-        query += CALIB_EXPOSURE_QUERY
+        query += f"exposure in ({CALIB_FIXTURE_EXPOSURES[pipelineName]})"
     elif pipeline.isFullArrayMode:  # FAM gets science detectors and FAM images
         detectors = SFM_DETECTORS
         query += FAM_VISIT_QUERY

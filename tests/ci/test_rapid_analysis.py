@@ -33,11 +33,20 @@ CliLog.initLog(False)
 CliLog.initLog = do_nothing  # type: ignore
 
 # Import test utilities
-from ciutils import Check, TestScript, conditional_redirect  # type: ignore # noqa: E402
+from ciutils import (  # type: ignore # noqa: E402
+    CI_LSSTCAM_DAY_OBS,
+    CI_LSSTCAM_SEQ_NUMS,
+    Check,
+    TestScript,
+    conditional_redirect,
+)
 
 # Only import from lsst packages after logging is configured
+from lsst.daf.butler import Butler, MissingDatasetTypeError  # noqa: E402
+from lsst.rubintv.production.butlerQueries import getCurrentOutputRun  # noqa: E402
 from lsst.rubintv.production.locationConfig import LocationConfig, findMissingConfigKeys  # noqa: E402
-from lsst.rubintv.production.predicates import getDoRaise, runningCI  # noqa: E402
+from lsst.rubintv.production.predicates import getDoRaise, isCalibration, runningCI  # noqa: E402
+from lsst.rubintv.production.processingControl import buildPipelines, getIsrStep1bPipelineKey  # noqa: E402
 from lsst.rubintv.production.redisUtils import (  # noqa: E402
     RedisHelper,
     decode_list,
@@ -1289,6 +1298,114 @@ class ResultCollector:
             for plot in sorted(uncheckedPlots):
                 self.checks.append(Check(None, f"Found unchecked-for plot {plot}"))
 
+    def check_calib_step1b_datasets(self) -> None:
+        """Check that every calibration exposure fed to the CI got its full
+        step1b output written to the butler, including the metric bundle that
+        Sasquatch publishes.
+
+        Pods exiting cleanly and the plots appearing only show that step1a
+        ran. A step1b whose inputs never landed builds an empty quantum
+        graph, logs a warning, and "finishes" with nothing written, which
+        none of the other checks can see. The datasets are the only evidence
+        that the merge and metrics tasks actually ran, so this is the check
+        that fails when calibration processing is broken end to end. The
+        expected datasets are read off the pipeline graphs rather than
+        listed, so every step1b output is covered and renames can't silently
+        hollow the check out.
+
+        The CI is expected to feed a bias, a dark and a flat so that all three
+        calibration pipelines are exercised; a missing type is a failure, not
+        a gap to warn about, since we choose what gets fed.
+        """
+        instrument = "LSSTCam"
+        locationConfig = LocationConfig("usdf_testing")
+        butler = Butler.from_config(
+            locationConfig.lsstCamButlerPath, instrument=instrument, collections=[f"{instrument}/defaults"]
+        )
+        outputRun = getCurrentOutputRun(butler, locationConfig, instrument)
+        if outputRun is None:
+            self.checks.append(Check(False, "Could not find the CI output run to check datasets in"))
+            return
+
+        seqNums = ",".join(str(seqNum) for seqNum in CI_LSSTCAM_SEQ_NUMS)
+        where = (
+            f"exposure.day_obs={CI_LSSTCAM_DAY_OBS} AND exposure.seq_num in ({seqNums})"
+            f" AND instrument='{instrument}'"
+        )
+        records = butler.query_dimension_records("exposure", where=where)
+        calibRecords = sorted((r for r in records if isCalibration(r)), key=lambda r: r.seq_num)
+        for calibType in ("bias", "dark", "flat"):
+            fed = any(r.observation_type == calibType for r in calibRecords)
+            self.checks.append(
+                Check(
+                    fed,
+                    (
+                        f"A {calibType} was fed, so the {calibType.upper()} pipeline was exercised"
+                        if fed
+                        else f"No {calibType} among the CI exposures, so the {calibType.upper()} pipeline"
+                        " was not exercised"
+                    ),
+                )
+            )
+
+        # one calib step1b (reported under who="ISR") should have finished
+        # per calib exposure, exactly as is checked for SFM and AOS
+        redisHelper = RedisHelper(None, None)  # type: ignore[arg-type]
+        nStep1bIsr = redisHelper.getNumVisitLevelFinished(instrument, "step1b", "ISR")
+        nCalibs = len(calibRecords)
+        self.checks.append(
+            Check(
+                nStep1bIsr == nCalibs,
+                f"{nStep1bIsr}x {instrument} calibration (ISR) step1b finished, expected {nCalibs}",
+            )
+        )
+
+        _, pipelines = buildPipelines(instrument, locationConfig, butler)
+        for record in calibRecords:
+            pipelineKey = getIsrStep1bPipelineKey(record.observation_type)
+            graph = pipelines[pipelineKey].graphs["step1b"]
+            exposureLabel = f"{record.observation_type} {record.day_obs}/{record.seq_num}"
+            writesMetricBundle = False
+            for taskNode in graph.tasks.values():
+                for edge in taskNode.outputs.values():
+                    name = edge.parent_dataset_type_name
+                    datasetTypeNode = graph.dataset_types[name]
+                    assert datasetTypeNode is not None, "graphs from buildPipelines are resolved"
+                    if datasetTypeNode.storage_class_name == "MetricMeasurementBundle":
+                        writesMetricBundle = True
+                    # required rather than all names, as exposure implies
+                    # physical_filter etc. and we only want to constrain on
+                    # what identifies the dataset
+                    dims = datasetTypeNode.dimensions.required
+                    dataId: dict[str, Any] = {"instrument": instrument}
+                    if "exposure" in dims:
+                        dataId["exposure"] = record.id
+                    if "physical_filter" in dims:
+                        dataId["physical_filter"] = record.physical_filter
+                    try:
+                        found = butler.query_datasets(
+                            name, collections=[outputRun], data_id=dataId, explain=False
+                        )
+                    except MissingDatasetTypeError:  # never written by anything, ever
+                        found = []
+                    if found:
+                        self.checks.append(Check(True, f"Found {name} for {exposureLabel} in {outputRun}"))
+                    else:
+                        self.checks.append(Check(False, f"Missing {name} for {exposureLabel} in {outputRun}"))
+            # analysis_tools drops the metrics output entirely when none of a
+            # task's tools produce a metric, so a pipeline can legitimately
+            # have nothing for Sasquatch: true for flats until analysis_tools
+            # grows a metric-producing flat tool (DM-52068). Warn, don't fail.
+            if writesMetricBundle:
+                self.checks.append(Check(True, f"{pipelineKey} step1b writes a MetricMeasurementBundle"))
+            else:
+                self.checks.append(
+                    Check(
+                        None,
+                        f"{pipelineKey} step1b writes no MetricMeasurementBundle, so nothing for Sasquatch",
+                    )
+                )
+
     def print_final_result(self, config: TestConfig) -> bool:
         """Print final test results and return overall pass status."""
         fails = [check for check in self.checks if check.passed is False]
@@ -1501,8 +1618,9 @@ class TestRunner:
             self.result_collector.check_script_results(self.process_manager, self.config.test_scripts_round_1)
             self.result_collector.check_script_results(self.process_manager, self.config.test_scripts_round_2)
 
-            # Check for plots and Redis results
+            # Check for plots, datasets and Redis results
             self.result_collector.check_plots(self.config)
+            self.result_collector.check_calib_step1b_datasets()
             self.redis_manager.check_final_contents(self.result_collector.checks)
 
             # Print final results and exit with appropriate status
