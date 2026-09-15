@@ -22,14 +22,18 @@
 """Test cases for the parts of pipelineRunning that need no Butler."""
 
 import unittest
+from types import SimpleNamespace
 from typing import cast
 from unittest.mock import MagicMock
 
 import lsst.utils.tests
 from lsst.daf.butler import DataCoordinate, DatasetRef, DatasetType, DimensionUniverse, LimitedButler
+from lsst.obs.lsst import LsstCam
+from lsst.pipe.base.pipeline_graph import TaskNode
 from lsst.rubintv.production.pipelineRunning import (
     METRIC_BUNDLE_STORAGE_CLASS,
     MetricTolerantCachingLimitedButler,
+    shouldSkipQuantum,
 )
 
 
@@ -73,6 +77,53 @@ class MetricTolerantCachingLimitedButlerTestCase(lsst.utils.tests.TestCase):
         self.wrapped.put.side_effect = None
         self.wrapped.put.return_value = self.metricRef
         self.assertEqual(self.butler.put(object(), self.metricRef), self.metricRef)
+
+
+class ShouldSkipQuantumTestCase(lsst.utils.tests.TestCase):
+    """Tests for `shouldSkipQuantum`.
+
+    cp_verify's per-detector quanta are skipped on the guiders and wavefront
+    sensors, and nothing else is: not ISR on those detectors, not cp_verify
+    on science detectors, and not the exposure-level cp_verify merges.
+    """
+
+    def setUp(self) -> None:
+        self.camera = LsstCam.getCamera()
+        self.universe = DimensionUniverse()
+        # the decision only reads the class name off the task node
+        self.cpVerifyDetTask = self._fakeTask("lsst.cp.verify.verifyBias.CpVerifyBiasTask")
+        self.cpVerifyMergeTask = self._fakeTask("lsst.cp.verify.mergeResults.CpVerifyExpMergeTask")
+        self.isrTask = self._fakeTask("lsst.ip.isr.isrTaskLSST.IsrTaskLSST")
+
+    @staticmethod
+    def _fakeTask(taskClassName: str) -> TaskNode:
+        return cast(TaskNode, SimpleNamespace(task_class_name=taskClassName))
+
+    def _dataId(self, detector: int | None = None) -> DataCoordinate:
+        dataId: dict[str, int | str] = {"instrument": "LSSTCam", "exposure": 2026070200203}
+        if detector is not None:
+            dataId["detector"] = detector
+        return DataCoordinate.standardize(dataId, universe=self.universe)
+
+    def test_cpVerifySkippedOnGuidersAndWavefrontSensors(self) -> None:
+        for detector in (189, 190, 191, 192, 204):
+            self.assertTrue(
+                shouldSkipQuantum(self.camera, self.cpVerifyDetTask, self._dataId(detector)), detector
+            )
+
+    def test_cpVerifyRunsOnScienceDetectors(self) -> None:
+        for detector in (0, 94, 188):
+            self.assertFalse(
+                shouldSkipQuantum(self.camera, self.cpVerifyDetTask, self._dataId(detector)), detector
+            )
+
+    def test_isrNeverSkipped(self) -> None:
+        for detector in (94, 189, 191):
+            self.assertFalse(shouldSkipQuantum(self.camera, self.isrTask, self._dataId(detector)), detector)
+
+    def test_exposureLevelCpVerifyNeverSkipped(self) -> None:
+        # the step1b merges have no detector, so there is nothing to judge by
+        self.assertFalse(shouldSkipQuantum(self.camera, self.cpVerifyMergeTask, self._dataId()))
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
