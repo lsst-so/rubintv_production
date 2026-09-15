@@ -43,14 +43,12 @@ _LOG = logging.getLogger(__name__)
 
 # The LSSTCam exposure each calibration pipeline's unit tests (and the
 # collections createUnitTestCollections.py builds for them) run on, keyed by
-# pipeline name. The tests only build quantum graphs, and cp_verify's bias,
-# dark and flat verification tasks all run happily on a 0 s exposure, so a
-# single bias currently stands in for all three; point DARK and FLAT at a real
-# dark and flat here once suitable exposures on this dayObs are chosen.
+# pipeline name: one real exposure of each type, all on dayObs 20251115 and
+# the same ones the CI feeds (see tests/ci/ciutils.py).
 CALIB_FIXTURE_EXPOSURES: dict[str, int] = {
     "BIAS": 2025111500436,
-    "DARK": 2025111500436,
-    "FLAT": 2025111500436,
+    "DARK": 2025111500440,
+    "FLAT": 2025111500450,
 }
 
 
