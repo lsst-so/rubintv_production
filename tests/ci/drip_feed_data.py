@@ -3,6 +3,8 @@ import time
 
 t0 = time.time()
 
+from ciutils import CI_LSSTCAM_DAY_OBS, CI_LSSTCAM_SEQ_NUMS  # type: ignore # noqa: E402
+
 from lsst.daf.butler import Butler, DimensionRecord  # noqa: E402
 from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig  # noqa: E402
 from lsst.rubintv.production.payloads import Payload  # noqa: E402
@@ -35,15 +37,19 @@ redisHelper = RedisHelper(butler, locationConfig)
 # 437, 438 - stand-ins for a dark and a flat, to test the other two cp_verify
 #            calib pipelines. TODO: point these at a real dark and a real flat.
 
+seqNums = ",".join(str(seqNum) for seqNum in CI_LSSTCAM_SEQ_NUMS)
 where = (
-    "exposure.day_obs=20251115 AND exposure.seq_num in (226..228,436..438)"
+    f"exposure.day_obs={CI_LSSTCAM_DAY_OBS} AND exposure.seq_num in ({seqNums})"
     f" AND instrument='{instrument}'"  # on sky!
 )
 records = list(butler.registry.queryDimensionRecords("exposure", where=where))
-assert len(records) == 6, f"Expected 6 records, got {len(records)}"
+nExpected = len(CI_LSSTCAM_SEQ_NUMS)
+assert len(records) == nExpected, f"Expected {nExpected} records, got {len(records)}"
 records = sorted(records, key=lambda x: (x.day_obs, x.seq_num))  # always dispatch in order
 assert len(set(r.day_obs for r in records)) == 1, "Expected all records to have the same day_obs"
 recordDict = {r.seq_num: r for r in records}  # so we can dispatch in specific order
+for record in records:  # so the log shows what each exposure is, e.g. that 436 really is a bias
+    print(f"CI exposure {record.day_obs}/{record.seq_num}: {record.observation_type}")
 
 performancePod = PodDetails(
     instrument=instrument, podFlavor=PodFlavor.PERFORMANCE_MONITOR, detectorNumber=None, depth=None

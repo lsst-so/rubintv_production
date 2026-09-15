@@ -5,6 +5,13 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import TextIO
 
+# The LSSTCam exposures the CI feeds, all from one dayObs. Shared by the drip
+# feed (which pushes them) and the result checks (which know what to expect
+# from each by its observation_type), so the two can't drift apart. See
+# drip_feed_data.py for what each one is for.
+CI_LSSTCAM_DAY_OBS = 20251115
+CI_LSSTCAM_SEQ_NUMS = (226, 227, 228, 436, 437, 438)
+
 
 @dataclass
 class TestScript:
