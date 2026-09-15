@@ -142,14 +142,19 @@ Small scripts validating the test framework itself:
 Full pipeline execution:
 - Head node + SFM workers + step1b workers for LATISS and LSSTCam
 - 18 SFM detectors for LSSTCam (90-98, 144-152)
-- Real Butler queries against test data (dayObs=20251115)
-- Test exposures: 226 (SFM), 227+228 (FAM CWFS pair), 436 (bias), 440 (dark),
-  450 (flat)
+- Real Butler queries against test data
+- Test exposures, defined once in `tests/fixtureExposures.py` (shared with
+  the unit tests) as full exposure ids, so nothing assumes they share a
+  night: LSSTCam 2025111500226 (SFM), 2025111500227+228 (FAM CWFS pair),
+  2026070200203 (bias), 2026070200201 (dark), 2026070200192 (flat). The
+  calibs are deliberately from a much newer night than the on-sky images,
+  because older raw headers lack information cp_verify needs
 - The butlers are the `+sasquatch_dev` ones, so metric bundles really are
   published to the USDF dev Sasquatch, tagged `dataset_tag=rapid_analysis_ci`
   (set in `setup_environment()`) so they can be filtered out
-- The exposure list lives in `ciutils.py` (`CI_LSSTCAM_SEQ_NUMS`), shared by
-  the drip feed and the result checks
+- Every expected plot path, visit id and query is built from the
+  `FixtureExposure` objects in `tests/fixtureExposures.py` (which derive
+  dayObs and seqNum from the exposure id), never from hard-coded numbers
 
 **Result checks** (all must pass): every script exits cleanly, the expected
 plots exist, the Redis step1b counters match, no `FAILED` keys, and
@@ -175,11 +180,12 @@ Post-processing and visualization:
 1. Initializes Butler and RedisHelper
 2. Waits for SFM workers and head node to come online
 3. Pushes exposures to Redis with specific ordering and delays:
-   - 227 first (intra-focal, must arrive before 228)
-   - Then 436, 440, 450 (bias, dark, flat), 226 (SFM), 228 (extra-focal)
+   - The intra-focal FAM image first (it must arrive before the extra-focal)
+   - Then the bias, dark and flat, the in-focus SFM image, and the
+     extra-focal FAM image
    - 2 s delays between pushes
 4. Announces FAM pair via `LSSTCam-FROM-OCS_DONUTPAIR`
-5. Also tests LATISS with exposure 20240813/632
+5. Also tests LATISS with its one on-sky fixture exposure (2024081300632)
 
 ### Redis in CI
 
@@ -211,8 +217,8 @@ Features:
 - The calibration pipelines are run with both their step1a labels (cp_verify
   ISR plus the per-detector verify task) so that the collections hold the
   inputs the calib step1b tests (`testCalibPipelinesStep1b`) build their
-  graphs from; the fixture exposures are `CALIB_FIXTURE_EXPOSURES` in
-  `tests/utils.py`, shared with `test_pipelines.py`
+  graphs from; the fixture exposures are `CALIB_EXPOSURES` in
+  `tests/fixtureExposures.py`, shared with `test_pipelines.py` and the CI
 - The step1b tests pin their input collections to the pipeline's own test
   collection and first check it holds the step1a products the step1b
   consumes, failing with a "rebuild the collections" message rather than an

@@ -24,7 +24,8 @@ import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from utils import CALIB_FIXTURE_EXPOSURES, getUserRunCollectionName, removeUserRunCollection
+from fixtureExposures import CALIB_EXPOSURES, LSSTCAM_FAM_EXTRA, LSSTCAM_FAM_INTRA, LSSTCAM_IN_FOCUS
+from utils import getUserRunCollectionName, removeUserRunCollection
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
@@ -36,10 +37,12 @@ from lsst.rubintv.production.processingControl import (
 )
 from lsst.summit.utils.utils import setupLogging
 
-FAM_VISIT_QUERY = "visit in (2025111500227,2025111500228)"
-SFM_VISIT_QUERY = "visit in (2025111500226)"
+# the on-sky fixtures are single-snap visits, so their visit ids are their
+# exposure ids
+FAM_VISIT_QUERY = f"visit in ({LSSTCAM_FAM_INTRA.id},{LSSTCAM_FAM_EXTRA.id})"
+SFM_VISIT_QUERY = f"visit in ({LSSTCAM_IN_FOCUS.id})"
 # calib frames don't get visit records defined, so query on exposure, using
-# the same fixture exposures as test_pipelines.py (see CALIB_FIXTURE_EXPOSURES)
+# the same fixture exposures as test_pipelines.py (see CALIB_EXPOSURES)
 
 INTRA_IDS = (192, 196, 200, 204)
 EXTRA_IDS = (191, 195, 199, 203)
@@ -156,9 +159,9 @@ def getDataQueryForPipeline(pipeline: PipelineComponents, pipelineName: str) -> 
     query = ""
 
     detectors: tuple[int, ...] = ()
-    if pipelineName in CALIB_FIXTURE_EXPOSURES:  # calibs get the calib frame on the full focal plane
+    if pipelineName in CALIB_EXPOSURES:  # calibs get the calib frame on the full focal plane
         detectors = ALL_DETECTOR_IDS
-        query += f"exposure in ({CALIB_FIXTURE_EXPOSURES[pipelineName]})"
+        query += f"exposure in ({CALIB_EXPOSURES[pipelineName].id})"
     elif pipeline.isFullArrayMode:  # FAM gets science detectors and FAM images
         detectors = SFM_DETECTORS
         query += FAM_VISIT_QUERY
@@ -214,6 +217,7 @@ def main() -> None:
         if pipelineName in CALIBRATION_PIPELINE_LABELS:
             step1aLabels, _ = CALIBRATION_PIPELINE_LABELS[pipelineName]
             substep = f"#{step1aLabels}"
+            assert pipelineName in CALIB_EXPOSURES, f"No fixture exposure defined for {pipelineName}"
 
         commands.extend(
             [
