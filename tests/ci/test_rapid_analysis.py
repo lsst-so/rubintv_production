@@ -1176,20 +1176,20 @@ class ResultCollector:
             ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000228.png", 5000),
             ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000226.png", 5000),
             ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000436.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000437.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000438.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000440.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000450.png", 5000),
             # post ISR mosaics for all images
             ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000227.jpg", 5000),
             ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000228.jpg", 5000),
             ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000226.jpg", 5000),
             ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000436.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000437.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000438.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000440.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000450.jpg", 5000),
             # witness detector images for all with postISR that aren't CWFS
             ("LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000226.jpg", 5000),
             ("LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000436.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000437.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000438.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000440.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000450.jpg", 5000),
             # calexp mosaic for the only in-focus image
             ("LSSTCam/20251115/LSSTCam_calexp_mosaic_dayObs_20251115_seqNum_000226.jpg", 5000),
             # mount plots for the three on-sky images
@@ -1238,8 +1238,8 @@ class ResultCollector:
             ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000227.jpg", 5000),
             ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000228.jpg", 5000),
             ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000436.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000437.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000438.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000440.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000450.jpg", 5000),
             # AOS performance plots
             ("LSSTCam/20251115/LSSTCam_aos_timing_dayObs_20251115_seqNum_000226.jpg", 5000),
             ("LSSTCam/20251115/LSSTCam_aos_timing_dayObs_20251115_seqNum_000228.jpg", 5000),

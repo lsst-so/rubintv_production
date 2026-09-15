@@ -143,9 +143,8 @@ Full pipeline execution:
 - Head node + SFM workers + step1b workers for LATISS and LSSTCam
 - 18 SFM detectors for LSSTCam (90-98, 144-152)
 - Real Butler queries against test data (dayObs=20251115)
-- Test exposures: 226 (SFM), 227+228 (FAM CWFS pair), 436 (bias), 437+438
-  (stand-ins for a dark and a flat, to exercise the other two calib
-  pipelines; to be swapped for real ones)
+- Test exposures: 226 (SFM), 227+228 (FAM CWFS pair), 436 (bias), 440 (dark),
+  450 (flat)
 - The butlers are the `+sasquatch_dev` ones, so metric bundles really are
   published to the USDF dev Sasquatch, tagged `dataset_tag=rapid_analysis_ci`
   (set in `setup_environment()`) so they can be filtered out
@@ -177,7 +176,7 @@ Post-processing and visualization:
 2. Waits for SFM workers and head node to come online
 3. Pushes exposures to Redis with specific ordering and delays:
    - 227 first (intra-focal, must arrive before 228)
-   - Then 436, 437, 438 (calibs), 226 (SFM), 228 (extra-focal)
+   - Then 436, 440, 450 (bias, dark, flat), 226 (SFM), 228 (extra-focal)
    - 2 s delays between pushes
 4. Announces FAM pair via `LSSTCam-FROM-OCS_DONUTPAIR`
 5. Also tests LATISS with exposure 20240813/632

@@ -10,7 +10,7 @@ from typing import TextIO
 # from each by its observation_type), so the two can't drift apart. See
 # drip_feed_data.py for what each one is for.
 CI_LSSTCAM_DAY_OBS = 20251115
-CI_LSSTCAM_SEQ_NUMS = (226, 227, 228, 436, 437, 438)
+CI_LSSTCAM_SEQ_NUMS = (226, 227, 228, 436, 440, 450)
 
 
 @dataclass

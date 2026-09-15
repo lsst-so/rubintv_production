@@ -34,8 +34,7 @@ redisHelper = RedisHelper(butler, locationConfig)
 # CWFS goes to AOS pods
 # 436 - a bias, to test the cp_verify calib pipelines (step1a + step1b) and
 #       mosaicing
-# 437, 438 - stand-ins for a dark and a flat, to test the other two cp_verify
-#            calib pipelines. TODO: point these at a real dark and a real flat.
+# 440 - a dark and 450 - a flat, for the other two cp_verify calib pipelines
 
 seqNums = ",".join(str(seqNum) for seqNum in CI_LSSTCAM_SEQ_NUMS)
 where = (
@@ -87,8 +86,8 @@ time.sleep(3)  # make sure it's fully online
 for record in (
     recordDict[227],
     recordDict[436],
-    recordDict[437],
-    recordDict[438],
+    recordDict[440],
+    recordDict[450],
     recordDict[226],
     recordDict[228],
 ):
@@ -98,8 +97,8 @@ for record in (
 
     # We are dispatching 227 first specifically to make sure it beats 228.
     # Recall though, that this only works correctly because the first payload
-    # is landing on empty pods. We dispatch by the headnode as 227, 436, 437,
-    # 438, 226, 228, and 227 is picked up first. These pods are then busy. The
+    # is landing on empty pods. We dispatch by the headnode as 227, 436, 440,
+    # 450, 226, 228, and 227 is picked up first. These pods are then busy. The
     # rest get fanned out by the head node much quicker than the processing
     # succeeds,
     # building up queues for each pod. These are then processed last-in,
