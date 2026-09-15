@@ -32,24 +32,9 @@ from lsst.daf.butler import (
 from lsst.rubintv.production.parsers import safeJsonOpen
 from lsst.rubintv.production.processingControl import PIPELINE_NAMES
 
-__all__ = (
-    "CALIB_FIXTURE_EXPOSURES",
-    "getSampleExpRecord",
-    "getUserRunCollectionName",
-    "removeUserRunCollection",
-)
+__all__ = ("getSampleExpRecord", "getUserRunCollectionName", "removeUserRunCollection")
 
 _LOG = logging.getLogger(__name__)
-
-# The LSSTCam exposure each calibration pipeline's unit tests (and the
-# collections createUnitTestCollections.py builds for them) run on, keyed by
-# pipeline name: one real exposure of each type, all on dayObs 20251115 and
-# the same ones the CI feeds (see tests/ci/ciutils.py).
-CALIB_FIXTURE_EXPOSURES: dict[str, int] = {
-    "BIAS": 2025111500436,
-    "DARK": 2025111500440,
-    "FLAT": 2025111500450,
-}
 
 
 def getSampleExpRecord() -> DimensionRecord:

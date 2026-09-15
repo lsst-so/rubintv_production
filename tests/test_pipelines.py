@@ -29,7 +29,8 @@ from contextlib import contextmanager
 from typing import Iterator
 from unittest.mock import patch
 
-from utils import CALIB_FIXTURE_EXPOSURES, getUserRunCollectionName
+from fixtureExposures import CALIB_EXPOSURES, LSSTCAM_FAM_EXTRA, LSSTCAM_FAM_INTRA, LSSTCAM_IN_FOCUS
+from utils import getUserRunCollectionName
 
 import lsst.utils.tests
 from lsst.daf.butler import Butler, DataCoordinate, DimensionRecord, MissingDatasetTypeError
@@ -171,8 +172,12 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         cls.minimalButler = cls._makeMinimalButler()
         cls.graphs, cls.pipelines = buildPipelines("LSSTCam", cls.locationConfig, cls.minimalButler)
 
-        onSkyIds = {"inFocus": 2025111500226, "intra": 2025111500227, "extra": 2025111500228}
-        calibIds = {pipelineName.lower(): expId for pipelineName, expId in CALIB_FIXTURE_EXPOSURES.items()}
+        onSkyIds = {
+            "inFocus": LSSTCAM_IN_FOCUS.id,
+            "intra": LSSTCAM_FAM_INTRA.id,
+            "extra": LSSTCAM_FAM_EXTRA.id,
+        }
+        calibIds = {pipelineName.lower(): exposure.id for pipelineName, exposure in CALIB_EXPOSURES.items()}
         fixtureIds = sorted(set(onSkyIds.values()) | set(calibIds.values()))
         where = f"exposure in ({','.join(str(i) for i in fixtureIds)}) AND instrument='LSSTCam'"
         records = cls.minimalButler.query_dimension_records("exposure", where=where)
@@ -233,7 +238,7 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         execution quanta are named by class, so the labels are checked via
         ``taskExpectations`` and the classes via ``quantaExpectations``.
         """
-        for pipelineName in CALIB_FIXTURE_EXPOSURES:
+        for pipelineName in CALIB_EXPOSURES:
             calibType = pipelineName.lower().capitalize()  # e.g. Bias
             taskExpectations: dict[str, int] = {f"verify{calibType}Isr": 1, f"verify{calibType}Det": 1}
             quantaExpectations: dict[str, int] = {"isr": 1, f"cpverify{calibType}task": 1}
