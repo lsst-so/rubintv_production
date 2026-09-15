@@ -49,7 +49,6 @@ EXTRA_IDS = (191, 195, 199, 203)
 SFM_DETECTORS = (90, 91, 92, 93, 94, 95, 96, 97, 98)  # 1 raft
 
 CORNER_DETECTORS = tuple([d for d in INTRA_IDS] + [d for d in EXTRA_IDS])
-ALL_DETECTOR_IDS = tuple([d for d in INTRA_IDS] + [d for d in EXTRA_IDS] + [d for d in SFM_DETECTORS])
 
 _LOG = logging.getLogger("lsst.rubintv.tests.createUnitTestCollections")
 
@@ -161,8 +160,12 @@ def getDataQueryForPipeline(pipeline: PipelineComponents, pipelineName: str) -> 
     query = ""
 
     detectors: tuple[int, ...] = ()
-    if pipelineName in CALIB_EXPOSURES:  # calibs get the calib frame on the full focal plane
-        detectors = ALL_DETECTOR_IDS
+    if pipelineName in CALIB_EXPOSURES:
+        # calibs get the science detectors only: in production the worker
+        # skips cp_verify's per-detector quanta on the guiders and wavefront
+        # sensors (see pipelineRunning.shouldSkipQuantum), but pipetask has
+        # no such skip, so including the corner chips here would run them
+        detectors = SFM_DETECTORS
         query += f"exposure in ({CALIB_EXPOSURES[pipelineName].id})"
     elif pipeline.isFullArrayMode:  # FAM gets science detectors and FAM images
         detectors = SFM_DETECTORS
