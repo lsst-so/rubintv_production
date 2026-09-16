@@ -46,6 +46,7 @@ from lsst.rubintv.production.redisUtils import (  # noqa: E402
 )
 from lsst.rubintv.production.resources import getBasePath, listDir, rmtree  # noqa: E402
 from lsst.rubintv.production.uploaders import MultiUploader  # noqa: E402
+from lsst.utils import getPackageDir  # noqa: E402
 
 
 # Add mock uploader class for testing
@@ -1368,8 +1369,10 @@ class TestRunner:
         os.environ["RAPID_ANALYSIS_LOCATION"] = "usdf_testing"
         os.environ["RAPID_ANALYSIS_CI"] = "true"
         os.environ["RAPID_ANALYSIS_DO_RAISE"] = "True"
-        os.environ["TARTS_DATA_DIR"] = "/sdf/home/m/mfl/temp/TARTS"
-        os.environ["AI_DONUT_DATA_DIR"] = "/sdf/home/m/mfl/u/rubintv/aos_data/AI_DONUT"
+        # Resolve now: expandvars is single-pass, so nested vars never expand.
+        tsAosAiDir = getPackageDir("ts_aos_ai")
+        os.environ["TARTS_DATA_DIR"] = os.path.join(tsAosAiDir, "tarts", "model")
+        os.environ["AI_DONUT_DATA_DIR"] = os.path.join(tsAosAiDir, "ai_donut", "model")
         os.environ["LIMITS_CPU"] = "4"  # this should roughly match the lsstcamAosWorkerSet LIMITS_CPU value
 
         # Verify environment settings

@@ -30,6 +30,7 @@ import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
 from lsst.rubintv.production.processingControl import PIPELINE_NAMES, PipelineComponents, buildPipelines
 from lsst.summit.utils.utils import setupLogging
+from lsst.utils import getPackageDir
 
 FAM_VISIT_QUERY = "visit in (2025111500227,2025111500228)"
 SFM_VISIT_QUERY = "visit in (2025111500226)"
@@ -48,8 +49,9 @@ _LOG = logging.getLogger("lsst.rubintv.tests.createUnitTestCollections")
 os.environ["RAPID_ANALYSIS_LOCATION"] = "usdf_testing"
 os.environ["RAPID_ANALYSIS_CI"] = "true"
 os.environ["RAPID_ANALYSIS_DO_RAISE"] = "True"
-os.environ["TARTS_DATA_DIR"] = "/sdf/home/m/mfl/temp/TARTS"
-os.environ["AI_DONUT_DATA_DIR"] = "/sdf/home/m/mfl/u/rubintv/aos_data/AI_DONUT"
+_TS_AOS_AI_DIR = getPackageDir("ts_aos_ai")
+os.environ["TARTS_DATA_DIR"] = os.path.join(_TS_AOS_AI_DIR, "tarts", "model")
+os.environ["AI_DONUT_DATA_DIR"] = os.path.join(_TS_AOS_AI_DIR, "ai_donut", "model")
 
 
 PER_PIPELINE_EXTRAS: dict[str, list[str]] = {
