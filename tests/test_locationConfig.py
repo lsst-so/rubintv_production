@@ -302,8 +302,8 @@ class LocationConfigTestCase(lsst.utils.tests.TestCase):
                 self.assertEqual(getattr(self.locationConfig, key), self.config[key])
 
     def test_aosDataDirExpandsEnvVars(self) -> None:
-        # aosDataDir is "$TS_AOS_AI_DIR" at USDF and nothing downstream
-        # expands again, so an unexpanded value reaches open() verbatim.
+        # aosDataDir is joined onto batoid subpaths and nothing downstream
+        # expands, so a $VAR here would reach open() verbatim.
         self.config["aosDataDir"] = "$TS_AOS_AI_DIR/batoid_data"
         with patch.dict(os.environ, {"TS_AOS_AI_DIR": "/fixture/ts_aos_ai"}):
             locationConfig = LocationConfig("fixture")
