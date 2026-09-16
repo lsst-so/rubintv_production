@@ -424,7 +424,9 @@ class LocationConfig:
 
     @cached_property
     def aosDataDir(self) -> str:
-        return self._config["aosDataDir"]
+        # expandvars is single-pass, so expand here rather than at the join
+        # sites, where an unexpanded value would reach open() verbatim.
+        return os.path.expandvars(self._config["aosDataDir"])
 
     @cached_property
     def aosLSSTCamRefitWcsPipelineFile(self) -> str:

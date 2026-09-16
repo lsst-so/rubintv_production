@@ -301,6 +301,14 @@ class LocationConfigTestCase(lsst.utils.tests.TestCase):
             with self.subTest(key=key):
                 self.assertEqual(getattr(self.locationConfig, key), self.config[key])
 
+    def test_aosDataDirExpandsEnvVars(self) -> None:
+        # aosDataDir is joined onto batoid subpaths and nothing downstream
+        # expands, so a $VAR here would reach open() verbatim.
+        self.config["aosDataDir"] = "$TS_AOS_AI_DIR/batoid_data"
+        with patch.dict(os.environ, {"TS_AOS_AI_DIR": "/fixture/ts_aos_ai"}):
+            locationConfig = LocationConfig("fixture")
+            self.assertEqual(locationConfig.aosDataDir, "/fixture/ts_aos_ai/batoid_data")
+
     def test_postInitTouchesPlotPath(self) -> None:
         # __post_init__ touches plotPath, which is a _checkDir-creating
         # accessor. After construction the directory must exist already
