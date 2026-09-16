@@ -7,7 +7,7 @@ dimensionUniverseFile: /sdf/home/m/mfl/u/rubintv/butlerDimensionUniverse.json
 nightReportPath:     /sdf/home/m/mfl/u/rubintv/nightReportData
 
 # AuxTel
-auxtelButlerPath: /repo/main
+auxtelButlerPath: /repo/main+sasquatch_dev
 auxTelMetadataPath: /sdf/home/m/mfl/u/rubintv/sidecar_metadata
 auxTelMetadataShardPath: /sdf/home/m/mfl/u/rubintv/sidecar_metadata/shards
 
@@ -32,7 +32,7 @@ starTrackerMetadataShardPath: /sdf/home/m/mfl/u/rubintv/starTracker/sidecar_meta
 astrometryNetRefCatPath: /sdf/home/m/mfl/u/astrometry_net
 
 # ComCam configuration:
-comCamButlerPath: /repo/main
+comCamButlerPath: /repo/main+sasquatch_dev
 # comCamButlerPath: /sdf/data/rubin/repo/aos_imsim/raw/comcam_sensitivity_matrix/repo
 binning: 8
 # # paths for serving TS8 metadata at SLAC
@@ -58,7 +58,7 @@ lsstCamMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata
 lsstCamMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTCam/sidecar_metadata/shards
 lsstCamAosMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTCamAos/sidecar_metadata/shards
 lsstCamAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTCamAos/sidecar_metadata/shards
-lsstCamButlerPath: main
+lsstCamButlerPath: /repo/main+sasquatch_dev
 
 # Not prefixed with ComCam because were currently just pretending that ComCam is TS8
 scratchPath : rapidAnalysisScratchCi

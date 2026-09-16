@@ -64,7 +64,7 @@ from .consdbUtils import ConsDBPopulator
 from .payloads import Payload, pipelineGraphFromBytes
 from .plotting.mosaicing import writeBinnedImage
 from .podDefinition import PodFlavor
-from .predicates import raiseIf
+from .predicates import isCpVerifyTask, isScienceDetector, needsOutputClobbering, raiseIf
 from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
 from .shardIo import getShardPath, writeMetadataShard
@@ -74,8 +74,10 @@ from .utils import getExpIdOrVisitId
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
 
+    from lsst.afw.cameraGeom import Camera
     from lsst.afw.image import ExposureSummaryStats
-    from lsst.pipe.base.graph.quantumNode import QuantumNode
+    from lsst.daf.butler import DatasetProvenance
+    from lsst.pipe.base.pipeline_graph import TaskNode
     from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilder
 
     from .locationConfig import LocationConfig
@@ -108,6 +110,38 @@ PSF_GRADIENT_BAD = 0.85
 INTRA_IDS = (192, 196, 200, 204)
 EXTRA_IDS = (191, 195, 199, 203)
 
+# The storage class of analysis_tools metric bundles, which the butler's
+# Sasquatch datastore forwards to Chronograf on put.
+METRIC_BUNDLE_STORAGE_CLASS = "MetricMeasurementBundle"
+
+
+class MetricTolerantCachingLimitedButler(CachingLimitedButler):
+    """A `CachingLimitedButler` for which a failed put of a metric bundle is
+    not fatal.
+
+    Metric bundles (storage class ``MetricMeasurementBundle``) are forwarded
+    to Sasquatch by the butler's Sasquatch datastore as they are put. That
+    datastore is meant to swallow dispatch failures itself, but publishing
+    metrics is strictly best-effort in rapid analysis, and nothing on the
+    critical path may fail because Sasquatch is down or misbehaving. Any
+    exception from such a put is therefore logged and swallowed here, and
+    the task carries on writing its remaining outputs. All other puts raise
+    as normal.
+    """
+
+    def put(self, obj: Any, ref: DatasetRef, /, *, provenance: DatasetProvenance | None = None) -> DatasetRef:
+        try:
+            return super().put(obj, ref, provenance=provenance)
+        except Exception:
+            if ref.datasetType.storageClass_name != METRIC_BUNDLE_STORAGE_CLASS:
+                raise
+            log = logging.getLogger(__name__)
+            log.exception(
+                f"Failed to put metric bundle {ref}, so it will not be published to Sasquatch."
+                " Continuing regardless, as publishing metrics is best-effort."
+            )
+            return ref
+
 
 def makeCachingLimitedButler(butler: Butler, pipelineGraphs: list[PipelineGraph]) -> CachingLimitedButler:
     cachedOnGet = set()
@@ -123,7 +157,36 @@ def makeCachingLimitedButler(butler: Butler, pipelineGraphs: list[PipelineGraph]
     noCopyOnCache = NO_COPY_ON_CACHE
     log = logging.getLogger("lsst.rubintv.production.pipelineRunning.makeCachingLimitedButler")
     log.info(f"Creating CachingLimitedButler with {cachedOnPut=}, {cachedOnGet=}, {noCopyOnCache=}")
-    return CachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
+    return MetricTolerantCachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
+
+
+def shouldSkipQuantum(camera: Camera, taskNode: TaskNode, dataCoord: DataCoordinate) -> bool:
+    """Decide whether a worker should skip a quantum rather than run it.
+
+    cp_verify's verification tasks are only meaningful on science detectors:
+    the guiders and wavefront sensors are read out and used differently, so
+    their statistics are not comparable with the rest of the focal plane and
+    are not wanted. ISR still runs on them, as the post-ISR mosaics need it;
+    only the cp_verify quanta are skipped, and only per-detector ones, since
+    the exposure-level merges have no detector to judge by.
+
+    Parameters
+    ----------
+    camera : `lsst.afw.cameraGeom.Camera`
+        The camera, to classify the detector.
+    taskNode : `lsst.pipe.base.pipeline_graph.TaskNode`
+        The task the quantum belongs to.
+    dataCoord : `lsst.daf.butler.DataCoordinate`
+        The quantum's data ID.
+
+    Returns
+    -------
+    skip : `bool`
+        ``True`` if the quantum should be skipped.
+    """
+    if not isCpVerifyTask(taskNode) or "detector" not in dataCoord.dimensions.names:
+        return False
+    return not isScienceDetector(camera, int(dataCoord["detector"]))
 
 
 class SingleCorePipelineRunner(BaseButlerChannel):
@@ -175,6 +238,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.instrument = instrument
         self.butler = butler
         self.step = step
+        self.camera = getCameraFromInstrumentName(instrument)  # to classify detectors in shouldSkipQuantum
 
         allGraphs, pipelines = buildPipelines(
             instrument=instrument,
@@ -227,17 +291,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         """
         # add any necessary data-driven logic here to choose if we process
         return True
-
-    def doDropQuantum(self, node: QuantumNode) -> bool:
-        taskName = node.task_node.label
-        dataCoord = node.quantum.dataId
-        assert dataCoord is not None, "dataCoord is None, this shouldn't be possible in RA"  # for mypy
-        if "calczernikes" in taskName.lower():
-            if "detector" in dataCoord and dataCoord["detector"] in INTRA_IDS:
-                # TODO: need to not drop this for unpaired runs
-                self.log.info(f"Dropping unpaired calcZernikes quantum for {dataCoord}")
-                return True
-        return False
 
     def finishAosQgBuilder(
         self,
@@ -567,11 +620,18 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             nCpus = int(os.getenv("LIMITS_CPU", 1))
             self.log.info(f"Using {nCpus} CPUs for {self.instrument} {self.step} {who}")
 
+            # Instrument-level tasks (cp_verify's run merges, the
+            # analysis_tools calib metrics) rewrite the same dataset for every
+            # exposure, so for graphs containing them let the executor look
+            # for and prune the previous exposure's outputs before running.
+            # Everywhere else the outputs are unique per exposure, so skip the
+            # existence check, which makes clobber_outputs mostly inoperative.
+            assumeNoExistingOutputs = not needsOutputClobbering(pipelineGraph)
             executor = SingleQuantumExecutor(
                 butler=butlerToUse,
                 task_factory=TaskFactory(),
                 clobber_outputs=True,
-                assume_no_existing_outputs=True,  # this makes *this* clobber (above) mostly inoperative
+                assume_no_existing_outputs=assumeNoExistingOutputs,
                 raise_on_partial_outputs=False,
                 resources=ExecutionResources(num_cores=nCpus),
             )
@@ -587,11 +647,18 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                         preQuantum.dataId
                     )  # pull this out before the try so you can use in except block
                     assert dataCoord is not None, "dataCoord is None, this shouldn't be possible in RA"
+                    taskNode = qg.pipeline_graph.tasks[taskLabel]
+                    if shouldSkipQuantum(self.camera, taskNode, dataCoord):
+                        self.log.info(
+                            f"Skipping {taskLabel} for {dataCoord}:"
+                            " cp_verify tasks only run on science detectors"
+                        )
+                        continue
                     self.log.debug(f"Executing {taskLabel} for {dataCoord}")
                     self.log.info(f"Starting to process {taskLabel}")
 
                     try:
-                        postQuantum, _ = executor.execute(qg.pipeline_graph.tasks[taskLabel], preQuantum)
+                        postQuantum, _ = executor.execute(taskNode, preQuantum)
                         self.postProcessQuantum(postQuantum)
                         self.redisHelper.reportTaskFinished(self.instrument, taskLabel, dataCoord)
 

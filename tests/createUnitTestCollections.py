@@ -24,24 +24,31 @@ import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from fixtureExposures import CALIB_EXPOSURES, LSSTCAM_FAM_EXTRA, LSSTCAM_FAM_INTRA, LSSTCAM_IN_FOCUS
 from utils import getUserRunCollectionName, removeUserRunCollection
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
-from lsst.rubintv.production.processingControl import PIPELINE_NAMES, PipelineComponents, buildPipelines
+from lsst.rubintv.production.processingControl import (
+    CALIBRATION_PIPELINE_LABELS,
+    PIPELINE_NAMES,
+    PipelineComponents,
+    buildPipelines,
+)
 from lsst.summit.utils.utils import setupLogging
 
-FAM_VISIT_QUERY = "visit in (2025111500227,2025111500228)"
-SFM_VISIT_QUERY = "visit in (2025111500226)"
-# calib frames don't get visit records defined, so query on exposure
-CALIB_EXPOSURE_QUERY = "exposure in (2025111500436)"
+# the on-sky fixtures are single-snap visits, so their visit ids are their
+# exposure ids
+FAM_VISIT_QUERY = f"visit in ({LSSTCAM_FAM_INTRA.id},{LSSTCAM_FAM_EXTRA.id})"
+SFM_VISIT_QUERY = f"visit in ({LSSTCAM_IN_FOCUS.id})"
+# calib frames don't get visit records defined, so query on exposure, using
+# the same fixture exposures as test_pipelines.py (see CALIB_EXPOSURES)
 
 INTRA_IDS = (192, 196, 200, 204)
 EXTRA_IDS = (191, 195, 199, 203)
 SFM_DETECTORS = (90, 91, 92, 93, 94, 95, 96, 97, 98)  # 1 raft
 
 CORNER_DETECTORS = tuple([d for d in INTRA_IDS] + [d for d in EXTRA_IDS])
-ALL_DETECTOR_IDS = tuple([d for d in INTRA_IDS] + [d for d in EXTRA_IDS] + [d for d in SFM_DETECTORS])
 
 _LOG = logging.getLogger("lsst.rubintv.tests.createUnitTestCollections")
 
@@ -153,9 +160,13 @@ def getDataQueryForPipeline(pipeline: PipelineComponents, pipelineName: str) -> 
     query = ""
 
     detectors: tuple[int, ...] = ()
-    if pipelineName in ("BIAS", "DARK", "FLAT"):  # calibs get the calib frame on the full focal plane
-        detectors = ALL_DETECTOR_IDS
-        query += CALIB_EXPOSURE_QUERY
+    if pipelineName in CALIB_EXPOSURES:
+        # calibs get the science detectors only: in production the worker
+        # skips cp_verify's per-detector quanta on the guiders and wavefront
+        # sensors (see pipelineRunning.shouldSkipQuantum), but pipetask has
+        # no such skip, so including the corner chips here would run them
+        detectors = SFM_DETECTORS
+        query += f"exposure in ({CALIB_EXPOSURES[pipelineName].id})"
     elif pipeline.isFullArrayMode:  # FAM gets science detectors and FAM images
         detectors = SFM_DETECTORS
         query += FAM_VISIT_QUERY
@@ -203,16 +214,15 @@ def main() -> None:
         runCollection = getUserRunCollectionName(pipelineName)
         removeUserRunCollection(butler, pipelineName)
 
-        # hard coding for now because we can't use #isr for bias/dark/flat
-        # pipelines as they don't have these steps/labels, but we need #isr
-        # for the isr pipeline because that will drop the quanta otherwise
-        substep = "#isr" if pipelineName == "ISR" else ""  # TODO: remove hardcoding later
-        if pipelineName == "BIAS":
-            substep = "#verifyBiasIsr"
-        if pipelineName == "DARK":
-            substep = "#verifyDarkIsr"
-        if pipelineName == "FLAT":
-            substep = "#verifyFlatIsr"
+        # The ISR pipeline is built from the SFM file so needs #isr to avoid
+        # running all of SFM. The calib pipelines run both their step1a
+        # labels (ISR + per-detector verify) so that the collections hold the
+        # inputs the step1b (merge + metrics) tests need to build graphs from.
+        substep = "#isr" if pipelineName == "ISR" else ""
+        if pipelineName in CALIBRATION_PIPELINE_LABELS:
+            step1aLabels, _ = CALIBRATION_PIPELINE_LABELS[pipelineName]
+            substep = f"#{step1aLabels}"
+            assert pipelineName in CALIB_EXPOSURES, f"No fixture exposure defined for {pipelineName}"
 
         commands.extend(
             [
