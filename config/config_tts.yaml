@@ -71,6 +71,8 @@ aosLSSTCamWcsDanishBin2PipelineFile: $DONUT_VIZ_DIR/pipelines/production/lsstCam
 aosLSSTCamFullArrayModePipelineFileDanish: $DONUT_VIZ_DIR/pipelines/production/lsstCamScienceSensorRapidAnalysisPipeline_Danish.yaml
 aosLSSTCamFullArrayModePipelineFileTie: $DONUT_VIZ_DIR/pipelines/production/lsstCamScienceSensorRapidAnalysisPipeline_TIE.yaml
 
+aosLATISSPipelineFile: $DONUT_VIZ_DIR/pipelines/production/auxTelRapidAnalysisPipeline.yaml
+
 aosDataDir: /project/rubintv/aos_data
 
 sfmPipelineFile:

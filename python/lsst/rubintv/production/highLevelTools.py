@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import glob
 import io
+import json
 import logging
 import os
 import pickle
@@ -49,6 +50,7 @@ from .channels import CHANNELS, PREFIXES
 from .consdbUtils import CCD_VISIT_MAPPING, ConsDBPopulator, changeType
 from .formatters import FakeExposureRecord, expRecordToUploadFilename
 from .locationConfig import LocationConfig
+from .packageVersions import PACKAGE_VERSIONS_SHARD_KEY, packageVersionsFromShardDict
 from .uploaders import Uploader
 
 HAS_EFD_CLIENT = True
@@ -764,6 +766,74 @@ def backfillVisit1QuicklookForDay(
         )
 
     return rowsInserted, noData
+
+
+def backfillPackageVersions(
+    butler: Butler,
+    populator: ConsDBPopulator,
+    metadataPath: str,
+    dayObs: int,
+    instrument: str,
+) -> int:
+    """Backfill consDB package versions for a dayObs from the AOS metadata.
+
+    Reads the merged metadata sidecar (``dayObs_<dayObs>.json``) that the AOS
+    metadata server builds from the head node's per-image shards, and writes
+    the package versions it recorded to ConsDB via the populator. This is the
+    read side of the shard the head node writes, with the merged metadata as
+    the source of truth for the versions; the exposure records (and so the
+    exposure ids) come from the butler.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The butler to query for the day's exposure records.
+    populator : `ConsDBPopulator`
+        The populator to write with; its location gate still applies.
+    metadataPath : `str`
+        The directory holding the merged AOS metadata sidecar files.
+    dayObs : `int`
+        The dayObs to backfill.
+    instrument : `str`
+        The instrument the metadata is for, e.g. ``"LSSTCam"``.
+
+    Returns
+    -------
+    nWritten : `int`
+        The number of exposures whose package versions were written to consDB.
+    """
+    log = logging.getLogger(__name__)
+
+    sidecarFile = os.path.join(metadataPath, f"dayObs_{dayObs}.json")
+    with open(sidecarFile) as f:
+        metadata = json.load(f)
+
+    where = f"exposure.day_obs={dayObs} AND instrument='{instrument}'"
+    records = butler.query_dimension_records("exposure", where=where)
+    recordsBySeqNum = {record.seq_num: record for record in records}
+
+    nWritten = 0
+    for seqNumStr, cells in metadata.items():
+        shardDict = cells.get(PACKAGE_VERSIONS_SHARD_KEY)
+        if shardDict is None:
+            log.warning(
+                f"No package versions found for {dayObs=} seqNum={seqNumStr} - did RA skip this image?!"
+            )
+            continue
+        expRecord = recordsBySeqNum.get(int(seqNumStr))
+        if expRecord is None:
+            # metadata rows are written from real dispatches, so this should
+            # only happen if the butler being queried isn't the one the data
+            # was taken with
+            log.warning(f"No exposure record found for {dayObs=} seqNum={seqNumStr}; skipping")
+            continue
+        packageVersions = packageVersionsFromShardDict(shardDict)
+        # the exposure_quicklook row already exists by the time the backfill
+        # runs (mount jitter is written there during the night), so this must
+        # be allowed to update it, and rerunning the backfill must not fail
+        if populator.populatePackageVersions(expRecord, packageVersions, allowUpdate=True):
+            nWritten += 1
+    return nWritten
 
 
 def backfillVisit1QuicklookForDayAos(

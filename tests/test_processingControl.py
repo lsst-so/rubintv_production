@@ -34,6 +34,7 @@ from lsst.daf.butler import Butler
 from lsst.rubintv.production import redisUtils as redisUtilsModule
 from lsst.rubintv.production.locationConfig import LocationConfig
 from lsst.rubintv.production.processingControl import (
+    LATISS_PIPELINE_NAMES,
     PIPELINE_NAMES,
     CameraControlConfig,
     HeadProcessController,
@@ -210,38 +211,59 @@ class VisitProcessingModeTestCase(lsst.utils.tests.TestCase):
 
 
 class PipelineNamesTestCase(lsst.utils.tests.TestCase):
-    """Sanity tests for the `PIPELINE_NAMES` constant.
+    """Sanity tests for the pipeline-name constants.
 
-    PIPELINE_NAMES is consumed by the test helpers in tests/utils.py to
-    validate user-RUN collection names, and by every pipeline-aware piece
-    of code in the package. The tests below catch the easy ways for it to
-    drift: duplicate entries (which would silently mask new pipelines),
-    non-string entries, and lower-case strings (the convention is upper).
+    PIPELINE_NAMES (LSSTCam) and LATISS_PIPELINE_NAMES are consumed by the
+    test helpers in tests/utils.py to validate user-RUN collection names,
+    and by every pipeline-aware piece of code in the package. The tests
+    below catch the easy ways for them to drift: duplicate entries (which
+    would silently mask new pipelines), non-string entries, and lower-case
+    strings (the convention is upper).
     """
 
+    # both constants obey the same rules, so every generic test runs over
+    # this dict; a new per-instrument list should be added here too
+    NAME_TUPLES = {
+        "PIPELINE_NAMES": PIPELINE_NAMES,
+        "LATISS_PIPELINE_NAMES": LATISS_PIPELINE_NAMES,
+    }
+
     def test_isTuple(self) -> None:
-        self.assertIsInstance(PIPELINE_NAMES, tuple)
+        for constName, names in self.NAME_TUPLES.items():
+            with self.subTest(constant=constName):
+                self.assertIsInstance(names, tuple)
 
     def test_allEntriesAreNonEmptyStrings(self) -> None:
-        for name in PIPELINE_NAMES:
-            self.assertIsInstance(name, str)
-            self.assertTrue(name, "PIPELINE_NAMES contains an empty string")
+        for constName, names in self.NAME_TUPLES.items():
+            for name in names:
+                with self.subTest(constant=constName, name=name):
+                    self.assertIsInstance(name, str)
+                    self.assertTrue(name, f"{constName} contains an empty string")
 
     def test_noDuplicates(self) -> None:
-        self.assertEqual(len(PIPELINE_NAMES), len(set(PIPELINE_NAMES)))
+        for constName, names in self.NAME_TUPLES.items():
+            with self.subTest(constant=constName):
+                self.assertEqual(len(names), len(set(names)))
 
     def test_allUpperCase(self) -> None:
-        for name in PIPELINE_NAMES:
-            self.assertEqual(
-                name,
-                name.upper(),
-                f"PIPELINE_NAMES entry {name!r} is not upper-case",
-            )
+        for constName, names in self.NAME_TUPLES.items():
+            for name in names:
+                with self.subTest(constant=constName, name=name):
+                    self.assertEqual(name, name.upper(), f"{constName} entry {name!r} is not upper-case")
 
     def test_sfmAlwaysPresent(self) -> None:
         # The "SFM" entry is the science pipeline and is referenced by
-        # name throughout the package — guard it explicitly.
+        # name throughout the package — guard it explicitly, per instrument.
         self.assertIn("SFM", PIPELINE_NAMES)
+        self.assertIn("SFM", LATISS_PIPELINE_NAMES)
+
+    def test_latissAosPresent(self) -> None:
+        # "AOS_LATISS" is dispatched by name in doLatissAosFanout and in the
+        # worker's QG-builder selection, so guard it explicitly. It must not
+        # leak into the LSSTCam list: buildPipelines never creates it there,
+        # so its presence would fail the LSSTCam head-node parity check.
+        self.assertIn("AOS_LATISS", LATISS_PIPELINE_NAMES)
+        self.assertNotIn("AOS_LATISS", PIPELINE_NAMES)
 
 
 class RestoreAosPipelinesTestCase(lsst.utils.tests.TestCase):
@@ -423,6 +445,56 @@ class RestoreAosPipelinesTestCase(lsst.utils.tests.TestCase):
         self.assertIsNone(self.helper.getControlReadback(self.FAM[0]))
         self.assertEqual(self.helper.getControlState(self.AOS[0]), "AOS_TIE")
         self.assertEqual(self.helper.getControlReadback(self.AOS[0]), "AOS_TIE")
+
+
+class IsBetweenFamPairTestCase(lsst.utils.tests.TestCase):
+    """`HeadProcessController.isBetweenFamPair` — the guard that rejects
+    RubinTV FAM-pipeline switches between the two images of a FAM pair.
+
+    The method only consults ``self._lastProcessedExp``, so it is invoked
+    unbound against a duck-typed ``self``, as in
+    `RestoreAosPipelinesTestCase`. These tests catch (1) the guard failing
+    to engage after an intra-focal FAM image, (2) it wrongly engaging on
+    other image types, and (3) the regression where reading the record's
+    reason crashed the head node instead of applying the guard.
+    """
+
+    def _check(self, record: SimpleNamespace | None) -> bool:
+        controller = SimpleNamespace(_lastProcessedExp=record)
+        return HeadProcessController.isBetweenFamPair(cast(HeadProcessController, controller))
+
+    def test_intraFamImageEngagesGuard(self) -> None:
+        # the happy path: the last image was the intra-focal half of a FAM
+        # pair, so pipeline switches must be rejected until the extra lands.
+        # Regression: this used to read ``record.reason``, an attribute which
+        # doesn't exist on exposure records (the field is
+        # ``observation_reason``), so the guard had never worked: it raised
+        # AttributeError in the head node's main loop — crashing the head
+        # node — the moment an operator switched the FAM pipeline right after
+        # a CWFS image, which is exactly the situation it exists to protect.
+        record = SimpleNamespace(observation_type="cwfs", observation_reason="intra")
+        self.assertTrue(self._check(record))
+
+    def test_noLastExposureDoesNotEngage(self) -> None:
+        # fresh head node: nothing processed yet, so no pair to be between
+        self.assertFalse(self._check(None))
+
+    def test_extraFamImageDoesNotEngage(self) -> None:
+        # the extra-focal image completes the pair, so switching is safe again
+        record = SimpleNamespace(observation_type="cwfs", observation_reason="extra")
+        self.assertFalse(self._check(record))
+
+    def test_nonFamImageDoesNotEngage(self) -> None:
+        # a non-CWFS image can't be half of a FAM pair, whatever its reason
+        record = SimpleNamespace(observation_type="science", observation_reason="intra")
+        self.assertFalse(self._check(record))
+
+    def test_noneReasonDoesNotRaise(self) -> None:
+        # observation_reason is nullable, and this method runs unguarded in
+        # the head node's main loop (via updateConfigsFromRubinTV), so a None
+        # must give False, never raise
+        record = SimpleNamespace(observation_type="cwfs", observation_reason=None)
+        self.assertFalse(self._check(record))
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

@@ -75,6 +75,13 @@ def sanitizeNans(obj: Any) -> Any:
     scientific notation) are converted to floats to ensure proper JSON numeric
     typing.
 
+    Book cells - dicts carrying a ``DISPLAY_VALUE`` marker, rendered behind a
+    glyph on the frontend - are exempt from the numeric coercion: their string
+    values survive verbatim (NaNs are still replaced). The package-versions
+    book cell is round-tripped back out of the merged metadata by the ConsDB
+    backfill and re-hashed, so a version string like ``"1.1"`` must not come
+    back as the float ``1.1``.
+
     Parameters
     ----------
     obj : `object`
@@ -90,6 +97,8 @@ def sanitizeNans(obj: Any) -> Any:
     if isinstance(obj, list):
         return [sanitizeNans(o) for o in obj]
     elif isinstance(obj, dict):
+        if "DISPLAY_VALUE" in obj:
+            return {k: _sanitizeNansWithoutCoercion(v) for k, v in obj.items()}
         return {k: sanitizeNans(v) for k, v in obj.items()}
     elif isinstance(obj, float) and math.isnan(obj):
         return None
@@ -107,6 +116,32 @@ def sanitizeNans(obj: Any) -> Any:
             return obj
     else:
         return obj
+
+
+def _sanitizeNansWithoutCoercion(obj: Any) -> Any:
+    """Recursively replace NaN values with None, leaving strings untouched.
+
+    The book-cell branch of `sanitizeNans`: values inside a ``DISPLAY_VALUE``
+    dict must survive verbatim, so only the NaN -> None replacement (required
+    for JSON serialisability) is applied.
+
+    Parameters
+    ----------
+    obj : `object`
+        The object to sanitize.
+
+    Returns
+    -------
+    obj : `object`
+        The object with any NaNs replaced with ``None``.
+    """
+    if isinstance(obj, list):
+        return [_sanitizeNansWithoutCoercion(o) for o in obj]
+    elif isinstance(obj, dict):
+        return {k: _sanitizeNansWithoutCoercion(v) for k, v in obj.items()}
+    elif isinstance(obj, float) and math.isnan(obj):
+        return None
+    return obj
 
 
 def safeJsonOpen(filename: str, timeout: float = 0.3) -> Any:
