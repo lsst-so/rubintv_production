@@ -125,6 +125,25 @@ The CI suite has its own mini-framework:
 - **`ProcessManager`** - launches test scripts as `multiprocessing.Process`
 - **`ResultCollector`** - aggregates pass/fail results
 
+### Package Version Validation
+
+At startup the suite scrapes the versions of the tracked science packages —
+git tags/SHAs for the checkouts (`ts_wep`, `donut_viz`, `rubintv_production`,
+`tarts`, located via their `*_DIR` env var) and the installed distribution
+version for `danish` (conda-installed, no env var) — and cross-checks them
+against the refs pinned in the `Dockerfile` (`ARG <name>_ref` for the git
+packages, the `name=version` conda spec for `danish`):
+
+- A mismatch on a Dockerfile-pinned package prints a loud bold-red banner up
+  front and is shown again, scarily, in a version summary printed beneath the
+  test results at the end. This is **advisory** — git is the source of truth
+  and the Dockerfile can legitimately be mid-edit, so it is **not** a failure.
+  `rubintv_production` is excluded from the loud warning (it tracks a SHA
+  under development).
+- A package whose version can't be determined **is** a hard failure: a missing
+  `*_DIR` env var (a git package isn't set up) or an unimportable `danish`
+  means the running image is broken, so the run goes red.
+
 ### Test Phases
 
 **Phase 1: Meta Tests** (30 s timeout)
@@ -140,7 +159,9 @@ Small scripts validating the test framework itself:
 
 **Phase 2: Round 1** (900 s / 15 min timeout)
 Full pipeline execution:
-- Head node + SFM workers + step1b workers for LATISS and LSSTCam
+- Head node + SFM workers + step1b workers for LATISS and LSSTCam,
+  plus the dedicated LATISS AOS worker (detector 0) for the WEP
+  monolith pair processing
 - 18 SFM detectors for LSSTCam (90-98, 144-152)
 - Real Butler queries against test data (dayObs=20251115)
 - Test exposures: 226 (SFM), 227+228 (FAM CWFS pair), 436 (bias)
@@ -161,7 +182,14 @@ Post-processing and visualization:
    - Then 436 (bias), 226 (SFM), 228 (extra-focal)
    - 2 s delays between pushes
 4. Announces FAM pair via `LSSTCam-FROM-OCS_DONUTPAIR`
-5. Also tests LATISS with exposure 20240813/632
+5. Also tests LATISS:
+   - exposure 20240813/632 (on-sky science, exercises SFM)
+   - exposures 20260625/12+13 (a CWFS intra/extra pair, pushed intra
+     first; the extra-focal image landing triggers the `AOS_LATISS`
+     WEP monolith processing of the pair). The final checks assert the
+     AOS detector finished in the tracking hash and that `zernikes`,
+     `donutStampsExtra` and `donutStampsIntra` landed in the butler for
+     the extra-focal visit
 
 ### Redis in CI
 
@@ -189,7 +217,9 @@ Features:
 `tests/createUnitTestCollections.py` builds Butler collections for CI:
 - Sets `RAPID_ANALYSIS_LOCATION=usdf_testing`
 - Runs pipelines in parallel via `ThreadPoolExecutor`
-- Creates collections for: FAM, AOS, SFM, calibration pipelines
+- Creates collections for: FAM, AOS, SFM, calibration pipelines (LSSTCam),
+  plus `AOS_LATISS` (the LATISS WEP monolith, run on the CWFS pair
+  20260625/12+13)
 - Used to create the underlying collections for `test_pipelines.py` unit tests
 - Only needs to be rerun when outputs change
 
