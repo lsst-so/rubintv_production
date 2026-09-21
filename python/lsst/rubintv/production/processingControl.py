@@ -22,7 +22,6 @@
 from __future__ import annotations
 
 import enum
-import functools
 import logging
 import operator
 import re
@@ -57,11 +56,11 @@ from lsst.utils.packages import Packages
 
 from .locationConfig import LocationConfig
 from .packageVersions import (
-    PACKAGE_VERSIONS_SHARD_KEY,
+    PACKAGE_VERSIONS_METADATA_KEY,
     checkVersionsAgainstDockerfile,
     findDockerfile,
     getCurrentPackageVersions,
-    makePackageVersionShardDict,
+    packageVersionsToDisplayDict,
 )
 from .payloads import Payload, pipelineGraphToBytes
 from .podDefinition import PodDetails, PodFlavor
@@ -767,24 +766,15 @@ class HeadProcessController:
             f" Data will be written to {self.outputRun}"
         )
 
-        # Compute and cache the tracked package versions at startup, so the
-        # dispatch loop never pays for the git calls, and cross-check them
-        # against the Dockerfile (advisory only, never fatal).
+        # The package versions can't change for the lifetime of the pod, so
+        # get them once here rather than in the dispatch loop, and cross-check
+        # them against the Dockerfile (advisory only, never fatal).
+        self.packageVersions: PackageVersions = getCurrentPackageVersions()
         self.log.info(
             f"Tracked package versions (hash {self.packageVersions.versionHash()}):"
             f" {self.packageVersions.versions}"
         )
         self._checkPackageVersionsAgainstDockerfile()
-
-    @functools.cached_property
-    def packageVersions(self) -> PackageVersions:
-        """The git versions of the tracked packages.
-
-        Fixed for the lifetime of the pod, so computed once on first access
-        and cached thereafter. A version set is identified by its
-        ``versionHash``; no state is needed to derive it.
-        """
-        return getCurrentPackageVersions()
 
     def _checkPackageVersionsAgainstDockerfile(self) -> None:
         """Warn if the running package versions disagree with the Dockerfile.
@@ -805,12 +795,12 @@ class HeadProcessController:
     def writePackageVersionShard(self, expRecord: DimensionRecord) -> None:
         """Record the tracked package versions for a dispatched image.
 
-        Writes the cached package versions to the AOS metadata page as a single
-        book-marked, dict-like cell, alongside the content hash that identifies
-        the version set as a plain cell. This merged metadata is the source the
-        ConsDB backfill reads from. There is no AOS metadata page for
-        LATISS, so this is a no-op there. Never raises - recording provenance
-        must not be able to disrupt dispatch.
+        Writes the package versions to the AOS metadata as a "Package
+        versions" dict column (see `packageVersionsToDisplayDict`) and a
+        "Package version hash" column. The ConsDB backfill reads the versions
+        back from the merged metadata. There is no AOS metadata for LATISS, so
+        this is a no-op there. Never raises - recording provenance must not be
+        able to disrupt dispatch.
 
         Parameters
         ----------
@@ -826,7 +816,7 @@ class HeadProcessController:
                 expRecord.day_obs,
                 {
                     expRecord.seq_num: {
-                        PACKAGE_VERSIONS_SHARD_KEY: makePackageVersionShardDict(self.packageVersions),
+                        PACKAGE_VERSIONS_METADATA_KEY: packageVersionsToDisplayDict(self.packageVersions),
                         "Package version hash": self.packageVersions.versionHash(),
                     }
                 },

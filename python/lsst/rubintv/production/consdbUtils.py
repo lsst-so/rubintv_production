@@ -851,24 +851,15 @@ class ConsDBPopulator:
     ) -> bool:
         """Write the tracked package versions for an exposure to ConsDB.
 
-        Writing lives here, in Rapid Analysis, rather than in summit_utils, so
-        that ordinary summit_utils users only ever see a way to *read* the
-        versions, never to write them. The blob shape (``toDict``) and the
-        table/column constants still come from summit_utils, and the read there
-        uses the same ones, so the write and the read cannot drift.
-        Used by the backfill tooling (see
-        ``highLevelTools.backfillPackageVersions``), whose source is the merged
-        AOS metadata written at processing time. Location-gated like the other
-        populate methods; the write is a direct, synchronous insert, since the
-        value is a JSON blob (not the scalar columns the shared insert helper
-        is typed for) and package versions are only ever written by backfill.
+        Used by ``highLevelTools.backfillPackageVersions``. The table, column
+        and dict shape (``toDict``) come from summit_utils, which also holds
+        the read side. The insert is synchronous, not via ``_insertIfAllowed``,
+        as the value is a dict rather than the scalars that helper takes.
 
         Parameters
         ----------
         expRecord : `lsst.daf.butler.DimensionRecord`
-            The exposure record to write the versions for. The dataId and the
-            exposure id (which ConsDB requires in the row values for an
-            update) all come straight off the record.
+            The exposure record to write the versions for.
         packageVersions : `lsst.summit.utils.packageVersions.PackageVersions`
             The versions to write.
         allowUpdate : `bool`, optional

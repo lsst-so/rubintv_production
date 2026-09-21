@@ -75,12 +75,11 @@ def sanitizeNans(obj: Any) -> Any:
     scientific notation) are converted to floats to ensure proper JSON numeric
     typing.
 
-    Book cells - dicts carrying a ``DISPLAY_VALUE`` marker, rendered behind a
-    glyph on the frontend - are exempt from the numeric coercion: their string
-    values survive verbatim (NaNs are still replaced). The package-versions
-    book cell is round-tripped back out of the merged metadata by the ConsDB
-    backfill and re-hashed, so a version string like ``"1.1"`` must not come
-    back as the float ``1.1``.
+    Dicts containing a ``DISPLAY_VALUE`` key (the RubinTV convention for a
+    dict-valued cell, shown as a glyph which expands to the dict) are not
+    numerically coerced, so their strings survive verbatim; NaNs inside them
+    are still replaced. This is so that version strings like ``"1.1"`` in the
+    package-versions dict aren't turned into floats.
 
     Parameters
     ----------
@@ -121,9 +120,7 @@ def sanitizeNans(obj: Any) -> Any:
 def _sanitizeNansWithoutCoercion(obj: Any) -> Any:
     """Recursively replace NaN values with None, leaving strings untouched.
 
-    The book-cell branch of `sanitizeNans`: values inside a ``DISPLAY_VALUE``
-    dict must survive verbatim, so only the NaN -> None replacement (required
-    for JSON serialisability) is applied.
+    The ``DISPLAY_VALUE`` branch of `sanitizeNans`.
 
     Parameters
     ----------

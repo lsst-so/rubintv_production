@@ -22,7 +22,7 @@
 """Test cases for packageVersions.
 
 Covers the git version helpers, the version scraping into the
-summit_utils-owned ``PackageVersions`` dataclass, its metadata-shard rendering,
+summit_utils-owned ``PackageVersions`` dataclass, its rendering for RubinTV,
 and the advisory Dockerfile cross-check. The ``PackageVersions`` data model
 itself - its JSON round-trip and content-hash identity - is tested in
 summit_utils alongside the code. The ``test_realDockerfileFormatIsParseable``
@@ -49,9 +49,8 @@ from lsst.rubintv.production.packageVersions import (
     getGitVersion,
     getInstalledPackageVersion,
     getPackageVersion,
-    makePackageVersionShardDict,
-    missingPackageDirEnvVars,
-    packageVersionsFromShardDict,
+    packageVersionsFromDisplayDict,
+    packageVersionsToDisplayDict,
     parseDockerfileRefs,
     versionsMatch,
 )
@@ -178,23 +177,6 @@ class EnvVarTestCase(lsst.utils.tests.TestCase):
             with unittest.mock.patch.dict(os.environ, {envVar: tmp}):
                 self.assertEqual(getPackageVersion("ts_wep"), UNKNOWN_VERSION)
 
-    def test_missingPackageDirEnvVarsFlagsUnset(self) -> None:
-        # all three unset -> all three reported as missing
-        with unittest.mock.patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(missingPackageDirEnvVars(["ts_wep", "donut_viz"]), ["ts_wep", "donut_viz"])
-
-    def test_missingPackageDirEnvVarsHonoursSetVars(self) -> None:
-        with unittest.mock.patch.dict(os.environ, {}, clear=True):
-            os.environ[envVarForPackage("ts_wep")] = "/some/dir"
-            os.environ[envVarForPackage("donut_viz")] = ""  # empty counts as unset
-            missing = missingPackageDirEnvVars(["ts_wep", "donut_viz"])
-            self.assertNotIn("ts_wep", missing)
-            self.assertIn("donut_viz", missing)
-
-    def test_missingPackageDirEnvVarsDefaultsToTracked(self) -> None:
-        with unittest.mock.patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(missingPackageDirEnvVars(), TRACKED_PACKAGES)
-
 
 class InstalledPackageVersionTestCase(lsst.utils.tests.TestCase):
     def test_knownInstalledPackage(self) -> None:
@@ -211,35 +193,34 @@ class InstalledPackageVersionTestCase(lsst.utils.tests.TestCase):
 
 
 class PackageVersionsTestCase(lsst.utils.tests.TestCase):
-    def test_shardDictHasBookMarker(self) -> None:
+    def test_displayDictHasBookMarker(self) -> None:
         versions = {"ts_wep": "v1", "donut_viz": "v2", "rubintv_production": "abc123"}
         pv = PackageVersions(versions=dict(versions))
-        shardDict = makePackageVersionShardDict(pv)
-        self.assertEqual(shardDict["DISPLAY_VALUE"], "📖")
+        displayDict = packageVersionsToDisplayDict(pv)
+        self.assertEqual(displayDict["DISPLAY_VALUE"], "📖")
         for name, version in versions.items():
-            self.assertEqual(shardDict[name], version)
+            self.assertEqual(displayDict[name], version)
         # rendering must not mutate the underlying versions dict
         self.assertNotIn("DISPLAY_VALUE", pv.versions)
 
-    def test_shardDictRoundTripsThroughFromShardDict(self) -> None:
-        # the shard cell is the backfill's source, so the marker-stripping
-        # inverse must recover exactly the versions that were rendered
+    def test_displayDictRoundTrips(self) -> None:
+        # the metadata dict is the backfill's source, so the inverse must
+        # recover exactly the versions that were rendered
         pv = PackageVersions(versions={"ts_wep": "v1", "donut_viz": "v2", "danish": "1.1.1"})
-        recovered = packageVersionsFromShardDict(makePackageVersionShardDict(pv))
+        recovered = packageVersionsFromDisplayDict(packageVersionsToDisplayDict(pv))
         self.assertEqual(recovered, pv)
         self.assertEqual(recovered.versionHash(), pv.versionHash())
 
-    def test_shardDictSurvivesMetadataMergeSanitization(self) -> None:
+    def test_displayDictSurvivesMetadataMergeSanitization(self) -> None:
         # Regression test: the metadata merge (mergeShardsAndUpload) passes
-        # every cell through sanitizeNans, which coerces numeric-looking
-        # strings to floats. That used to recurse into the versions book cell,
-        # so a version like danish "1.1" reached the backfill as the float
-        # 1.1: a non-string in the ConsDB blob, and a recomputed hash that no
-        # longer matched the one recorded at dispatch time. The full
-        # write -> merge -> read round-trip must be byte-exact.
+        # every value through sanitizeNans, which coerces numeric-looking
+        # strings to floats. That used to recurse into the versions dict, so a
+        # version like danish "1.1" reached the backfill as the float 1.1: a
+        # non-string in ConsDB, and a recomputed hash that no longer matched
+        # the one recorded at dispatch time.
         pv = PackageVersions(versions={"danish": "1.1", "ts_wep": "20250624", "donut_viz": "2.0"})
-        merged = sanitizeNans(makePackageVersionShardDict(pv))
-        recovered = packageVersionsFromShardDict(merged)
+        merged = sanitizeNans(packageVersionsToDisplayDict(pv))
+        recovered = packageVersionsFromDisplayDict(merged)
         self.assertEqual(recovered, pv)
         self.assertEqual(recovered.versionHash(), pv.versionHash())
 

@@ -62,16 +62,15 @@ from lsst.summit.utils.packageVersions import UNKNOWN_VERSION, PackageVersions
 __all__ = [
     "TRACKED_PACKAGES",
     "TRACKED_INSTALLED_PACKAGES",
-    "PACKAGE_VERSIONS_SHARD_KEY",
+    "PACKAGE_VERSIONS_METADATA_KEY",
     "VersionComparison",
     "envVarForPackage",
     "getGitVersion",
     "getPackageVersion",
     "getInstalledPackageVersion",
     "getCurrentPackageVersions",
-    "makePackageVersionShardDict",
-    "packageVersionsFromShardDict",
-    "missingPackageDirEnvVars",
+    "packageVersionsToDisplayDict",
+    "packageVersionsFromDisplayDict",
     "findDockerfile",
     "parseDockerfileRefs",
     "versionsMatch",
@@ -95,10 +94,10 @@ TRACKED_PACKAGES = ["ts_wep", "donut_viz", "rubintv_production", "tarts"]
 # <name>_ref``.
 TRACKED_INSTALLED_PACKAGES = ["danish"]
 
-# The AOS metadata-shard cell the package versions are written under. Shared by
-# the writer (the head node) and the reader (the ConsDB backfill) so the two
-# can never drift apart.
-PACKAGE_VERSIONS_SHARD_KEY = "Package versions"
+# The key (i.e. the column name on RubinTV) the package versions are written
+# under in the AOS metadata. Shared by the writer (the head node) and the
+# reader (the ConsDB backfill).
+PACKAGE_VERSIONS_METADATA_KEY = "Package versions"
 
 # The minimum length a Dockerfile ref must have before we treat it as an
 # abbreviated SHA that may prefix-match a full git SHA. Below this, a short
@@ -146,8 +145,8 @@ def getGitVersion(packageDir: str) -> str:
     Returns
     -------
     version : `str`
-        The exact tag at ``HEAD``, or the full commit SHA if ``HEAD`` is not on
-        a tag.
+        The tag at ``HEAD``, or the full commit SHA if ``HEAD`` is not on a
+        tag.
 
     Raises
     ------
@@ -265,15 +264,8 @@ def getCurrentPackageVersions(
     return PackageVersions(versions=versions)
 
 
-def makePackageVersionShardDict(packageVersions: PackageVersions) -> dict[str, str]:
-    """Render package versions as a metadata-shard cell.
-
-    The returned dict is the cell value written to the AOS metadata page. Apart
-    from the ``DISPLAY_VALUE`` "📖" marker (which makes the frontend show a
-    single book glyph that expands to the per-package versions), it is exactly
-    the ``{package: version}`` mapping, so the backfill tooling can recover the
-    versions from the merged metadata by dropping the marker (see
-    `packageVersionsFromShardDict`).
+def packageVersionsToDisplayDict(packageVersions: PackageVersions) -> dict[str, str]:
+    """Render package versions as the dict written to the AOS metadata.
 
     Parameters
     ----------
@@ -282,60 +274,35 @@ def makePackageVersionShardDict(packageVersions: PackageVersions) -> dict[str, s
 
     Returns
     -------
-    shardDict : `dict` [`str`, `str`]
-        The package versions plus the ``DISPLAY_VALUE`` book marker.
+    displayDict : `dict` [`str`, `str`]
+        The ``{package: version}`` mapping plus a ``"DISPLAY_VALUE": "📖"``
+        entry. ``DISPLAY_VALUE`` is the RubinTV convention for a dict-valued
+        cell: the frontend shows the glyph and expands it to the rest of the
+        dict on click.
     """
-    shardDict: dict[str, str] = dict(packageVersions.versions)
-    shardDict["DISPLAY_VALUE"] = "📖"
-    return shardDict
+    displayDict: dict[str, str] = dict(packageVersions.versions)
+    displayDict["DISPLAY_VALUE"] = "📖"
+    return displayDict
 
 
-def packageVersionsFromShardDict(shardDict: Mapping[str, str]) -> PackageVersions:
-    """Recover the package versions from a metadata-shard cell.
+def packageVersionsFromDisplayDict(displayDict: Mapping[str, str]) -> PackageVersions:
+    """Recover the package versions from the dict in the AOS metadata.
 
-    The inverse of `makePackageVersionShardDict`: strips the ``DISPLAY_VALUE``
-    marker and treats every remaining key as a package version. Used by the
-    ConsDB backfill, whose source is the merged AOS metadata written at
-    processing time.
+    The inverse of `packageVersionsToDisplayDict`: drops the ``DISPLAY_VALUE``
+    entry, and everything else is a ``{package: version}`` pair.
 
     Parameters
     ----------
-    shardDict : `Mapping` [`str`, `str`]
-        The cell value as written by `makePackageVersionShardDict` and merged
-        into the metadata sidecar.
+    displayDict : `Mapping` [`str`, `str`]
+        The dict as written by `packageVersionsToDisplayDict`.
 
     Returns
     -------
     packageVersions : `lsst.summit.utils.packageVersions.PackageVersions`
         The recovered versions.
     """
-    versions = {key: value for key, value in shardDict.items() if key != "DISPLAY_VALUE"}
+    versions = {key: value for key, value in displayDict.items() if key != "DISPLAY_VALUE"}
     return PackageVersions(versions=versions)
-
-
-def missingPackageDirEnvVars(packageNames: list[str] | None = None) -> list[str]:
-    """Return the tracked packages whose ``*_DIR`` env var is not set.
-
-    EUPS sets these when it sets up a package, so a non-empty result means the
-    environment is broken - the package isn't actually set up and its code
-    can't run. The head node tolerates this for version recording (logging
-    "unknown"), but a validation context such as the CI suite should treat it
-    as a hard failure.
-
-    Parameters
-    ----------
-    packageNames : `list` [`str`], optional
-        The packages to check. Defaults to `TRACKED_PACKAGES`.
-
-    Returns
-    -------
-    missing : `list` [`str`]
-        The package names whose directory env var is unset or empty, in the
-        order given.
-    """
-    if packageNames is None:
-        packageNames = TRACKED_PACKAGES
-    return [name for name in packageNames if not os.environ.get(envVarForPackage(name))]
 
 
 def findDockerfile() -> str | None:
@@ -417,14 +384,14 @@ def parseDockerfileRefs(dockerfilePath: str, condaPackages: list[str] | None = N
 def versionsMatch(gitVersion: str, dockerfileRef: str) -> bool:
     """Check whether a git version agrees with a Dockerfile ref.
 
-    A tag pin matches exactly. A SHA pin could be abbreviated in the
-    Dockerfile, so an abbreviated ref that prefixes the full git SHA counts as
-    a match.
+    The two must be equal, except that a SHA in the Dockerfile may be
+    abbreviated, so a ref of at least ``_MIN_ABBREV_SHA_LEN`` characters which
+    is a prefix of the full git SHA also counts as a match.
 
     Parameters
     ----------
     gitVersion : `str`
-        The version git reports (an exact tag or a full SHA).
+        The version git reports (a tag or a full SHA).
     dockerfileRef : `str`
         The ref the Dockerfile pins the package to.
 

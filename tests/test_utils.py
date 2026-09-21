@@ -94,21 +94,22 @@ class RubinTVUtilsTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(sanitizeNans({"a": "1.25"}), {"a": 1.25})
 
     def test_sanitizeNansLeavesBookCellStringsAlone(self) -> None:
-        # Regression test: the shard merge passes every cell through
-        # sanitizeNans, whose numeric coercion used to recurse into book cells
-        # (dicts marked with DISPLAY_VALUE). The package-versions book cell is
-        # read back out of the merged metadata by the ConsDB backfill and
-        # re-hashed, so a version like "1.1" coming back as the float 1.1
-        # corrupted the blob and changed the version-set hash. Book-cell
-        # strings must survive verbatim.
+        # Regression test: the shard merge passes every value through
+        # sanitizeNans, whose numeric coercion used to recurse into
+        # DISPLAY_VALUE dicts. The package-versions dict is read back out of
+        # the merged metadata by the ConsDB backfill and re-hashed, so a
+        # version like "1.1" coming back as the float 1.1 changed the
+        # version-set hash. Strings in DISPLAY_VALUE dicts must survive
+        # verbatim.
         bookCell = {"DISPLAY_VALUE": "📖", "danish": "1.1", "tag": "20250624", "other": "2.0"}
         cellDict = {"Package versions": dict(bookCell), "PSF": "1.25"}
         result = sanitizeNans(cellDict)
         self.assertEqual(result["Package versions"], bookCell)
         self.assertEqual(result["PSF"], 1.25)  # ordinary cells still coerce
 
-        # NaNs inside a book cell must still be sanitized - they are not
-        # JSON-serialisable, which is the whole reason sanitizeNans exists
+        # NaNs inside a DISPLAY_VALUE dict must still be sanitized - they
+        # aren't JSON-serialisable, which is the whole reason sanitizeNans
+        # exists
         withNan = {"DISPLAY_VALUE": "⏱", "time": float("nan"), "nested": {"t": float("nan")}}
         self.assertEqual(
             sanitizeNans({"cell": withNan}),

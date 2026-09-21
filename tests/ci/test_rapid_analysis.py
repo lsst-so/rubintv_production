@@ -40,12 +40,12 @@ from lsst.daf.butler import Butler  # noqa: E402
 from lsst.rubintv.production.locationConfig import LocationConfig, findMissingConfigKeys  # noqa: E402
 from lsst.rubintv.production.packageVersions import (  # noqa: E402
     TRACKED_INSTALLED_PACKAGES,
+    TRACKED_PACKAGES,
     VersionComparison,
     compareVersionsToDockerfile,
     envVarForPackage,
     findDockerfile,
     getCurrentPackageVersions,
-    missingPackageDirEnvVars,
 )
 from lsst.rubintv.production.predicates import getDoRaise, runningCI  # noqa: E402
 from lsst.rubintv.production.redisUtils import (  # noqa: E402
@@ -1575,7 +1575,8 @@ class TestRunner:
             # A missing *_DIR env var means the package isn't set up - a hard
             # failure here even though the head node tolerates it. Reported as
             # a failing check so the run goes red.
-            for name in missingPackageDirEnvVars():
+            missing = [name for name in TRACKED_PACKAGES if not os.environ.get(envVarForPackage(name))]
+            for name in missing:
                 self.result_collector.checks.append(
                     Check(
                         False, f"Package {name} is not set up: its ${envVarForPackage(name)} env var is unset"

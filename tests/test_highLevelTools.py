@@ -39,7 +39,7 @@ from lsst.rubintv.production.highLevelTools import (
     checkCcdVisitQuicklookTable,
     checkVisitQuicklookTable,
 )
-from lsst.rubintv.production.packageVersions import PACKAGE_VERSIONS_SHARD_KEY
+from lsst.rubintv.production.packageVersions import PACKAGE_VERSIONS_METADATA_KEY
 from lsst.summit.utils.consdbClient import ConsDbClient
 from lsst.summit.utils.packageVersions import PackageVersions
 
@@ -176,9 +176,9 @@ class BackfillPackageVersionsTestCase(lsst.utils.tests.TestCase):
         # id used to be recomputed with a hard-coded "O" controller)
         versions = {"ts_wep": "v17.6.1-alpha", "danish": "1.1.1"}
         metadata = {
-            "12": {PACKAGE_VERSIONS_SHARD_KEY: {**versions, "DISPLAY_VALUE": "📖"}, "PSF": 1.2},
+            "12": {PACKAGE_VERSIONS_METADATA_KEY: {**versions, "DISPLAY_VALUE": "📖"}, "PSF": 1.2},
             "13": {"PSF": 1.3},  # no package versions recorded -> skipped
-            "14": {PACKAGE_VERSIONS_SHARD_KEY: {**versions, "DISPLAY_VALUE": "📖"}},  # no record, below
+            "14": {PACKAGE_VERSIONS_METADATA_KEY: {**versions, "DISPLAY_VALUE": "📖"}},  # no record, below
         }
         record12 = cast(
             DimensionRecord,

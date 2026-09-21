@@ -50,7 +50,7 @@ from .channels import CHANNELS, PREFIXES
 from .consdbUtils import CCD_VISIT_MAPPING, ConsDBPopulator, changeType
 from .formatters import FakeExposureRecord, expRecordToUploadFilename
 from .locationConfig import LocationConfig
-from .packageVersions import PACKAGE_VERSIONS_SHARD_KEY, packageVersionsFromShardDict
+from .packageVersions import PACKAGE_VERSIONS_METADATA_KEY, packageVersionsFromDisplayDict
 from .uploaders import Uploader
 
 HAS_EFD_CLIENT = True
@@ -777,12 +777,9 @@ def backfillPackageVersions(
 ) -> int:
     """Backfill consDB package versions for a dayObs from the AOS metadata.
 
-    Reads the merged metadata sidecar (``dayObs_<dayObs>.json``) that the AOS
-    metadata server builds from the head node's per-image shards, and writes
-    the package versions it recorded to ConsDB via the populator. This is the
-    read side of the shard the head node writes, with the merged metadata as
-    the source of truth for the versions; the exposure records (and so the
-    exposure ids) come from the butler.
+    Reads the merged AOS metadata for the day (``dayObs_<dayObs>.json``) and
+    writes the package versions recorded in it to ConsDB via the populator.
+    The exposure records (and so the exposure ids) come from the butler.
 
     Parameters
     ----------
@@ -813,9 +810,9 @@ def backfillPackageVersions(
     recordsBySeqNum = {record.seq_num: record for record in records}
 
     nWritten = 0
-    for seqNumStr, cells in metadata.items():
-        shardDict = cells.get(PACKAGE_VERSIONS_SHARD_KEY)
-        if shardDict is None:
+    for seqNumStr, row in metadata.items():
+        displayDict = row.get(PACKAGE_VERSIONS_METADATA_KEY)
+        if displayDict is None:
             log.warning(
                 f"No package versions found for {dayObs=} seqNum={seqNumStr} - did RA skip this image?!"
             )
@@ -827,7 +824,7 @@ def backfillPackageVersions(
             # was taken with
             log.warning(f"No exposure record found for {dayObs=} seqNum={seqNumStr}; skipping")
             continue
-        packageVersions = packageVersionsFromShardDict(shardDict)
+        packageVersions = packageVersionsFromDisplayDict(displayDict)
         # the exposure_quicklook row already exists by the time the backfill
         # runs (mount jitter is written there during the night), so this must
         # be allowed to update it, and rerunning the backfill must not fail
