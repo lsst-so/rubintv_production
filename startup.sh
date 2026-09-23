@@ -24,7 +24,10 @@ source ${WORKDIR}/loadLSST.bash
 
 setup lsst_distrib
 
-ALL_REPOS="drp_pipe summit_utils summit_extras rubintv_production rubintv_analysis_service ts_wep ts_ofc ts_config_mttcs donut_viz TARTS"
+# ts_aos_ai is a data-only package: setting it up is what exports
+# TARTS_DATA_DIR and AI_DONUT_DATA_DIR, which the donut_viz pipelines
+# reference for the model weights.
+ALL_REPOS="drp_pipe summit_utils summit_extras rubintv_production rubintv_analysis_service ts_wep ts_ofc ts_config_mttcs donut_viz TARTS ts_aos_ai"
 
 for REPO in ${ALL_REPOS}
 do

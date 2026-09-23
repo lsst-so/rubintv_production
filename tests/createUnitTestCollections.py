@@ -48,8 +48,8 @@ _LOG = logging.getLogger("lsst.rubintv.tests.createUnitTestCollections")
 os.environ["RAPID_ANALYSIS_LOCATION"] = "usdf_testing"
 os.environ["RAPID_ANALYSIS_CI"] = "true"
 os.environ["RAPID_ANALYSIS_DO_RAISE"] = "True"
-os.environ["TARTS_DATA_DIR"] = "/sdf/home/m/mfl/temp/TARTS"
-os.environ["AI_DONUT_DATA_DIR"] = "/sdf/home/m/mfl/u/rubintv/aos_data/AI_DONUT"
+# TARTS_DATA_DIR and AI_DONUT_DATA_DIR come from ts_aos_ai's EUPS table when
+# the package is set up, so they are deliberately not set here.
 
 
 PER_PIPELINE_EXTRAS: dict[str, list[str]] = {

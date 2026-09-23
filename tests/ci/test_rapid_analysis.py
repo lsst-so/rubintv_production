@@ -1368,8 +1368,9 @@ class TestRunner:
         os.environ["RAPID_ANALYSIS_LOCATION"] = "usdf_testing"
         os.environ["RAPID_ANALYSIS_CI"] = "true"
         os.environ["RAPID_ANALYSIS_DO_RAISE"] = "True"
-        os.environ["TARTS_DATA_DIR"] = "/sdf/home/m/mfl/temp/TARTS"
-        os.environ["AI_DONUT_DATA_DIR"] = "/sdf/home/m/mfl/u/rubintv/aos_data/AI_DONUT"
+        # TARTS_DATA_DIR and AI_DONUT_DATA_DIR are deliberately not set here:
+        # ts_aos_ai's EUPS table exports them when the package is set up, which
+        # startup.sh does for every pod and for this suite.
         os.environ["LIMITS_CPU"] = "4"  # this should roughly match the lsstcamAosWorkerSet LIMITS_CPU value
 
         # Verify environment settings
