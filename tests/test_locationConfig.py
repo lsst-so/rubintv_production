@@ -42,9 +42,9 @@ regression that are otherwise only seen at pod startup:
 - The ``_checkDir`` / ``_checkFile`` validation rules drift away from
   what the per-pod startup scripts depend on (e.g. a non-creating dir
   silently becomes creating, masking a missing mount).
-- A site config acquires a value shape that no accessor resolves — a
-  ``$VAR`` in a key nothing expands, say — which surfaces only as a
-  missing file deep inside a pipeline task at that site.
+- A site config holds a value form that no accessor resolves (e.g. a
+  ``$VAR`` in a key that nothing expands), which only surfaces as a
+  missing file inside a pipeline task at that site.
 
 The explicit key lists below back the second category: a new accessor
 that bypasses validation surfaces as a missing entry in the test
@@ -151,9 +151,8 @@ def _buildFixtureConfig(rootDir: str) -> dict:
 
     # AOS pipeline files — accessor just returns the string, no checks.
     config["aosDataDir"] = os.path.join(rootDir, "aos_data")
-    # batoidFeaDir/batoidBendDir are derived from aosDataDir rather than
-    # being config keys in their own right, and are checked-but-never-
-    # created, so the fixture has to lay them down by hand.
+    # batoidFeaDir and batoidBendDir are derived from aosDataDir and are
+    # checked but never created, so the fixture makes them.
     for subDir in ("fea_legacy", "bend"):
         os.makedirs(os.path.join(config["aosDataDir"], "batoid_data", subDir), exist_ok=True)
     for k in (
@@ -313,11 +312,10 @@ class LocationConfigTestCase(lsst.utils.tests.TestCase):
                 self.assertEqual(getattr(self.locationConfig, key), self.config[key])
 
     def test_batoidDirsAreDerivedFromAosDataDir(self) -> None:
-        # aosDataDir is a batoid data root and nothing else — the two
-        # directories below are its only consumers, and go straight to
-        # batoid_rubin's LSSTBuilder. Pinning the layout catches
-        # aosDataDir being repointed at some other AOS data package
-        # (which has happened), leaving the batoid lookups dangling.
+        # aosDataDir is only the root of the batoid data passed to
+        # batoid_rubin's LSSTBuilder. Pinning the layout catches it being
+        # pointed at a different data package, which leaves both lookups
+        # dangling.
         aosDataDir = self.config["aosDataDir"]
         self.assertEqual(
             self.locationConfig.batoidFeaDir,
@@ -329,11 +327,9 @@ class LocationConfigTestCase(lsst.utils.tests.TestCase):
         )
 
     def test_batoidDirsRaiseWhenNotFound(self) -> None:
-        # The batoid data has to be *found*, not created and not
-        # downloaded: batoid_rubin's ensure_data_dir() fetches "fea_legacy"
-        # and "bend" from Zenodo when handed a directory that doesn't
-        # exist, so a wrong aosDataDir must fail loudly here rather than
-        # becoming a silent network fetch inside a production pod.
+        # batoid_rubin's ensure_data_dir() downloads "fea_legacy" and "bend"
+        # from Zenodo into a missing directory, so a wrong aosDataDir must
+        # raise here rather than become a network fetch in a pod.
         with tempfile.TemporaryDirectory() as tmp:
             cfgDict = _buildFixtureConfig(tmp)
             shutil.rmtree(os.path.join(cfgDict["aosDataDir"], "batoid_data"))
@@ -421,9 +417,8 @@ class ConfigYamlKeyConsistencyTestCase(lsst.utils.tests.TestCase):
     the CI suite runs at startup, lifted into a unit test so it fails at
     development time instead.
 
-    Values are checked here too where the accessor does no expansion of
-    its own, so a site config can't quietly acquire a form the code never
-    resolves.
+    Values are also checked where the accessor does no expansion of its
+    own, so no site config can hold a form the code never resolves.
     """
 
     def test_allConfigFilesHaveIdenticalTopLevelKeys(self) -> None:
@@ -440,11 +435,9 @@ class ConfigYamlKeyConsistencyTestCase(lsst.utils.tests.TestCase):
             self.fail("\n".join(lines))
 
     def test_aosDataDirIsALiteralPath(self) -> None:
-        # Nothing ever expands aosDataDir: the accessor hands the YAML
-        # value straight back, and its only use is being joined onto the
-        # batoid subdirectories. A $VAR here would therefore reach
-        # batoid_rubin verbatim, so every site must set a literal absolute
-        # path rather than pointing this at some package's $..._DIR.
+        # Nothing expands aosDataDir; it is joined straight onto the batoid
+        # subdirectories. A $VAR here would reach batoid_rubin verbatim, so
+        # every site must set a literal absolute path.
         yamlFiles = _getSiteConfigFiles()
         self.assertTrue(yamlFiles, "no config_*.yaml files found")
         for filename in yamlFiles:

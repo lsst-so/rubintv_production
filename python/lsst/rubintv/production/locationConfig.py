@@ -427,11 +427,9 @@ class LocationConfig:
         """The root of the batoid data for the location."""
         return self._config["aosDataDir"]
 
-    # The two batoid directories below are checked but never created:
-    # batoid_rubin's ensure_data_dir() silently downloads the dataset from
-    # Zenodo when handed a directory which doesn't exist, so a misconfigured
-    # aosDataDir would otherwise become a large network fetch inside a
-    # production pod rather than an error.
+    # Checked but never created: batoid_rubin's ensure_data_dir() downloads
+    # the dataset from Zenodo into any missing directory, so a wrong
+    # aosDataDir would become a network fetch in a pod, not an error.
     @cached_property
     def batoidFeaDir(self) -> str:
         """The batoid FEA data directory, as passed to ``LSSTBuilder``."""
