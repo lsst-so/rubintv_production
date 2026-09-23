@@ -99,8 +99,9 @@ RUN source ${WORKDIR}/loadLSST.bash && \
 USER root
 RUN source ${WORKDIR}/loadLSST.bash && \
     pip install --break-system-packages \
-      'mypy>=1.0,<2.0,!=1.9.0' \
+      'mypy>=2.0,<3.0' \
       types-requests \
+      types-PyYAML \
       pytest \
       pytest-cov \
       pytest-xdist \
