@@ -569,13 +569,13 @@ class ConsDBPopulator:
 
         obsId = computeCcdExposureId(expRecord.instrument, expRecord.id, detectorNum)
         values = {
-            "coma_1": coma_1,
-            "coma_2": coma_2,
-            "trefoil_1": trefoil_1,
-            "trefoil_2": trefoil_2,
-            "kurtosis": kurtosis,
-            "e4_1": e4_1,
-            "e4_2": e4_2,
+            "psf_coma_1": coma_1,
+            "psf_coma_2": coma_2,
+            "psf_trefoil_1": trefoil_1,
+            "psf_trefoil_2": trefoil_2,
+            "psf_kurtosis": kurtosis,
+            "psf_e4_1": e4_1,
+            "psf_e4_2": e4_2,
         }
         table = f"cdb_{expRecord.instrument.lower()}.ccdvisit1_quicklook"
 
