@@ -477,13 +477,12 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
 class TestLatissPipelineGeneration(lsst.utils.tests.TestCase):
     """Pipeline building and QG generation for LATISS.
 
-    LATISS has a single, hard-coded AOS pipeline (the WEP monolith), whose
-    quantum consumes both raws of a CWFS intra/extra pair, dispatched on the
-    extra-focal image landing. These tests catch (1) the LATISS pipeline set
+    LATISS's one AOS pipeline is the WEP monolith, whose quantum consumes
+    both raws of a CWFS pair. These tests catch (1) the LATISS pipeline set
     drifting from LATISS_PIPELINE_NAMES, (2) the pair-spanning quantum graph
     no longer resolving to exactly one monolith quantum, and (3) the guards
-    against dispatching AOS payloads for the wrong image type or the wrong
-    half of the pair going soft.
+    against AOS payloads for the wrong image type, or the wrong half of the
+    pair, no longer raising.
 
     The fixture data is a real CWFS pair: exposures 2026062500012 (intra)
     and 2026062500013 (extra), the same pair the CI drip-feeds.
@@ -548,7 +547,7 @@ class TestLatissPipelineGeneration(lsst.utils.tests.TestCase):
     def testLatissAosQuantumGraph(self) -> None:
         # The pair-spanning quantum graph: a payload carrying the extra-focal
         # image must resolve to exactly one monolith quantum, which consumes
-        # the raws of *both* images of the pair.
+        # the raws of both images of the pair.
         runCollection = getUserRunCollectionName("AOS_LATISS")
         butler = Butler.from_config(
             self.locationConfig.auxtelButlerPath,

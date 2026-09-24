@@ -358,12 +358,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
     ) -> tuple[QuantumGraphBuilder, str, dict[str, Any], LimitedButler]:
         """Get the quantum graph builder for LATISS AOS processing.
 
-        The LATISS AOS pipeline is the WEP monolith task, which consumes both
-        raws of a CWFS intra/extra pair in a single quantum, so the trivial
-        per-dataId builder can't express it. The payload carries the
-        extra-focal image, and the intra-focal image is the exposure
-        immediately before it, so build an all-dimensions quantum graph
-        constrained to exactly that pair.
+        The WEP monolith consumes both raws of a CWFS pair in one quantum,
+        which the trivial per-dataId builder can't express, so this builds an
+        all-dimensions graph constrained to the pair.
 
         Parameters
         ----------
@@ -384,6 +381,11 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             The bind parameters used for building the quantum graph.
         butlerToUse : `lsst.daf.butler.LimitedButler`
             The butler to use for executing the quantum graph.
+
+        Raises
+        ------
+        ValueError
+            Raised if the payload is not the extra-focal image of a CWFS pair.
         """
         assert self.step == "step1a"
         if expRecord.observation_type.lower() != "cwfs":
@@ -483,8 +485,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         else:  # all step1as
             if payload.who == "AOS" and self.instrument == "LATISS":
-                # hard-coded to the WEP monolith pair pipeline, which needs
-                # its own builder - see makeLatissAosQgBuilder
+                # the WEP monolith spans the whole CWFS pair
                 return self.makeLatissAosQgBuilder(payload, pipelineGraph, expRecord)
 
             dataIds: dict[DimensionGroup, DataCoordinate] = {dataId.dimensions: dataId}

@@ -126,8 +126,8 @@ redisHelper.pushNewExposureToHeadNode(records[0])
 redisHelper.pushToButlerWatcherList(instrument, records[0])
 
 # 12 - CWFS intra-focal image, gets ISR only
-# 13 - CWFS extra-focal image, gets ISR, and landing completes the pair,
-#      triggering the AOS_LATISS (WEP monolith) processing of both images
+# 13 - CWFS extra-focal image, gets ISR, and completes the pair, triggering
+#      the AOS_LATISS processing of both images
 where = f"exposure.day_obs=20260625 AND exposure.seq_num in (12, 13) AND instrument='{instrument}'"
 cwfsRecords = list(butler.registry.queryDimensionRecords("exposure", where=where))
 assert len(cwfsRecords) == 2, f"Expected 2 LATISS CWFS records, got {len(cwfsRecords)}"

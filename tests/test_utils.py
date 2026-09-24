@@ -149,16 +149,14 @@ class IsWepImageTestCase(lsst.utils.tests.TestCase):
 
 
 class CompletesWepPairTestCase(lsst.utils.tests.TestCase):
-    """Tests for `completesWepPair`, which is the trigger for LATISS AOS.
+    """Tests for `completesWepPair`, the head node's LATISS AOS trigger.
 
-    This predicate is what makes CWFS pair processing self-triggering on the
-    head node: the extra-focal image landing directly after its intra-focal
-    partner is the dispatch signal. These tests catch (1) the trigger firing
-    on the wrong image of the pair (which would dispatch before both raws
-    exist), (2) it firing on adjacent-but-unrelated CWFS images, and (3) it
-    failing to fire on a real pair. The fixture values mirror real records
-    from latiss_wep_align: observation_type "cwfs" with observation_reason
-    "intra" then "extra" on consecutive exposure IDs.
+    These tests catch (1) the trigger firing on the wrong image of the pair
+    (dispatching before both raws exist), (2) it firing on adjacent but
+    unrelated CWFS images, and (3) it failing to fire on a real pair. The
+    fixture values mirror real records from latiss_wep_align:
+    observation_type "cwfs" with observation_reason "intra" then "extra" on
+    consecutive exposure IDs.
     """
 
     def _makeCwfsRecord(self, expId: int, reason: str) -> DimensionRecord:
@@ -177,8 +175,8 @@ class CompletesWepPairTestCase(lsst.utils.tests.TestCase):
         self.assertTrue(completesWepPair(intra, extra))
 
     def test_intraImageDoesNotTrigger(self) -> None:
-        # the intra-focal image must never complete a pair - triggering on it
-        # would dispatch processing before the extra-focal raw exists. This is
+        # the intra-focal image must never complete a pair, as triggering on
+        # it would dispatch before the extra-focal raw exists. This is
         # the back-to-back pairs case: (intraA, extraA, intraB, extraB), where
         # intraB directly follows extraA but must not fire.
         extraA = self._makeCwfsRecord(2026062500013, "extra")

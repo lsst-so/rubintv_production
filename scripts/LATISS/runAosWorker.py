@@ -31,15 +31,11 @@ setupSentry()
 setupLogging()
 instrument = "LATISS"
 
-# Runs the AOS_LATISS (WEP monolith) payloads dispatched by the head node for
-# completed CWFS intra/extra pairs, keeping the potentially-slow wavefront
-# processing off the SFM workers' queues. These pods are interchangeable
-# replicas with no per-pod identity: every replica uses the same PodDetails
-# and therefore consumes from the same queue, with each payload atomically
-# popped by exactly one of them, so they can be scaled with a plain
-# Deployment's replica count rather than a StatefulSet.
+# Replicas have no per-pod identity: all share one PodDetails, and so one
+# queue, from which each payload is popped by exactly one replica. Scale by
+# Deployment replica count.
 detectorNum = 0  # LATISS's only detector
-detectorDepth = 0  # deliberately shared by all replicas, see above
+detectorDepth = 0
 
 locationConfig = getAutomaticLocationConfig()
 podDetails = PodDetails(

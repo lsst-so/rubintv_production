@@ -234,8 +234,8 @@ def main() -> None:
 
         pipelineCommands[pipelineName] = commands
 
-    # LATISS runs its own, single AOS pipeline: the WEP monolith, which
-    # processes a whole CWFS pair (both raws) in one quantum on detector 0
+    # AOS_LATISS needs a LATISS butler, and its one quantum spans both raws
+    # of the pair, so it is set up outside the loop above
     _LOG.info("Preparing pipeline: AOS_LATISS")
     latissButler = butlerUtils.makeDefaultButler("LATISS", embargo=False, writeable=True)
     _, latissPipelines = buildPipelines("LATISS", locationConfig, latissButler)

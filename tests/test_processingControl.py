@@ -253,7 +253,7 @@ class PipelineNamesTestCase(lsst.utils.tests.TestCase):
 
     def test_sfmAlwaysPresent(self) -> None:
         # The "SFM" entry is the science pipeline and is referenced by
-        # name throughout the package — guard it explicitly, per instrument.
+        # name throughout the package; guard it explicitly, per instrument.
         self.assertIn("SFM", PIPELINE_NAMES)
         self.assertIn("SFM", LATISS_PIPELINE_NAMES)
 
@@ -448,15 +448,15 @@ class RestoreAosPipelinesTestCase(lsst.utils.tests.TestCase):
 
 
 class IsBetweenFamPairTestCase(lsst.utils.tests.TestCase):
-    """`HeadProcessController.isBetweenFamPair` — the guard that rejects
-    RubinTV FAM-pipeline switches between the two images of a FAM pair.
+    """Tests for `HeadProcessController.isBetweenFamPair`, the guard that
+    rejects RubinTV FAM-pipeline switches between the images of a FAM pair.
 
     The method only consults ``self._lastProcessedExp``, so it is invoked
     unbound against a duck-typed ``self``, as in
     `RestoreAosPipelinesTestCase`. These tests catch (1) the guard failing
     to engage after an intra-focal FAM image, (2) it wrongly engaging on
-    other image types, and (3) the regression where reading the record's
-    reason crashed the head node instead of applying the guard.
+    other image types, and (3) reading the record's reason raising, which
+    crashes the head node instead of applying the guard.
     """
 
     def _check(self, record: SimpleNamespace | None) -> bool:
@@ -466,12 +466,9 @@ class IsBetweenFamPairTestCase(lsst.utils.tests.TestCase):
     def test_intraFamImageEngagesGuard(self) -> None:
         # the happy path: the last image was the intra-focal half of a FAM
         # pair, so pipeline switches must be rejected until the extra lands.
-        # Regression: this used to read ``record.reason``, an attribute which
-        # doesn't exist on exposure records (the field is
-        # ``observation_reason``), so the guard had never worked: it raised
-        # AttributeError in the head node's main loop — crashing the head
-        # node — the moment an operator switched the FAM pipeline right after
-        # a CWFS image, which is exactly the situation it exists to protect.
+        # Exposure records have ``observation_reason``, not ``reason``;
+        # reading the wrong one raises AttributeError in the head node's main
+        # loop, crashing it exactly when the guard should engage.
         record = SimpleNamespace(observation_type="cwfs", observation_reason="intra")
         self.assertTrue(self._check(record))
 

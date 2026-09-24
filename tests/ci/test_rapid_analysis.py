@@ -643,9 +643,8 @@ class RedisManager:
         else:
             checks.append(Check(True, f"{n_step1b_sfm}x {inst} SFM step1b finished"))
 
-        # The AOS (WEP monolith) processing for the CWFS pair: a single
-        # payload covering the pair, dispatched when the extra-focal image
-        # landed, and tracked against that image's exposure ID
+        # The CWFS pair's single AOS payload is tracked against the
+        # extra-focal image's exposure ID
         cwfsExtraExpId = 2026062500013
         info = redisHelper.getExposureProcessingInfo(inst, cwfsExtraExpId)
         if info is None:

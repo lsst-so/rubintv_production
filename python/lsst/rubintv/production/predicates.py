@@ -210,11 +210,8 @@ def isWepImage(expRecord: DimensionRecord) -> bool:
 def completesWepPair(previousRecord: DimensionRecord, expRecord: DimensionRecord) -> bool:
     """Check if ``expRecord`` completes a CWFS intra/extra donut pair.
 
-    CWFS pairs land as consecutive exposures, intra-focal first, so
-    ``expRecord`` completes a pair when it is the extra-focal image taken
-    immediately after its intra-focal partner. This is what makes the pair
-    processing self-triggering: the extra-focal image landing is the signal
-    that both images of the pair are available.
+    Pairs land as consecutive exposures, intra-focal first, so the
+    extra-focal image landing means both raws of the pair exist.
 
     Parameters
     ----------
@@ -229,8 +226,8 @@ def completesWepPair(previousRecord: DimensionRecord, expRecord: DimensionRecord
         ``True`` if ``expRecord`` is the extra-focal image completing the
         pair started by ``previousRecord``, else ``False``.
     """
-    # `or ""` because observation_reason is nullable, and this must never
-    # raise: it's called from the head node's main loop, unguarded
+    # observation_reason is nullable, and this runs unguarded in the head
+    # node's main loop
     reason = expRecord.observation_reason or ""
     previousReason = previousRecord.observation_reason or ""
     return (
