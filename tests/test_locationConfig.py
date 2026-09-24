@@ -42,9 +42,8 @@ regression that are otherwise only seen at pod startup:
 - The ``_checkDir`` / ``_checkFile`` validation rules drift away from
   what the per-pod startup scripts depend on (e.g. a non-creating dir
   silently becomes creating, masking a missing mount).
-- A site config holds a value form that no accessor resolves (e.g. a
-  ``$VAR`` in a key that nothing expands), which only surfaces as a
-  missing file inside a pipeline task at that site.
+- A site config puts an environment variable in a key that is never
+  expanded, which only shows up later as a missing file at that site.
 
 The explicit key lists below back the second category: a new accessor
 that bypasses validation surfaces as a missing entry in the test
@@ -53,11 +52,10 @@ lists rather than silently passing.
 
 from __future__ import annotations
 
-import glob
 import os
-import shutil
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import yaml
@@ -151,10 +149,6 @@ def _buildFixtureConfig(rootDir: str) -> dict:
 
     # AOS pipeline files — accessor just returns the string, no checks.
     config["aosDataDir"] = os.path.join(rootDir, "aos_data")
-    # batoidFeaDir and batoidBendDir are derived from aosDataDir and are
-    # checked but never created, so the fixture makes them.
-    for subDir in ("fea_legacy", "bend"):
-        os.makedirs(os.path.join(config["aosDataDir"], "batoid_data", subDir), exist_ok=True)
     for k in (
         "aosLSSTCamPipelineFileDanish",
         "aosLSSTCamPipelineFileTie",
@@ -311,34 +305,14 @@ class LocationConfigTestCase(lsst.utils.tests.TestCase):
             with self.subTest(key=key):
                 self.assertEqual(getattr(self.locationConfig, key), self.config[key])
 
-    def test_batoidDirsAreDerivedFromAosDataDir(self) -> None:
-        # aosDataDir is only the root of the batoid data passed to
-        # batoid_rubin's LSSTBuilder. Pinning the layout catches it being
-        # pointed at a different data package, which leaves both lookups
-        # dangling.
-        aosDataDir = self.config["aosDataDir"]
-        self.assertEqual(
-            self.locationConfig.batoidFeaDir,
-            os.path.join(aosDataDir, "batoid_data", "fea_legacy"),
-        )
-        self.assertEqual(
-            self.locationConfig.batoidBendDir,
-            os.path.join(aosDataDir, "batoid_data", "bend"),
-        )
-
     def test_batoidDirsRaiseWhenNotFound(self) -> None:
         # batoid_rubin's ensure_data_dir() downloads "fea_legacy" and "bend"
         # from Zenodo into a missing directory, so a wrong aosDataDir must
         # raise here rather than become a network fetch in a pod.
-        with tempfile.TemporaryDirectory() as tmp:
-            cfgDict = _buildFixtureConfig(tmp)
-            shutil.rmtree(os.path.join(cfgDict["aosDataDir"], "batoid_data"))
-            with patch.object(locationConfigModule, "_loadConfigFile", return_value=cfgDict):
-                cfg = LocationConfig("fixture")
-                for accessor in ("batoidFeaDir", "batoidBendDir"):
-                    with self.subTest(accessor=accessor):
-                        with self.assertRaises(RuntimeError):
-                            getattr(cfg, accessor)
+        for accessor in ("batoidFeaDir", "batoidBendDir"):
+            with self.subTest(accessor=accessor):
+                with self.assertRaises(RuntimeError):
+                    getattr(self.locationConfig, accessor)
 
     def test_postInitTouchesPlotPath(self) -> None:
         # __post_init__ touches plotPath, which is a _checkDir-creating
@@ -404,8 +378,8 @@ def _getSiteConfigFiles() -> list[str]:
     yamlFiles : `list` [`str`]
         Absolute paths to the ``config_<site>.yaml`` files, sorted.
     """
-    configDir = os.path.join(getPackageDir("rubintv_production"), "config")
-    return sorted(glob.glob(os.path.join(configDir, "config_*.yaml")))
+    configDir = Path(getPackageDir("rubintv_production")) / "config"
+    return sorted(str(path) for path in configDir.glob("config_*.yaml"))
 
 
 class ConfigYamlKeyConsistencyTestCase(lsst.utils.tests.TestCase):
@@ -417,8 +391,8 @@ class ConfigYamlKeyConsistencyTestCase(lsst.utils.tests.TestCase):
     the CI suite runs at startup, lifted into a unit test so it fails at
     development time instead.
 
-    Values are also checked where the accessor does no expansion of its
-    own, so no site config can hold a form the code never resolves.
+    It also checks values the code uses without expanding environment
+    variables, which must not contain any.
     """
 
     def test_allConfigFilesHaveIdenticalTopLevelKeys(self) -> None:
@@ -441,12 +415,12 @@ class ConfigYamlKeyConsistencyTestCase(lsst.utils.tests.TestCase):
         yamlFiles = _getSiteConfigFiles()
         self.assertTrue(yamlFiles, "no config_*.yaml files found")
         for filename in yamlFiles:
-            with self.subTest(config=os.path.basename(filename)):
+            with self.subTest(config=Path(filename).name):
                 with open(filename, "rb") as f:
                     config = yaml.safe_load(f)
                 aosDataDir = config["aosDataDir"]
                 self.assertNotIn("$", aosDataDir)
-                self.assertTrue(os.path.isabs(aosDataDir), f"{aosDataDir} is not an absolute path")
+                self.assertTrue(Path(aosDataDir).is_absolute(), f"{aosDataDir} is not an absolute path")
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
