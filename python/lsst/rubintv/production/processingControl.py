@@ -56,7 +56,7 @@ from lsst.utils.packages import Packages
 from .locationConfig import LocationConfig
 from .payloads import Payload, pipelineGraphToBytes
 from .podDefinition import PodDetails, PodFlavor
-from .predicates import isCalibration, isWepImage, runningCI
+from .predicates import completesWepPair, isCalibration, isWepImage, runningCI
 from .redisUtils import ExposureProcessingInfo, RedisHelper, decode_string
 from .shardIo import getShardPath, writeExpRecordMetadataShard, writeMetadataShard
 from .timing import BoxCarTimer
@@ -987,12 +987,13 @@ class HeadProcessController:
                 pipelineKey = self.currentAosFamPipeline
                 who = "AOS"
             else:
-                # TODO: once we move LATISS WEP to RA this will do the real
-                # dispatch. For now, just send off and probably fail
-                # downstream in SFM somewhere, but this will stop the
-                # LATISS head node crashing.
-                self.log.info(f"Sending LATISS CWFS image {expRecord.id} {imageType=} for step1a SFM")
-                pipelineKey, who = "SFM", "SFM"
+                # LATISS CWFS images get per-exposure ISR only: they are
+                # donut images, so SFM would just fail downstream at step1b.
+                # The WEP processing for the pair is dispatched separately in
+                # doLatissAosFanout, triggered by the extra-focal image
+                # landing.
+                self.log.info(f"Sending LATISS CWFS image {expRecord.id} {imageType=} for step1a ISR")
+                pipelineKey, who = "ISR", "ISR"
         else:  # all non-calib, properly headered images
             self.log.info(f"Sending {expRecord.id} {imageType=} for full step1a SFM")
             pipelineKey, who = "SFM", "SFM"
@@ -1052,6 +1053,64 @@ class HeadProcessController:
         # fire for every image this is probably fine.
         writeExpRecordMetadataShard(expRecord, aosShardPath)
 
+    def doLatissAosFanout(self, expRecord: DimensionRecord) -> None:
+        """Dispatch the AOS processing for a completed LATISS CWFS pair.
+
+        LATISS CWFS pairs land as consecutive exposures, intra-focal first.
+        Nothing is dispatched here for the intra-focal image: the processing
+        is self-triggering off the extra-focal image landing, at which point
+        a single payload covering the whole pair is sent, because the WEP
+        monolith task consumes both raws in one quantum. The pipeline is
+        always ``AOS_LATISS`` - there is no RubinTV control for LATISS AOS.
+
+        The payload goes to the dedicated LATISS AOS worker rather than the
+        SFM workers, so the potentially-slow wavefront processing never
+        queues behind the per-exposure ISR work (or vice versa).
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record to process. Must be a CWFS image.
+        """
+        if "extra" not in (expRecord.observation_reason or "").lower():
+            return  # the pair is only complete once the extra-focal image lands
+
+        previousExpId = expRecord.id - 1
+        previousRecords = list(
+            self.butler.registry.queryDimensionRecords(
+                "exposure", instrument=self.instrument, exposure=previousExpId
+            )
+        )
+        previousRecord = previousRecords[0] if previousRecords else None
+        if previousRecord is None or not completesWepPair(previousRecord, expRecord):
+            self.log.warning(
+                f"Got extra-focal CWFS image {expRecord.id} but exposure {previousExpId} is not its"
+                " intra-focal partner - skipping AOS dispatch"
+            )
+            return
+        if previousRecord.group != expRecord.group:
+            # pairs are expected to share a group, but the pairing inside the
+            # task is done on focusZ, so warn and carry on
+            self.log.warning(
+                f"CWFS pair {previousExpId}+{expRecord.id} have differing groups"
+                f" ({previousRecord.group} vs {expRecord.group}) - dispatching anyway"
+            )
+
+        detectorId = 0  # LATISS's only detector
+        dataId = DataCoordinate.standardize(expRecord.dataId, detector=detectorId)
+        payload = Payload(
+            dataId=dataId,
+            pipelineGraphBytes=self.pipelines["AOS_LATISS"].graphBytes["step1a"],
+            run=self.outputRun,
+            who="AOS",
+        )
+        self.redisHelper.setExpectedDetectors(self.instrument, expRecord.id, [detectorId], "AOS")
+        # record the pipeline so the step1b gather dispatch knows what ran,
+        # as for LSSTCam, even though it's the only option for LATISS
+        self.redisHelper.setAosPipelineConfig(self.instrument, expRecord.id, "AOS_LATISS")
+        self.log.info(f"Dispatching AOS_LATISS for CWFS pair {previousExpId}+{expRecord.id}")
+        self._dispatchPayloads({detectorId: payload}, PodFlavor.AOS_WORKER)
+
     def isBetweenFamPair(self) -> bool:
         """Check if we've received an intra-focal FAM image and not yet
         dispatched the extra-focal.
@@ -1101,6 +1160,10 @@ class HeadProcessController:
                 # record pipeline config so the step1b dispatch knows what the
                 # active pipeline was
                 self.redisHelper.setAosPipelineConfig(instrument, expRecord.id, self.currentAosFamPipeline)
+        elif isFam:
+            # LATISS CWFS pairs are self-triggering: the extra-focal image
+            # landing dispatches the WEP processing for the whole pair
+            self.doLatissAosFanout(expRecord)
 
         # data driven section
         targetPipelineBytes, targetPipelineGraph, who = self.getPipelineConfig(expRecord)
@@ -1447,7 +1510,9 @@ class HeadProcessController:
                     self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_VISITIMAGE_WORKER)
                     self.log.info(f"Sending {expRecord.id} for radial plot processing")
                     self.dispatchRadialPlot(expRecord)
-            if who == "AOS":
+            if who == "AOS" and self.instrument != "LATISS":
+                # not for LATISS: the ISR gather for the same exposure has
+                # already dispatched its one-off postISR processing
                 (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoord)
                 self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
 

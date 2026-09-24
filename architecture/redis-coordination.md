@@ -115,7 +115,8 @@ expire while others persist.
   - `_binnedIsr:{det}` -> "1" (binned post-ISR image produced; pipeline-
     agnostic since every step1a pipeline contains an ISR quantum)
   - `_mosaicDispatched` -> "1" (post-ISR focal-plane mosaic dispatched)
-  - `pipeline_config` -> AOS pipeline name ("AOS_DANISH", etc.)
+  - `pipeline_config` -> AOS pipeline name ("AOS_DANISH", etc.; always
+    "AOS_LATISS" on LATISS)
 - Workers write `{who}:finished:{det}` via atomic `HSET` (no races)
 - Head node writes expected detectors and dispatch flags
 - Completion check: `finished_detectors >= expected_detectors` (set ops)
