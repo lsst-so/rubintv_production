@@ -85,7 +85,7 @@ _log = logging.getLogger(__name__)
 # The packages whose git versions are recorded for every dispatched image. The
 # set is deliberately small: just the things that change the AOS results. These
 # are git checkouts located via their EUPS ``<PACKAGE>_DIR`` env var.
-TRACKED_PACKAGES = ["ts_wep", "donut_viz", "rubintv_production", "tarts"]
+TRACKED_PACKAGES = ["ts_wep", "donut_viz", "rubintv_production", "tarts", "summit_utils"]
 
 # Tracked packages that are installed into the environment (conda/pip) rather
 # than being git checkouts. These have no ``*_DIR`` env var, so their version

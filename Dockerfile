@@ -10,7 +10,7 @@ ENV UID=73006
 ENV GID=73006
 
 ARG drp_pipe_ref="w.2026.38"
-ARG summit_utils_ref="ac8fc39669064c904ed7892b1ab427a92c0cc944"
+ARG summit_utils_ref="5dc810c80e38e9569f91ed4fed1ae28338d78c94"
 ARG summit_extras_ref="w.2026.38"
 ARG ts_wep_ref="v17.14.0"
 ARG donut_viz_ref="v4.11.0"
