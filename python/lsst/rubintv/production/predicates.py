@@ -54,6 +54,7 @@ __all__ = [
     "hasDayRolledOver",
     "isCalibration",
     "isWepImage",
+    "completesWepPair",
     "hasRaDec",
     "isFileWorldWritable",
     "isFamPipeline",
@@ -204,6 +205,38 @@ def isWepImage(expRecord: DimensionRecord) -> bool:
         ``False``.
     """
     return expRecord.observation_type.lower() == "cwfs"
+
+
+def completesWepPair(previousRecord: DimensionRecord, expRecord: DimensionRecord) -> bool:
+    """Check if ``expRecord`` completes a CWFS intra/extra donut pair.
+
+    Pairs land as consecutive exposures, intra-focal first, so the
+    extra-focal image landing means both raws of the pair exist.
+
+    Parameters
+    ----------
+    previousRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record immediately preceding ``expRecord``.
+    expRecord : `lsst.daf.butler.DimensionRecord`
+        The exposure record to check.
+
+    Returns
+    -------
+    completesPair : `bool`
+        ``True`` if ``expRecord`` is the extra-focal image completing the
+        pair started by ``previousRecord``, else ``False``.
+    """
+    # observation_reason is nullable, and this runs unguarded in the head
+    # node's main loop
+    reason = expRecord.observation_reason or ""
+    previousReason = previousRecord.observation_reason or ""
+    return (
+        isWepImage(expRecord)
+        and isWepImage(previousRecord)
+        and "extra" in reason.lower()
+        and "intra" in previousReason.lower()
+        and previousRecord.id == expRecord.id - 1
+    )
 
 
 def hasRaDec(record: DimensionRecord) -> bool:

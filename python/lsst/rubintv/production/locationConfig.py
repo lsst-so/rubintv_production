@@ -472,6 +472,10 @@ class LocationConfig:
     def aosLSSTCamWcsDanishBin2PipelineFile(self) -> str:
         return self._config["aosLSSTCamWcsDanishBin2PipelineFile"]
 
+    @cached_property
+    def aosLATISSPipelineFile(self) -> str:
+        return self._config["aosLATISSPipelineFile"]
+
 
 def getAutomaticLocationConfig() -> LocationConfig:
     """Get a location config, based on RA location and command line args.

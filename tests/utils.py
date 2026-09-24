@@ -30,7 +30,7 @@ from lsst.daf.butler import (
     MissingCollectionError,
 )
 from lsst.rubintv.production.parsers import safeJsonOpen
-from lsst.rubintv.production.processingControl import PIPELINE_NAMES
+from lsst.rubintv.production.processingControl import LATISS_PIPELINE_NAMES, PIPELINE_NAMES
 
 __all__ = ("getSampleExpRecord", "getUserRunCollectionName", "removeUserRunCollection")
 
@@ -51,7 +51,7 @@ def getSampleExpRecord() -> DimensionRecord:
 
 def getUserRunCollectionName(pipelineName: str) -> str:
     """Get the user RUN collection name for use in CI and unit testing."""
-    if pipelineName not in PIPELINE_NAMES:
+    if pipelineName not in set(PIPELINE_NAMES) | set(LATISS_PIPELINE_NAMES):
         raise ValueError(f"Unknown pipeline name: {pipelineName}")
 
     username = os.getenv("USER", None)

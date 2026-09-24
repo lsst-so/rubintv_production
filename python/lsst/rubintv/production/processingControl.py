@@ -56,7 +56,7 @@ from lsst.utils.packages import Packages
 from .locationConfig import LocationConfig
 from .payloads import Payload, pipelineGraphToBytes
 from .podDefinition import PodDetails, PodFlavor
-from .predicates import isCalibration, isWepImage, runningCI
+from .predicates import completesWepPair, isCalibration, isWepImage, runningCI
 from .redisUtils import ExposureProcessingInfo, RedisHelper, decode_string
 from .shardIo import getShardPath, writeExpRecordMetadataShard, writeMetadataShard
 from .timing import BoxCarTimer
@@ -71,7 +71,8 @@ if TYPE_CHECKING:
 # NB: these must all be initializable or the head node will not come up.
 # Similarly, the head node will not initialize any pipelines that are not in
 # this list, so if you want to add a new pipeline, add it here and make sure it
-# is created in buildPipelines below. (This doesn't apply to LATISS though)
+# is created in buildPipelines below. (LATISS has its own list, see
+# LATISS_PIPELINE_NAMES below)
 PIPELINE_NAMES: tuple[str, ...] = (
     # Science pipeline processing
     "SFM",
@@ -94,6 +95,17 @@ PIPELINE_NAMES: tuple[str, ...] = (
     # Full-array-mode AOS pipelines
     "AOS_FAM_TIE",
     "AOS_FAM_DANISH",
+)
+
+# The equivalent list for LATISS, with the same rules. Its one AOS pipeline
+# is hard-coded, as there is no RubinTV pipeline selection for LATISS.
+LATISS_PIPELINE_NAMES: tuple[str, ...] = (
+    "SFM",
+    "BIAS",
+    "DARK",
+    "FLAT",
+    "ISR",
+    "AOS_LATISS",
 )
 
 
@@ -447,6 +459,7 @@ def buildPipelines(
     unpairedDanishFile = locationConfig.aosLSSTCamUnpairedDanishPipelineFile
     aosWcsBin1DanishFile = locationConfig.aosLSSTCamWcsDanishBin1PipelineFile
     aosWcsBin2DanishFile = locationConfig.aosLSSTCamWcsDanishBin2PipelineFile
+    aosLatissFile = locationConfig.aosLATISSPipelineFile
 
     drpPipeDir = getPackageDir("drp_pipe")
     biasFile = (Path(drpPipeDir) / "pipelines" / instrument / "quickLookBias.yaml").as_posix()
@@ -473,9 +486,17 @@ def buildPipelines(
         ["step1a", "step1b"],
     )
 
-    if instrument != "LATISS":
-        # NOTE: there is no dict entry for LATISS for AOS as AOS runs
-        # differently there. It might change in the future, but not soon.
+    if instrument == "LATISS":
+        # The WEP monolith consumes both raws of a CWFS pair in one quantum,
+        # so there is no step1b.
+        pipelines["AOS_LATISS"] = PipelineComponents(butler.registry, aosLatissFile, ["step1a"], ["step1a"])
+        if set(pipelines.keys()) != set(LATISS_PIPELINE_NAMES):
+            missing = set(LATISS_PIPELINE_NAMES) - set(pipelines.keys())
+            extra = set(pipelines.keys()) - set(LATISS_PIPELINE_NAMES)
+            raise ValueError(
+                f"LATISS pipeline names don't match expected. Missing: {missing}, extra: {extra}"
+            )
+    else:
         pipelines["AOS_DANISH"] = PipelineComponents(
             butler.registry, aosFileDanish, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
@@ -962,12 +983,10 @@ class HeadProcessController:
                 pipelineKey = self.currentAosFamPipeline
                 who = "AOS"
             else:
-                # TODO: once we move LATISS WEP to RA this will do the real
-                # dispatch. For now, just send off and probably fail
-                # downstream in SFM somewhere, but this will stop the
-                # LATISS head node crashing.
-                self.log.info(f"Sending LATISS CWFS image {expRecord.id} {imageType=} for step1a SFM")
-                pipelineKey, who = "SFM", "SFM"
+                # Donut images fail SFM at step1b, so these get ISR only.
+                # The pair's WEP processing is dispatched by doLatissAosFanout.
+                self.log.info(f"Sending LATISS CWFS image {expRecord.id} {imageType=} for step1a ISR")
+                pipelineKey, who = "ISR", "ISR"
         else:  # all non-calib, properly headered images
             self.log.info(f"Sending {expRecord.id} {imageType=} for full step1a SFM")
             pipelineKey, who = "SFM", "SFM"
@@ -1027,6 +1046,57 @@ class HeadProcessController:
         # fire for every image this is probably fine.
         writeExpRecordMetadataShard(expRecord, aosShardPath)
 
+    def doLatissAosFanout(self, expRecord: DimensionRecord) -> None:
+        """Dispatch the AOS processing for a completed LATISS CWFS pair.
+
+        Pairs land as consecutive exposures, intra-focal first. Nothing is
+        sent for the intra-focal image; when the extra-focal image lands, one
+        ``AOS_LATISS`` payload covering both is sent, as the WEP monolith
+        consumes both raws in one quantum. It goes to the AOS workers so it
+        never queues behind the per-exposure ISR on the SFM workers.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record to process. Must be a CWFS image.
+        """
+        if "extra" not in (expRecord.observation_reason or "").lower():
+            return
+
+        previousExpId = expRecord.id - 1
+        previousRecords = list(
+            self.butler.registry.queryDimensionRecords(
+                "exposure", instrument=self.instrument, exposure=previousExpId
+            )
+        )
+        previousRecord = previousRecords[0] if previousRecords else None
+        if previousRecord is None or not completesWepPair(previousRecord, expRecord):
+            self.log.warning(
+                f"Got extra-focal CWFS image {expRecord.id} but exposure {previousExpId} is not its"
+                " intra-focal partner - skipping AOS dispatch"
+            )
+            return
+        if previousRecord.group != expRecord.group:
+            # the task pairs on focusZ, not group, so this is only suspicious
+            self.log.warning(
+                f"CWFS pair {previousExpId}+{expRecord.id} have differing groups"
+                f" ({previousRecord.group} vs {expRecord.group}) - dispatching anyway"
+            )
+
+        detectorId = 0  # LATISS's only detector
+        dataId = DataCoordinate.standardize(expRecord.dataId, detector=detectorId)
+        payload = Payload(
+            dataId=dataId,
+            pipelineGraphBytes=self.pipelines["AOS_LATISS"].graphBytes["step1a"],
+            run=self.outputRun,
+            who="AOS",
+        )
+        self.redisHelper.setExpectedDetectors(self.instrument, expRecord.id, [detectorId], "AOS")
+        # the step1a gather looks the pipeline up from this, as for LSSTCam
+        self.redisHelper.setAosPipelineConfig(self.instrument, expRecord.id, "AOS_LATISS")
+        self.log.info(f"Dispatching AOS_LATISS for CWFS pair {previousExpId}+{expRecord.id}")
+        self._dispatchPayloads({detectorId: payload}, PodFlavor.AOS_WORKER)
+
     def isBetweenFamPair(self) -> bool:
         """Check if we've received an intra-focal FAM image and not yet
         dispatched the extra-focal.
@@ -1043,7 +1113,9 @@ class HeadProcessController:
         record = self._lastProcessedExp
         if record is None:
             return False
-        if isWepImage(record) and "intra" in record.reason.lower():
+        # observation_reason is nullable, and raising here crashes the head
+        # node's main loop
+        if isWepImage(record) and "intra" in (record.observation_reason or "").lower():
             return True
         return False
 
@@ -1074,6 +1146,8 @@ class HeadProcessController:
                 # record pipeline config so the step1b dispatch knows what the
                 # active pipeline was
                 self.redisHelper.setAosPipelineConfig(instrument, expRecord.id, self.currentAosFamPipeline)
+        elif isFam:
+            self.doLatissAosFanout(expRecord)
 
         # data driven section
         targetPipelineBytes, targetPipelineGraph, who = self.getPipelineConfig(expRecord)
@@ -1420,7 +1494,8 @@ class HeadProcessController:
                     self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_VISITIMAGE_WORKER)
                     self.log.info(f"Sending {expRecord.id} for radial plot processing")
                     self.dispatchRadialPlot(expRecord)
-            if who == "AOS":
+            if who == "AOS" and self.instrument != "LATISS":
+                # on LATISS the ISR gather for this exposure already did this
                 (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId=dataCoord)
                 self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
 
