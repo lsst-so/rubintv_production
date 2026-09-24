@@ -124,3 +124,14 @@ records = list(butler.registry.queryDimensionRecords("exposure", where=where))
 assert len(records) == 1, f"Expected 1 LATISS record, got {len(records)}"
 redisHelper.pushNewExposureToHeadNode(records[0])
 redisHelper.pushToButlerWatcherList(instrument, records[0])
+
+# 12 - CWFS intra-focal image, gets ISR only
+# 13 - CWFS extra-focal image, gets ISR, and landing completes the pair,
+#      triggering the AOS_LATISS (WEP monolith) processing of both images
+where = f"exposure.day_obs=20260625 AND exposure.seq_num in (12, 13) AND instrument='{instrument}'"
+cwfsRecords = list(butler.registry.queryDimensionRecords("exposure", where=where))
+assert len(cwfsRecords) == 2, f"Expected 2 LATISS CWFS records, got {len(cwfsRecords)}"
+for record in sorted(cwfsRecords, key=lambda r: r.seq_num):  # intra lands first, as on the mountain
+    redisHelper.pushNewExposureToHeadNode(record)
+    redisHelper.pushToButlerWatcherList(instrument, record)
+    time.sleep(2)  # so the intra is fanned out before the extra lands
