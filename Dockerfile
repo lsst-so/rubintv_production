@@ -1,5 +1,5 @@
 
-ARG STACK_TAG="w_2026_22"
+ARG STACK_TAG="w_2026_38"
 # For USDF, UID=17951
 # For summit, UID=GID=73006?
 
@@ -9,14 +9,15 @@ FROM ghcr.io/lsst/scipipe:al9-${STACK_TAG}
 ENV UID=73006
 ENV GID=73006
 
-ARG drp_pipe_ref="w.2026.22"
+ARG drp_pipe_ref="w.2026.38"
 ARG summit_utils_ref="ac8fc39669064c904ed7892b1ab427a92c0cc944"
-ARG summit_extras_ref="w.2026.22"
-ARG ts_wep_ref="v17.6.1"
-ARG donut_viz_ref="v4.5.0"
+ARG summit_extras_ref="w.2026.38"
+ARG ts_wep_ref="v17.13.0"
+ARG donut_viz_ref="v4.11.0"
 ARG tarts_ref="v4.2"
 ARG ts_ofc_ref="5245ded9c985c7707232f53f130a8cb6a402f7e1"
 ARG ts_config_mttcs_ref="ad3ef1b625f0ab5f276193987e4251db95161227"
+ARG ts_aos_ai_ref="v0.2.0"
 
 ARG USER=saluser
 ENV USER=${USER}
@@ -69,6 +70,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     peft \
     imagemagick \
     fakeredis \
+    git-lfs \
     && conda clean -afy
 
 USER saluser
@@ -99,8 +101,9 @@ RUN source ${WORKDIR}/loadLSST.bash && \
 USER root
 RUN source ${WORKDIR}/loadLSST.bash && \
     pip install --break-system-packages \
-      'mypy>=1.0,<2.0,!=1.9.0' \
+      'mypy>=2.0,<3.0' \
       types-requests \
+      types-PyYAML \
       pytest \
       pytest-cov \
       pytest-xdist \
@@ -120,6 +123,15 @@ RUN git clone https://github.com/lsst-so/summit_utils.git && \
     git clone https://github.com/lsst-ts/donut_viz.git && \
     git clone https://github.com/PetchMa/TARTS.git && \
     git clone https://github.com/lsst/drp_pipe.git
+
+RUN source ${WORKDIR}/loadLSST.bash && \
+    git lfs install && \
+    git clone --depth 1 --branch ${ts_aos_ai_ref} https://github.com/lsst-ts/ts_aos_ai.git && \
+    cd ts_aos_ai && \
+    eups declare -r . ts_aos_ai -t saluser && \
+    setup ts_aos_ai -t saluser && \
+    python scripts/verify.py && \
+    rm -rf .git/lfs
 
 
 WORKDIR /repos/drp_pipe
@@ -265,7 +277,8 @@ RUN git config --system --add safe.directory /repos/drp_pipe && \
     git config --system --add safe.directory /repos/ts_ofc && \
     git config --system --add safe.directory /repos/ts_config_mttcs && \
     git config --system --add safe.directory /repos/donut_viz && \
-    git config --system --add safe.directory /repos/TARTS
+    git config --system --add safe.directory /repos/TARTS && \
+    git config --system --add safe.directory /repos/ts_aos_ai
 
 USER saluser
 ENV USER=saluser

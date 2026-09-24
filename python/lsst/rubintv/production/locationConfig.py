@@ -424,7 +424,25 @@ class LocationConfig:
 
     @cached_property
     def aosDataDir(self) -> str:
+        """The root of the batoid data for the location."""
         return self._config["aosDataDir"]
+
+    # Checked but never created: batoid_rubin's ensure_data_dir() downloads
+    # the dataset from Zenodo into any missing directory, so a wrong
+    # aosDataDir would become a network fetch in a pod, not an error.
+    @cached_property
+    def batoidFeaDir(self) -> str:
+        """The batoid FEA data directory, as passed to ``LSSTBuilder``."""
+        directory = os.path.join(self.aosDataDir, "batoid_data", "fea_legacy")
+        self._checkDir(directory, createIfMissing=False)
+        return directory
+
+    @cached_property
+    def batoidBendDir(self) -> str:
+        """The batoid bending mode directory, as passed to ``LSSTBuilder``."""
+        directory = os.path.join(self.aosDataDir, "batoid_data", "bend")
+        self._checkDir(directory, createIfMissing=False)
+        return directory
 
     @cached_property
     def aosLSSTCamRefitWcsPipelineFile(self) -> str:

@@ -545,8 +545,6 @@ class ZernikePredictedFWHMPlotter:
             filename=plotFile,
         )
 
-        aosDataDir = self.locationConfig.aosDataDir
-
         estimatorInfo = zkAvgTable.meta.get("estimatorInfo", None)
         if not estimatorInfo or "fwhm" not in estimatorInfo:
             self.log.warning("Donut blur FWHM not found in zkAvgTable estimatorInfo")
@@ -576,8 +574,8 @@ class ZernikePredictedFWHMPlotter:
                 tableFiltered,
                 rotMat,
                 expRecord.physical_filter.split("_")[0],
-                batoidFeaDir=os.path.join(aosDataDir, "batoid_data/fea_legacy"),
-                batoidBendDir=os.path.join(aosDataDir, "batoid_data/bend"),
+                batoidFeaDir=self.locationConfig.batoidFeaDir,
+                batoidBendDir=self.locationConfig.batoidBendDir,
                 donutBlur=donutBlur,
             )
 

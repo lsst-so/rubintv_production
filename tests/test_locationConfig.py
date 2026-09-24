@@ -42,6 +42,8 @@ regression that are otherwise only seen at pod startup:
 - The ``_checkDir`` / ``_checkFile`` validation rules drift away from
   what the per-pod startup scripts depend on (e.g. a non-creating dir
   silently becomes creating, masking a missing mount).
+- A site config puts an environment variable in a key that is never
+  expanded, which only shows up later as a missing file at that site.
 
 The explicit key lists below back the second category: a new accessor
 that bypasses validation surfaces as a missing entry in the test
@@ -50,11 +52,13 @@ lists rather than silently passing.
 
 from __future__ import annotations
 
-import glob
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
+
+import yaml
 
 import lsst.utils.tests
 from lsst.rubintv.production import locationConfig as locationConfigModule
@@ -301,6 +305,15 @@ class LocationConfigTestCase(lsst.utils.tests.TestCase):
             with self.subTest(key=key):
                 self.assertEqual(getattr(self.locationConfig, key), self.config[key])
 
+    def test_batoidDirsRaiseWhenNotFound(self) -> None:
+        # batoid_rubin's ensure_data_dir() downloads "fea_legacy" and "bend"
+        # from Zenodo into a missing directory, so a wrong aosDataDir must
+        # raise here rather than become a network fetch in a pod.
+        for accessor in ("batoidFeaDir", "batoidBendDir"):
+            with self.subTest(accessor=accessor):
+                with self.assertRaises(RuntimeError):
+                    getattr(self.locationConfig, accessor)
+
     def test_postInitTouchesPlotPath(self) -> None:
         # __post_init__ touches plotPath, which is a _checkDir-creating
         # accessor. After construction the directory must exist already
@@ -357,6 +370,18 @@ class GetAutomaticLocationConfigTestCase(lsst.utils.tests.TestCase):
                 getAutomaticLocationConfig()
 
 
+def _getSiteConfigFiles() -> list[str]:
+    """Get the on-disk per-site config files shipped with the package.
+
+    Returns
+    -------
+    yamlFiles : `list` [`str`]
+        Absolute paths to the ``config_<site>.yaml`` files, sorted.
+    """
+    configDir = Path(getPackageDir("rubintv_production")) / "config"
+    return sorted(str(path) for path in configDir.glob("config_*.yaml"))
+
+
 class ConfigYamlKeyConsistencyTestCase(lsst.utils.tests.TestCase):
     """The on-disk per-site config files must share the same top-level keys.
 
@@ -365,13 +390,15 @@ class ConfigYamlKeyConsistencyTestCase(lsst.utils.tests.TestCase):
     fails only at runtime in that location's pod. This is the same check
     the CI suite runs at startup, lifted into a unit test so it fails at
     development time instead.
+
+    It also checks values the code uses without expanding environment
+    variables, which must not contain any.
     """
 
     def test_allConfigFilesHaveIdenticalTopLevelKeys(self) -> None:
         packageDir = getPackageDir("rubintv_production")
-        configDir = os.path.join(packageDir, "config")
-        yamlFiles = sorted(glob.glob(os.path.join(configDir, "config_*.yaml")))
-        self.assertTrue(yamlFiles, f"no config_*.yaml files found under {configDir}")
+        yamlFiles = _getSiteConfigFiles()
+        self.assertTrue(yamlFiles, "no config_*.yaml files found")
 
         missing = findMissingConfigKeys(yamlFiles)
         if missing:
@@ -380,6 +407,20 @@ class ConfigYamlKeyConsistencyTestCase(lsst.utils.tests.TestCase):
                 rel = os.path.relpath(filename, packageDir)
                 lines.append(f"  {rel} is missing: {sorted(keys)}")
             self.fail("\n".join(lines))
+
+    def test_aosDataDirIsALiteralPath(self) -> None:
+        # Nothing expands aosDataDir; it is joined straight onto the batoid
+        # subdirectories. A $VAR here would reach batoid_rubin verbatim, so
+        # every site must set a literal absolute path.
+        yamlFiles = _getSiteConfigFiles()
+        self.assertTrue(yamlFiles, "no config_*.yaml files found")
+        for filename in yamlFiles:
+            with self.subTest(config=Path(filename).name):
+                with open(filename, "rb") as f:
+                    config = yaml.safe_load(f)
+                aosDataDir = config["aosDataDir"]
+                self.assertNotIn("$", aosDataDir)
+                self.assertTrue(Path(aosDataDir).is_absolute(), f"{aosDataDir} is not an absolute path")
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
