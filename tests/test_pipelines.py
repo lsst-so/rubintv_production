@@ -27,11 +27,13 @@ import logging
 import unittest
 from contextlib import contextmanager
 from typing import Iterator
+from unittest.mock import patch
 
+from fixtureExposures import CALIB_EXPOSURES, LSSTCAM_FAM_EXTRA, LSSTCAM_FAM_INTRA, LSSTCAM_IN_FOCUS
 from utils import getUserRunCollectionName
 
 import lsst.utils.tests
-from lsst.daf.butler import Butler, DimensionRecord
+from lsst.daf.butler import Butler, DataCoordinate, DimensionRecord, MissingDatasetTypeError
 from lsst.pipe.base import PipelineGraph
 from lsst.pipe.base.quantum_graph import PredictedQuantumGraph
 from lsst.rubintv.production.locationConfig import LocationConfig, getAutomaticLocationConfig
@@ -170,15 +172,22 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         cls.minimalButler = cls._makeMinimalButler()
         cls.graphs, cls.pipelines = buildPipelines("LSSTCam", cls.locationConfig, cls.minimalButler)
 
-        where = "exposure.day_obs=20251115 AND exposure.seq_num in (226..228,436) AND instrument='LSSTCam'"
+        onSkyIds = {
+            "inFocus": LSSTCAM_IN_FOCUS.id,
+            "intra": LSSTCAM_FAM_INTRA.id,
+            "extra": LSSTCAM_FAM_EXTRA.id,
+        }
+        calibIds = {pipelineName.lower(): exposure.id for pipelineName, exposure in CALIB_EXPOSURES.items()}
+        fixtureIds = sorted(set(onSkyIds.values()) | set(calibIds.values()))
+        where = f"exposure in ({','.join(str(i) for i in fixtureIds)}) AND instrument='LSSTCam'"
         records = cls.minimalButler.query_dimension_records("exposure", where=where)
-        assert len(records) == 4, f"Expected 4 fixture exposure records, got {len(records)}"
-        rd = {r.seq_num: r for r in records}
-        cls.records = {}
-        cls.records["inFocus"] = rd[226]
-        cls.records["intra"] = rd[227]
-        cls.records["extra"] = rd[228]
-        cls.records["dark"] = rd[436]
+        assert len(records) == len(
+            fixtureIds
+        ), f"Expected {len(fixtureIds)} fixture records, got {len(records)}"
+        rd = {r.id: r for r in records}
+        # keyed by what the record is used as: "inFocus", "intra", "extra"
+        # and the calib pipeline each calib fixture belongs to ("bias" etc.)
+        cls.records = {imageType: rd[expId] for imageType, expId in (onSkyIds | calibIds).items()}
         cls.intraDetector = 192
         cls.extraDetector = 191
         cls.scienceDetector = 94
@@ -222,20 +231,64 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
             self.assertIn(pipelineName, EXPECTED_PIPELINES, f"Unexpected pipeline {pipelineName} found")
 
     def testCalibPipelines(self) -> None:
-        # calib pipelines run the verify<product>Isr tasks but the quanta that
-        # they actually execute are isr quanta, so check they exist with the
-        # right names, but check the quanta counts under 'isr'
-        for pipelineName in ["BIAS", "DARK", "FLAT"]:
-            taskName = f"verify{pipelineName.lower().capitalize()}Isr"
-            taskExpectations: dict[str, int] = {taskName: 1}
-            quantaExpectations: dict[str, int] = {"isr": 1}
+        """Calib step1a runs cp_verify's ISR plus its per-detector verify
+        task.
+
+        The task labels are e.g. ``verifyBiasIsr``/``verifyBiasDet`` but the
+        execution quanta are named by class, so the labels are checked via
+        ``taskExpectations`` and the classes via ``quantaExpectations``.
+        """
+        for pipelineName in CALIB_EXPOSURES:
+            calibType = pipelineName.lower().capitalize()  # e.g. Bias
+            taskExpectations: dict[str, int] = {f"verify{calibType}Isr": 1, f"verify{calibType}Det": 1}
+            quantaExpectations: dict[str, int] = {"isr": 1, f"cpverify{calibType}task": 1}
             self.runTest(
                 step="step1a",
-                imageType="inFocus",
+                imageType=pipelineName.lower(),
                 detector=self.scienceDetector,
                 pipelinesToRun=[pipelineName],
                 taskExpectations=taskExpectations,
                 quantaExpectations=quantaExpectations,
+            )
+
+    def testCalibPipelinesStep1b(self) -> None:
+        """Calib step1b merges the per-detector results for the exposure,
+        runs the (instrument-level) run merge on top, and then the
+        analysis_tools task that produces the metric bundle for Sasquatch.
+
+        Unlike SFM/AOS step1b these run on an exposure dataId, as calibs
+        have no visits. Requires the per-pipeline test collections to hold
+        the step1a outputs (``verify<Type>DetStats`` etc.), i.e. to have
+        been built by ``createUnitTestCollections.py`` with both step1a
+        labels; ``runTest`` checks that up front and says so if not, as
+        otherwise the merge quanta silently have no inputs.
+        """
+        expectations: dict[str, tuple[dict[str, int], dict[str, int]]] = {
+            "BIAS": (
+                {"verifyBiasExp": 1, "verifyBias": 1, "analyzeBiasCore": 1},
+                {"cpverifyexpmergetask": 1, "cpverifyrunmergetask": 1, "verifycalibanalysistask": 1},
+            ),
+            "DARK": (
+                {"verifyDarkExp": 1, "verifyDark": 1, "analyzeDarkCore": 1},
+                {"cpverifyexpmergetask": 1, "cpverifyrunmergetask": 1, "verifycalibanalysistask": 1},
+            ),
+            "FLAT": (
+                {"verifyFlatExp": 1, "verifyFlat": 1, "analyzeFlatDetCore": 1},
+                {
+                    "cpverifyflatexpmergetask": 1,
+                    "cpverifyrunmergebyfiltertask": 1,
+                    "verifycalibanalysistaskbyfilter": 1,
+                },
+            ),
+        }
+        for pipelineName, (taskExpectations, quantaExpectations) in expectations.items():
+            self.runTest(
+                step="step1b",
+                imageType=pipelineName.lower(),
+                pipelinesToRun=[pipelineName],
+                taskExpectations=taskExpectations,
+                quantaExpectations=quantaExpectations,
+                step1bDataIdKey="exposure",
             )
 
     def testIsrOnly(self) -> None:
@@ -262,7 +315,7 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         taskExpectations: dict[str, int] = {"isr": 1}
         self.runTest(
             step="step1a",
-            imageType="dark",
+            imageType="bias",
             detector=self.scienceDetector,
             pipelinesToRun=["ISR"],
             taskExpectations=taskExpectations,
@@ -368,6 +421,44 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
                             taskExpectations={},
                         )
 
+    def assertStep1aOutputsPresent(
+        self, pipelineName: str, dataCoord: DataCoordinate, butler: Butler, runCollection: str
+    ) -> None:
+        """Fail with an actionable message if the step1a products a step1b
+        consumes are not in the pipeline's test collection.
+
+        A step1b graph built without its inputs is simply empty, which the
+        quanta checks would report as a bare ``0 != 1`` with no hint that the
+        cause is a stale or missing collection rather than the pipeline.
+        """
+        components = self.pipelines[pipelineName]
+        producedByStep1a = {
+            edge.parent_dataset_type_name
+            for task in components.graphs["step1a"].tasks.values()
+            for edge in task.outputs.values()
+        }
+        needed = sorted(
+            name for name, _ in components.graphs["step1b"].iter_overall_inputs() if name in producedByStep1a
+        )
+        self.assertTrue(needed, f"{pipelineName} step1b consumes nothing its step1a produces, which is wrong")
+
+        missing = []
+        for name in needed:
+            try:
+                found = butler.query_datasets(
+                    name, collections=[runCollection], data_id=dataCoord, explain=False
+                )
+            except MissingDatasetTypeError:  # never been written anywhere
+                found = []
+            if not found:
+                missing.append(name)
+        self.assertFalse(
+            missing,
+            f"{runCollection} holds no {missing} for {dataCoord}, so the {pipelineName} step1b graph would"
+            " be empty. Rebuild the unit test collections with tests/createUnitTestCollections.py (which"
+            " runs both step1a labels for the calibration pipelines).",
+        )
+
     def runTest(
         self,
         *,
@@ -377,7 +468,15 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         detector: int | None = None,
         taskExpectations: dict[str, int] | None = None,
         quantaExpectations: dict[str, int] | None = None,
+        step1bDataIdKey: str = "visit",
     ) -> None:
+        """Build the quantum graph for ``step`` of each pipeline and check
+        the tasks and quanta it contains.
+
+        ``step1bDataIdKey`` is the dimension the step1b dataId is keyed by:
+        ``visit`` for SFM/AOS and ``exposure`` for the calibration pipelines,
+        mirroring what the head node dispatches.
+        """
         taskExpectations = taskExpectations or {}
         quantaExpectations = quantaExpectations or taskExpectations
         if step == "step1a":
@@ -388,8 +487,8 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
             )
         elif step == "step1b":
             dataCoord = self.minimalButler.registry.expandDataId(
-                visit=self.records[imageType].id,
                 instrument=self.instrument,
+                **{step1bDataIdKey: self.records[imageType].id},
             )
         else:
             raise ValueError(f"Unknown step {step}")
@@ -409,9 +508,19 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
                 butler = self._makeButler(pipelineName)
                 runner.butler = butler  # patch this in now, it's much quicker having runners premade
                 runner.runCollection = runCollection
+                # The runner would put the tip of the location config's
+                # output chain (i.e. whatever the CI last wrote to /repo/main)
+                # first in its input collections, so a step1b test could pass
+                # by finding step1a outputs the CI happened to produce rather
+                # than ones from this pipeline's own test collection. Pin the
+                # inputs to the test collection so a pass means what it says.
+                collections = [runCollection, f"{self.instrument}/defaults"]
+                if step == "step1b":
+                    self.assertStep1aOutputsPresent(pipelineName, dataCoord, butler, runCollection)
                 payload = Payload(dataCoord, b"", "does not matter here", who="AOS")
                 payload = Payload.from_json(payload.to_json(), self.minimalButler)  # fully formed
-                qgb, _, _, _ = runner.getQuantumGraphBuilder(payload, graph)
+                with patch.object(runner, "getCollections", return_value=collections):
+                    qgb, _, _, _ = runner.getQuantumGraphBuilder(payload, graph)
                 qg = qgb.finish().assemble()
                 self.assertIsInstance(qg, PredictedQuantumGraph)
 

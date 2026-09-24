@@ -23,6 +23,7 @@
 
 import logging
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import patch
@@ -34,14 +35,17 @@ from lsst.daf.butler import Butler
 from lsst.rubintv.production import redisUtils as redisUtilsModule
 from lsst.rubintv.production.locationConfig import LocationConfig
 from lsst.rubintv.production.processingControl import (
+    CALIBRATION_PIPELINE_LABELS,
     PIPELINE_NAMES,
     CameraControlConfig,
     HeadProcessController,
     VisitProcessingMode,
     WorkerProcessingMode,
+    getIsrStep1bPipelineKey,
 )
 from lsst.rubintv.production.redisKeys import getControlReadbackKey
 from lsst.rubintv.production.redisUtils import RedisHelper
+from lsst.utils import getPackageDir
 
 
 def _makeFakeRedis(*args: object, **kwargs: object) -> fakeredis.FakeStrictRedis:
@@ -423,6 +427,49 @@ class RestoreAosPipelinesTestCase(lsst.utils.tests.TestCase):
         self.assertIsNone(self.helper.getControlReadback(self.FAM[0]))
         self.assertEqual(self.helper.getControlState(self.AOS[0]), "AOS_TIE")
         self.assertEqual(self.helper.getControlReadback(self.AOS[0]), "AOS_TIE")
+
+
+class CalibrationPipelinesTestCase(lsst.utils.tests.TestCase):
+    """Tests for the calibration pipeline table and the ISR step1b routing.
+
+    These pin the contract between ``CALIBRATION_PIPELINE_LABELS``, the
+    pipeline yaml files shipped in this package, and the head node's choice
+    of which step1b to run for an ISR-only exposure. Building the graphs
+    themselves needs a Butler and is covered by ``test_pipelines.py``.
+    """
+
+    def test_calibPipelinesAreKnownPipelines(self) -> None:
+        for pipelineKey in CALIBRATION_PIPELINE_LABELS:
+            self.assertIn(pipelineKey, PIPELINE_NAMES)
+
+    def test_pipelineFilesExistForEveryInstrument(self) -> None:
+        # buildPipelines builds all three calib pipelines for every instrument
+        # a head node runs for, so a missing file stops a head node booting
+        pipelineDir = Path(getPackageDir("rubintv_production")) / "pipelines"
+        for instrument in ("LSSTCam", "LATISS"):
+            for pipelineKey in CALIBRATION_PIPELINE_LABELS:
+                pipelineFile = pipelineDir / instrument / f"verify{pipelineKey.capitalize()}.yaml"
+                self.assertTrue(pipelineFile.is_file(), f"Missing {pipelineFile}")
+
+    def test_stepLabels(self) -> None:
+        for pipelineKey, (step1aLabels, step1bLabels) in CALIBRATION_PIPELINE_LABELS.items():
+            calibType = pipelineKey.capitalize()  # e.g. Bias
+            # step1a is per detector: cp_verify's ISR and per-detector verify
+            self.assertEqual(step1aLabels.split(","), [f"verify{calibType}Isr", f"verify{calibType}Det"])
+            # step1b is per exposure: the exposure merge, the run merge, then
+            # the analysis_tools task that makes the metric bundle
+            step1b = step1bLabels.split(",")
+            self.assertEqual(step1b[:2], [f"verify{calibType}Exp", f"verify{calibType}"])
+            self.assertEqual(len(step1b), 3)
+            self.assertTrue(step1b[2].startswith("analyze"), step1b[2])
+
+    def test_getIsrStep1bPipelineKey(self) -> None:
+        self.assertEqual(getIsrStep1bPipelineKey("bias"), "BIAS")
+        self.assertEqual(getIsrStep1bPipelineKey("DARK"), "DARK")  # case-insensitive
+        self.assertEqual(getIsrStep1bPipelineKey("flat"), "FLAT")
+        # everything else that ends up on the ISR path has no step1b
+        for observationType in ("unknown", "science", "cwfs", "engtest", ""):
+            self.assertEqual(getIsrStep1bPipelineKey(observationType), "ISR", observationType)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

@@ -35,9 +35,27 @@ CliLog.initLog = do_nothing  # type: ignore
 # Import test utilities
 from ciutils import Check, TestScript, conditional_redirect  # type: ignore # noqa: E402
 
+# The exposures the CI feeds are defined once, alongside the unit tests which
+# share them, so make that directory importable (the exec'd CI scripts inherit
+# this path too).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from fixtureExposures import (  # noqa: E402
+    LATISS_ON_SKY,
+    LSSTCAM_BIAS,
+    LSSTCAM_DARK,
+    LSSTCAM_EXPOSURES,
+    LSSTCAM_FAM_EXTRA,
+    LSSTCAM_FAM_INTRA,
+    LSSTCAM_FLAT,
+    LSSTCAM_IN_FOCUS,
+)
+
 # Only import from lsst packages after logging is configured
+from lsst.daf.butler import Butler, MissingDatasetTypeError  # noqa: E402
+from lsst.rubintv.production.butlerQueries import getCurrentOutputRun  # noqa: E402
 from lsst.rubintv.production.locationConfig import LocationConfig, findMissingConfigKeys  # noqa: E402
-from lsst.rubintv.production.predicates import getDoRaise, runningCI  # noqa: E402
+from lsst.rubintv.production.predicates import getDoRaise, isCalibration, runningCI  # noqa: E402
+from lsst.rubintv.production.processingControl import buildPipelines, getIsrStep1bPipelineKey  # noqa: E402
 from lsst.rubintv.production.redisUtils import (  # noqa: E402
     RedisHelper,
     decode_list,
@@ -559,9 +577,11 @@ class RedisManager:
         """Check LSSTCam data in Redis."""
         inst = "LSSTCam"
 
-        visits_sfm: list[int] = [2025111500226]
-        visits_aos: list[int] = [2025111500226, 2025111500227, 2025111500228]
-        visits_fam: list[int] = [2025111500227, 2025111500228]
+        # the on-sky fixtures are single-snap visits, so their visit ids are
+        # their exposure ids
+        visits_sfm: list[int] = [LSSTCAM_IN_FOCUS.id]
+        visits_aos: list[int] = [LSSTCAM_IN_FOCUS.id, LSSTCAM_FAM_INTRA.id, LSSTCAM_FAM_EXTRA.id]
+        visits_fam: list[int] = [LSSTCAM_FAM_INTRA.id, LSSTCAM_FAM_EXTRA.id]
 
         n_visits_sfm = len(visits_sfm)
         n_visits_aos = len(visits_aos)
@@ -590,31 +610,31 @@ class RedisManager:
         # check zernike announcement for MTAOS
         # TODO: will need to double this for unpaired pipelines
         expectedNonFam = 8
-        gotNonFam = redisHelper.getMTAOSZernikeCount("LSSTCam", 2025111500226)
+        nonFamVisit = LSSTCAM_IN_FOCUS.id
+        gotNonFam = redisHelper.getMTAOSZernikeCount(inst, nonFamVisit)
         if gotNonFam == expectedNonFam:
             checks.append(
-                Check(True, f"MTAOS Zernike count for non-FAM image 2025111500226 is {expectedNonFam}")
+                Check(True, f"MTAOS Zernike count for non-FAM image {nonFamVisit} is {expectedNonFam}")
             )
         else:
             checks.append(
                 Check(
                     False,
-                    f"MTAOS Zernike count for non-FAM image 2025111500226: expected {expectedNonFam}, "
+                    f"MTAOS Zernike count for non-FAM image {nonFamVisit}: expected {expectedNonFam}, "
                     f"got {gotNonFam}",
                 )
             )
 
         expectedFam = 18
         for visit in visits_fam:
-            gotFam = redisHelper.getMTAOSZernikeCount("LSSTCam", visit)
+            gotFam = redisHelper.getMTAOSZernikeCount(inst, visit)
             if gotFam == expectedFam:
                 checks.append(Check(True, f"MTAOS Zernike count for FAM image {visit} is {expectedFam}"))
             else:
                 checks.append(
                     Check(
                         False,
-                        f"MTAOS Zernike count for FAM image 2025111500227: expected {expectedFam}, "
-                        f"got {gotFam}",
+                        f"MTAOS Zernike count for FAM image {visit}: expected {expectedFam}, got {gotFam}",
                     )
                 )
 
@@ -622,7 +642,7 @@ class RedisManager:
         """Check LATISS data in Redis."""
         inst = "LATISS"
 
-        visits_sfm = [2024081300632]
+        visits_sfm = [LATISS_ON_SKY.id]  # a single-snap visit, so the visit id is the exposure id
         n_visits_sfm = len(visits_sfm)
 
         n_step1b_sfm = redisHelper.getNumVisitLevelFinished(inst, "step1b", "SFM")
@@ -1160,81 +1180,67 @@ class ResultCollector:
         """Check that expected plots were generated."""
         locationConfig = LocationConfig("usdf_testing")
 
-        expected = [  # (path, size) tuples where path is relative to locationConfig.plotPath
-            # Regular LSSTCam plots -------
-            # event timelines for all images
-            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000227.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000228.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000226.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000436.png", 5000),
-            # post ISR mosaics for all images
-            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000227.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000228.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000226.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000436.jpg", 5000),
-            # witness detector images for all with postISR that aren't CWFS
-            ("LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000226.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000436.jpg", 5000),
-            # calexp mosaic for the only in-focus image
-            ("LSSTCam/20251115/LSSTCam_calexp_mosaic_dayObs_20251115_seqNum_000226.jpg", 5000),
-            # mount plots for the three on-sky images
-            ("LSSTCam/20251115/LSSTCam_mount_dayObs_20251115_seqNum_000227.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_mount_dayObs_20251115_seqNum_000228.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_mount_dayObs_20251115_seqNum_000226.png", 5000),
-            # all the other plots for the on-sky image: fwhm, imexam
-            # TODO: DM-51391 add psfAzEl plot
-            ("LSSTCam/20251115/LSSTCam_fwhm_focal_plane_dayObs_20251115_seqNum_000226.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_imexam_dayObs_20251115_seqNum_000226.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_psf_shape_azel_dayObs_20251115_seqNum_000226.png", 5000),
-            # AOS plots -------
-            # FAM donut galleries
-            ("LSSTCam/20251115/LSSTCam_fp_donut_gallery_dayObs_20251115_seqNum_000227.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_fp_donut_gallery_dayObs_20251115_seqNum_000228.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_fp_donut_gallery_dayObs_20251115_seqNum_000226.png", 5000),
-            # Extrafocal id for FAM plot
-            ("LSSTCam/20251115/LSSTCam_zk_measurement_pyramid_dayObs_20251115_seqNum_000228.png", 5000),
-            # CWFS plot
-            ("LSSTCam/20251115/LSSTCam_zk_measurement_pyramid_dayObs_20251115_seqNum_000226.png", 5000),
-            # Extrafocal id for FAM plot
-            ("LSSTCam/20251115/LSSTCam_zk_residual_pyramid_dayObs_20251115_seqNum_000228.png", 5000),
-            # CWFS plot
-            ("LSSTCam/20251115/LSSTCam_zk_residual_pyramid_dayObs_20251115_seqNum_000226.png", 5000),
-            # PSF zernike panels FAM extra-focal and regular image
-            ("LSSTCam/20251115/LSSTCam_psf_zk_panel_dayObs_20251115_seqNum_000228.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_psf_zk_panel_dayObs_20251115_seqNum_000226.png", 5000),
-            # Donut pairing plot for regular image
-            ("LSSTCam/20251115/LSSTCam_fp_pairing_plot_dayObs_20251115_seqNum_000226.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_donut_fits_dayObs_20251115_seqNum_000226.png", 5000),
-            # Zernike and DOF FWHM prediction plots
-            ("LSSTCam/20251115/LSSTCam_zernike_predicted_fwhm_dayObs_20251115_seqNum_000226.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_dof_predicted_fwhm_dayObs_20251115_seqNum_000226.png", 5000),
-            # Guider plots and movies
-            ("LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000226.mp4", 200_000),
-            ("LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000227.mp4", 200_000),
-            ("LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000228.mp4", 200_000),
-            ("LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000226.mp4", 100_000),
-            ("LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000227.mp4", 100_000),
-            ("LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000228.mp4", 100_000),
-            ("LSSTCam/20251115/LSSTCam_centroid_alt_az_dayObs_20251115_seqNum_000226.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_flux_trend_dayObs_20251115_seqNum_000226.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_psf_trend_dayObs_20251115_seqNum_000226.jpg", 5000),
-            # Performance analysis plots for all detectors
-            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000226.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000227.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000228.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000436.jpg", 5000),
-            # AOS performance plots
-            ("LSSTCam/20251115/LSSTCam_aos_timing_dayObs_20251115_seqNum_000226.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_aos_timing_dayObs_20251115_seqNum_000228.jpg", 5000),
-            # LATISS plots -------
-            ("LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png", 5000),
-            ("LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.jpg", 5000),
-            ("LATISS/20240813/LATISS_imexam_dayObs_20240813_seqNum_000632.png", 5000),
-            ("LATISS/20240813/LATISS_specexam_dayObs_20240813_seqNum_000632.png", 5000),
-        ]
+        # (path, minimum size) pairs, path relative to locationConfig.plotPath.
+        # Built from the fixture exposures so that changing an exposure id
+        # changes every expectation with it: nothing here knows a dayObs or
+        # seqNum. Sizes are in bytes.
+        inFocus, intra, extra = LSSTCAM_IN_FOCUS, LSSTCAM_FAM_INTRA, LSSTCAM_FAM_EXTRA
+        onSky = (inFocus, intra, extra)
+        calibs = (LSSTCAM_BIAS, LSSTCAM_DARK, LSSTCAM_FLAT)
+        plotSize = 5000
+        expected: list[tuple[str, int]] = []
+
+        # Regular LSSTCam plots -------
+        for exposure in (*onSky, *calibs):  # every image gets these
+            expected.append((exposure.plotPath("event_timeline", "png"), plotSize))
+            expected.append((exposure.plotPath("focal_plane_mosaic", "jpg"), plotSize))  # post ISR mosaic
+            expected.append((exposure.plotPath("timing_diagram", "jpg"), plotSize))  # performance analysis
+        for exposure in (inFocus, *calibs):  # witness detector images for all with postISR that aren't CWFS
+            expected.append((exposure.plotPath("witness_detector", "jpg"), plotSize))
+        for exposure in onSky:  # mount plots, donut galleries and guider movies for the on-sky images
+            expected.append((exposure.plotPath("mount", "png"), plotSize))
+            expected.append((exposure.plotPath("fp_donut_gallery", "png"), plotSize))
+            expected.append((exposure.plotPath("full_movie", "mp4"), 200_000))
+            expected.append((exposure.plotPath("star_movie", "mp4"), 100_000))
+        # everything else only the in-focus image gets: calexp mosaic, fwhm,
+        # imexam, psf shape, donut pairing/fits, FWHM predictions, guider
+        # trends. TODO: DM-51391 add psfAzEl plot
+        for plotName, extension in (
+            ("calexp_mosaic", "jpg"),
+            ("fwhm_focal_plane", "png"),
+            ("imexam", "png"),
+            ("psf_shape_azel", "png"),
+            ("fp_pairing_plot", "png"),
+            ("donut_fits", "png"),
+            ("zernike_predicted_fwhm", "png"),
+            ("dof_predicted_fwhm", "png"),
+            ("centroid_alt_az", "jpg"),
+            ("flux_trend", "jpg"),
+            ("psf_trend", "jpg"),
+        ):
+            expected.append((inFocus.plotPath(plotName, extension), plotSize))
+
+        # AOS plots -------
+        # zernike pyramids, PSF zernike panels and AOS timing: for the FAM pair
+        # these land on the extra-focal id, plus the regular (CWFS) image
+        for exposure in (extra, inFocus):
+            expected.append((exposure.plotPath("zk_measurement_pyramid", "png"), plotSize))
+            expected.append((exposure.plotPath("zk_residual_pyramid", "png"), plotSize))
+            expected.append((exposure.plotPath("psf_zk_panel", "png"), plotSize))
+            expected.append((exposure.plotPath("aos_timing", "jpg"), plotSize))
+
+        # LATISS plots -------
+        for plotName, extension in (
+            ("mount", "png"),
+            ("monitor", "jpg"),
+            ("imexam", "png"),
+            ("specexam", "png"),
+        ):
+            expected.append((LATISS_ON_SKY.plotPath(plotName, extension), plotSize))
 
         # Create a set of the expected plot paths for comparison
         expectedPlotPaths = {file for file, _ in expected}
+        assert len(expectedPlotPaths) == len(expected), "duplicate expected plots; check the loops above"
 
         destinationDir = Path("~/public_html/ra_ci_automated_output/").expanduser()
         if config.copy_plots_to_public_html:
@@ -1280,6 +1286,115 @@ class ResultCollector:
         if uncheckedPlots:
             for plot in sorted(uncheckedPlots):
                 self.checks.append(Check(None, f"Found unchecked-for plot {plot}"))
+
+    def check_calib_step1b_datasets(self) -> None:
+        """Check that every calibration exposure fed to the CI got its full
+        step1b output written to the butler, including the metric bundle that
+        Sasquatch publishes.
+
+        Pods exiting cleanly and the plots appearing only show that step1a
+        ran. A step1b whose inputs never landed builds an empty quantum
+        graph, logs a warning, and "finishes" with nothing written, which
+        none of the other checks can see. The datasets are the only evidence
+        that the merge and metrics tasks actually ran, so this is the check
+        that fails when calibration processing is broken end to end. The
+        expected datasets are read off the pipeline graphs rather than
+        listed, so every step1b output is covered and renames can't silently
+        hollow the check out.
+
+        The CI is expected to feed a bias, a dark and a flat so that all three
+        calibration pipelines are exercised; a missing type is a failure, not
+        a gap to warn about, since we choose what gets fed.
+        """
+        instrument = "LSSTCam"
+        locationConfig = LocationConfig("usdf_testing")
+        butler = Butler.from_config(
+            locationConfig.lsstCamButlerPath, instrument=instrument, collections=[f"{instrument}/defaults"]
+        )
+        outputRun = getCurrentOutputRun(butler, locationConfig, instrument)
+        if outputRun is None:
+            self.checks.append(Check(False, "Could not find the CI output run to check datasets in"))
+            return
+
+        ids = ",".join(str(exposure.id) for exposure in LSSTCAM_EXPOSURES)
+        where = f"exposure in ({ids}) AND instrument='{instrument}'"
+        records = butler.query_dimension_records("exposure", where=where)
+        foundIds = {record.id for record in records}
+        for exposure in LSSTCAM_EXPOSURES:  # a fixture the repo doesn't have can't have been fed
+            if exposure.id not in foundIds:
+                self.checks.append(Check(False, f"Fixture exposure {exposure} not found in the butler"))
+        calibRecords = sorted((r for r in records if isCalibration(r)), key=lambda r: r.id)
+        for calibType in ("bias", "dark", "flat"):
+            fed = any(r.observation_type == calibType for r in calibRecords)
+            self.checks.append(
+                Check(
+                    fed,
+                    (
+                        f"A {calibType} was fed, so the {calibType.upper()} pipeline was exercised"
+                        if fed
+                        else f"No {calibType} among the CI exposures, so the {calibType.upper()} pipeline"
+                        " was not exercised"
+                    ),
+                )
+            )
+
+        # one calib step1b (reported under who="ISR") should have finished
+        # per calib exposure, exactly as is checked for SFM and AOS
+        redisHelper = RedisHelper(None, None)  # type: ignore[arg-type]
+        nStep1bIsr = redisHelper.getNumVisitLevelFinished(instrument, "step1b", "ISR")
+        nCalibs = len(calibRecords)
+        self.checks.append(
+            Check(
+                nStep1bIsr == nCalibs,
+                f"{nStep1bIsr}x {instrument} calibration (ISR) step1b finished, expected {nCalibs}",
+            )
+        )
+
+        _, pipelines = buildPipelines(instrument, locationConfig, butler)
+        for record in calibRecords:
+            pipelineKey = getIsrStep1bPipelineKey(record.observation_type)
+            graph = pipelines[pipelineKey].graphs["step1b"]
+            exposureLabel = f"{record.observation_type} {record.day_obs}/{record.seq_num}"
+            writesMetricBundle = False
+            for taskNode in graph.tasks.values():
+                for edge in taskNode.outputs.values():
+                    name = edge.parent_dataset_type_name
+                    datasetTypeNode = graph.dataset_types[name]
+                    assert datasetTypeNode is not None, "graphs from buildPipelines are resolved"
+                    if datasetTypeNode.storage_class_name == "MetricMeasurementBundle":
+                        writesMetricBundle = True
+                    # required rather than all names, as exposure implies
+                    # physical_filter etc. and we only want to constrain on
+                    # what identifies the dataset
+                    dims = datasetTypeNode.dimensions.required
+                    dataId: dict[str, Any] = {"instrument": instrument}
+                    if "exposure" in dims:
+                        dataId["exposure"] = record.id
+                    if "physical_filter" in dims:
+                        dataId["physical_filter"] = record.physical_filter
+                    try:
+                        found = butler.query_datasets(
+                            name, collections=[outputRun], data_id=dataId, explain=False
+                        )
+                    except MissingDatasetTypeError:  # never written by anything, ever
+                        found = []
+                    if found:
+                        self.checks.append(Check(True, f"Found {name} for {exposureLabel} in {outputRun}"))
+                    else:
+                        self.checks.append(Check(False, f"Missing {name} for {exposureLabel} in {outputRun}"))
+            # analysis_tools drops the metrics output entirely when none of a
+            # task's tools produce a metric, so a pipeline can legitimately
+            # have nothing for Sasquatch: true for flats until analysis_tools
+            # grows a metric-producing flat tool (DM-52068). Warn, don't fail.
+            if writesMetricBundle:
+                self.checks.append(Check(True, f"{pipelineKey} step1b writes a MetricMeasurementBundle"))
+            else:
+                self.checks.append(
+                    Check(
+                        None,
+                        f"{pipelineKey} step1b writes no MetricMeasurementBundle, so nothing for Sasquatch",
+                    )
+                )
 
     def print_final_result(self, config: TestConfig) -> bool:
         """Print final test results and return overall pass status."""
@@ -1369,6 +1484,10 @@ class TestRunner:
         os.environ["RAPID_ANALYSIS_CI"] = "true"
         os.environ["RAPID_ANALYSIS_DO_RAISE"] = "True"
         os.environ["LIMITS_CPU"] = "4"  # this should roughly match the lsstcamAosWorkerSet LIMITS_CPU value
+        # The CI butlers are the +sasquatch_dev ones, so metric bundles really
+        # are published to the dev Sasquatch. Tag them so they can be told
+        # apart from (and filtered out of) the production rapid analysis data.
+        os.environ["SASQUATCH_EXTRAS"] = "dataset_tag=rapid_analysis_ci"
 
         # Verify environment settings
         if getDoRaise() is not True:
@@ -1487,8 +1606,9 @@ class TestRunner:
             self.result_collector.check_script_results(self.process_manager, self.config.test_scripts_round_1)
             self.result_collector.check_script_results(self.process_manager, self.config.test_scripts_round_2)
 
-            # Check for plots and Redis results
+            # Check for plots, datasets and Redis results
             self.result_collector.check_plots(self.config)
+            self.result_collector.check_calib_step1b_datasets()
             self.redis_manager.check_final_contents(self.result_collector.checks)
 
             # Print final results and exit with appropriate status
