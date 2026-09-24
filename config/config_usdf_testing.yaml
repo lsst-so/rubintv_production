@@ -60,6 +60,9 @@ lsstCamAosMetadataPath: /sdf/home/m/mfl/u/rubintv/LSSTCamAos/sidecar_metadata/sh
 lsstCamAosMetadataShardPath: /sdf/home/m/mfl/u/rubintv/LSSTCamAos/sidecar_metadata/shards
 lsstCamButlerPath: main
 
+# Summit→USDF AOS sync (see summitSync.py). Not run in CI; here for key parity.
+summitSyncStagingPath: /sdf/home/m/mfl/u/rubintv/summit_sync
+
 # Not prefixed with ComCam because were currently just pretending that ComCam is TS8
 scratchPath : rapidAnalysisScratchCi
 plotPath: /sdf/home/m/mfl/u/rubintv/plots
