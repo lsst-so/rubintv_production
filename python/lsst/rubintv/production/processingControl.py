@@ -71,7 +71,8 @@ if TYPE_CHECKING:
 # NB: these must all be initializable or the head node will not come up.
 # Similarly, the head node will not initialize any pipelines that are not in
 # this list, so if you want to add a new pipeline, add it here and make sure it
-# is created in buildPipelines below. (This doesn't apply to LATISS though)
+# is created in buildPipelines below. (LATISS has its own list, see
+# LATISS_PIPELINE_NAMES below)
 PIPELINE_NAMES: tuple[str, ...] = (
     # Science pipeline processing
     "SFM",
@@ -94,6 +95,19 @@ PIPELINE_NAMES: tuple[str, ...] = (
     # Full-array-mode AOS pipelines
     "AOS_FAM_TIE",
     "AOS_FAM_DANISH",
+)
+
+# The equivalent list for LATISS, where the same rules apply. LATISS shares
+# the calib/ISR/SFM pipelines but has a single, hard-coded AOS pipeline: the
+# WEP monolith task, which processes a whole CWFS intra/extra pair in one
+# quantum. There is no RubinTV pipeline selection for LATISS.
+LATISS_PIPELINE_NAMES: tuple[str, ...] = (
+    "SFM",
+    "BIAS",
+    "DARK",
+    "FLAT",
+    "ISR",
+    "AOS_LATISS",
 )
 
 
@@ -447,6 +461,7 @@ def buildPipelines(
     unpairedDanishFile = locationConfig.aosLSSTCamUnpairedDanishPipelineFile
     aosWcsBin1DanishFile = locationConfig.aosLSSTCamWcsDanishBin1PipelineFile
     aosWcsBin2DanishFile = locationConfig.aosLSSTCamWcsDanishBin2PipelineFile
+    aosLatissFile = locationConfig.aosLATISSPipelineFile
 
     drpPipeDir = getPackageDir("drp_pipe")
     biasFile = (Path(drpPipeDir) / "pipelines" / instrument / "quickLookBias.yaml").as_posix()
@@ -473,9 +488,19 @@ def buildPipelines(
         ["step1a", "step1b"],
     )
 
-    if instrument != "LATISS":
-        # NOTE: there is no dict entry for LATISS for AOS as AOS runs
-        # differently there. It might change in the future, but not soon.
+    if instrument == "LATISS":
+        # LATISS runs a single, hard-coded AOS pipeline: the WEP monolith
+        # task, which consumes both raws of a CWFS intra/extra pair in one
+        # quantum, and so has no step1b. There is no RubinTV pipeline
+        # selection for LATISS.
+        pipelines["AOS_LATISS"] = PipelineComponents(butler.registry, aosLatissFile, ["step1a"], ["step1a"])
+        if set(pipelines.keys()) != set(LATISS_PIPELINE_NAMES):
+            missing = set(LATISS_PIPELINE_NAMES) - set(pipelines.keys())
+            extra = set(pipelines.keys()) - set(LATISS_PIPELINE_NAMES)
+            raise ValueError(
+                f"LATISS pipeline names don't match expected. Missing: {missing}, extra: {extra}"
+            )
+    else:
         pipelines["AOS_DANISH"] = PipelineComponents(
             butler.registry, aosFileDanish, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
