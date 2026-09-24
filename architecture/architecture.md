@@ -191,7 +191,11 @@ currently triggered.*
 5. **Deserialize payload** - reconstruct PipelineGraph from base64 bytes
 6. **Wait for raw data** - poll Butler until raw exposure is available
 7. **Build quantum graph** - `TrivialQuantumGraphBuilder` (step1a) or
-   `AllDimensionsQuantumGraphBuilder` (step1b)
+   `AllDimensionsQuantumGraphBuilder` (step1b). LATISS AOS payloads are the
+   step1a exception: `makeLatissAosQgBuilder()` uses an
+   `AllDimensionsQuantumGraphBuilder` constrained to
+   `exposure IN (intra, extra)`, because the monolith's single quantum
+   spans both raws of the CWFS pair
 8. **Execute quanta** - iterate through quantum graph nodes:
    - Run quantum via `SingleQuantumExecutor`
    - Post-process: write binned images, metadata shards, ConsDB rows

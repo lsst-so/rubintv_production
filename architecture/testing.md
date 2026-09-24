@@ -189,7 +189,9 @@ Features:
 `tests/createUnitTestCollections.py` builds Butler collections for CI:
 - Sets `RAPID_ANALYSIS_LOCATION=usdf_testing`
 - Runs pipelines in parallel via `ThreadPoolExecutor`
-- Creates collections for: FAM, AOS, SFM, calibration pipelines
+- Creates collections for: FAM, AOS, SFM, calibration pipelines (LSSTCam),
+  plus `AOS_LATISS` (the LATISS WEP monolith, run on the CWFS pair
+  20260625/12+13)
 - Used to create the underlying collections for `test_pipelines.py` unit tests
 - Only needs to be rerun when outputs change
 
