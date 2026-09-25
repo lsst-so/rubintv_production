@@ -75,6 +75,12 @@ def sanitizeNans(obj: Any) -> Any:
     scientific notation) are converted to floats to ensure proper JSON numeric
     typing.
 
+    Dicts containing a ``DISPLAY_VALUE`` key (the RubinTV convention for a
+    dict-valued cell, shown as a glyph which expands to the dict) are not
+    numerically coerced, so their strings survive verbatim; NaNs inside them
+    are still replaced. This is so that version strings like ``"1.1"`` in the
+    package-versions dict aren't turned into floats.
+
     Parameters
     ----------
     obj : `object`
@@ -90,6 +96,8 @@ def sanitizeNans(obj: Any) -> Any:
     if isinstance(obj, list):
         return [sanitizeNans(o) for o in obj]
     elif isinstance(obj, dict):
+        if "DISPLAY_VALUE" in obj:
+            return {k: _sanitizeNansWithoutCoercion(v) for k, v in obj.items()}
         return {k: sanitizeNans(v) for k, v in obj.items()}
     elif isinstance(obj, float) and math.isnan(obj):
         return None
@@ -107,6 +115,30 @@ def sanitizeNans(obj: Any) -> Any:
             return obj
     else:
         return obj
+
+
+def _sanitizeNansWithoutCoercion(obj: Any) -> Any:
+    """Recursively replace NaN values with None, leaving strings untouched.
+
+    The ``DISPLAY_VALUE`` branch of `sanitizeNans`.
+
+    Parameters
+    ----------
+    obj : `object`
+        The object to sanitize.
+
+    Returns
+    -------
+    obj : `object`
+        The object with any NaNs replaced with ``None``.
+    """
+    if isinstance(obj, list):
+        return [_sanitizeNansWithoutCoercion(o) for o in obj]
+    elif isinstance(obj, dict):
+        return {k: _sanitizeNansWithoutCoercion(v) for k, v in obj.items()}
+    elif isinstance(obj, float) and math.isnan(obj):
+        return None
+    return obj
 
 
 def safeJsonOpen(filename: str, timeout: float = 0.3) -> Any:
