@@ -768,7 +768,7 @@ class HeadProcessController:
 
         # The package versions can't change for the lifetime of the pod, so
         # get them once here rather than in the dispatch loop, and cross-check
-        # them against the Dockerfile (advisory only, never fatal).
+        # them against the Dockerfile.
         self.packageVersions: PackageVersions = getCurrentPackageVersions()
         self.log.info(
             f"Tracked package versions (hash {self.packageVersions.versionHash()}):"
@@ -777,20 +777,28 @@ class HeadProcessController:
         self._checkPackageVersionsAgainstDockerfile()
 
     def _checkPackageVersionsAgainstDockerfile(self) -> None:
-        """Warn if the running package versions disagree with the Dockerfile.
+        """Raise if the running package versions disagree with the Dockerfile.
 
-        Advisory only: locates the Dockerfile and cross-checks, but never
-        raises - a missing or reformatted Dockerfile must not take the head
-        node down.
+        Only warns in the CI location (``usdf_testing``), where the tests may
+        legitimately pass before the Dockerfile pins are bumped. A missing or
+        unreadable Dockerfile only produces a warning.
+
+        Raises
+        ------
+        lsst.rubintv.production.packageVersions.PackageVersionMismatchError
+            Raised outside CI if any tracked package differs from its
+            Dockerfile pin.
         """
-        try:
-            dockerfilePath = findDockerfile()  # logs the reason if it returns None
-            if dockerfilePath is None:
-                self.log.warning("Skipping package-version cross-check")
-                return
-            checkVersionsAgainstDockerfile(self.packageVersions, dockerfilePath, log=self.log)
-        except Exception:
-            self.log.exception("Package-version cross-check against the Dockerfile failed unexpectedly")
+        dockerfilePath = findDockerfile()  # logs the reason if it returns None
+        if dockerfilePath is None:
+            self.log.warning("Skipping package-version cross-check")
+            return
+        checkVersionsAgainstDockerfile(
+            self.packageVersions,
+            dockerfilePath,
+            log=self.log,
+            raiseOnMismatch=self.locationConfig.location != "usdf_testing",
+        )
 
     def writePackageVersionShard(self, expRecord: DimensionRecord) -> None:
         """Record the tracked package versions for a dispatched image.

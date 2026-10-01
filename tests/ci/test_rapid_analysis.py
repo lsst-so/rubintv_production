@@ -1467,8 +1467,8 @@ def print_loud_version_mismatch_warning(mismatches: list[VersionComparison]) -> 
     print(_colour(bar, _RED, _BOLD))
     print(_colour(bar, _RED, _BOLD))
     print(_colour("  ⚠️  WARNING: PACKAGE VERSIONS DO NOT MATCH THE DOCKERFILE  ⚠️", _RED, _BOLD))
-    print(_colour("  git is the source of truth; the code you're running will not match what", _RED, _BOLD))
-    print(_colour("  BTS or the summit would see when deployed:", _RED, _BOLD))
+    print(_colour("  This combination of code CANNOT run on BTS or the summit as-is: the", _RED, _BOLD))
+    print(_colour("  head node refuses to start until the Dockerfile pins match:", _RED, _BOLD))
     print(_colour(bar, _RED, _BOLD))
     for comparison in mismatches:
         line = f"    {comparison.package}:  git = {comparison.gitVersion}   Dockerfile = {comparison.dockerfileRef}"  # noqa: E501
@@ -1486,8 +1486,9 @@ def print_package_version_summary(
     """Print the tracked package versions and their Dockerfile agreement.
 
     Shown at the very end of the run, beneath the test results. A mismatch is
-    rendered scarily but is explicitly *not* a CI failure - git is the source
-    of truth and the Dockerfile can legitimately be mid-edit.
+    rendered scarily but is explicitly *not* a CI failure - the tests can pass
+    before the Dockerfile pins are bumped, but the head node won't start on
+    BTS or the summit until they are.
     """
     width = 78
     print()
@@ -1520,14 +1521,9 @@ def print_package_version_summary(
     if mismatches:
         print(_colour(bar, _RED, _BOLD))
         print(_colour("  ⚠️  ACTIVE PACKAGE VERSIONS DO NOT MATCH THE DOCKERFILE  ⚠️", _RED, _BOLD))
-        print(_colour("  This is NOT a CI failure, but the running code differs from", _RED, _BOLD))
-        print(
-            _colour(
-                "  what the Dockerfile declares - do not deploy to BTS or summit if you see this.",
-                _RED,
-                _BOLD,
-            )
-        )
+        print(_colour("  This is NOT a CI failure, but this combination of code CANNOT run", _RED, _BOLD))
+        print(_colour("  on BTS or the summit: the head node refuses to start until the", _RED, _BOLD))
+        print(_colour("  Dockerfile pins are updated to match.", _RED, _BOLD))
         print(_colour(bar, _RED, _BOLD))
     else:
         print(_colour("  All Dockerfile-pinned packages match. 👍", _GREEN))

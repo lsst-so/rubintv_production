@@ -23,7 +23,7 @@
 
 Covers the git version helpers, the version scraping into the
 summit_utils-owned ``PackageVersions`` dataclass, its rendering for RubinTV,
-and the advisory Dockerfile cross-check. The ``PackageVersions`` data model
+and the Dockerfile cross-check. The ``PackageVersions`` data model
 itself - its JSON round-trip and content-hash identity - is tested in
 summit_utils alongside the code. The ``test_realDockerfileFormatIsParseable``
 test deliberately reads the actual ``Dockerfile`` so that any drift in the
@@ -41,6 +41,7 @@ import lsst.utils.tests
 from lsst.rubintv.production.packageVersions import (
     TRACKED_INSTALLED_PACKAGES,
     TRACKED_PACKAGES,
+    PackageVersionMismatchError,
     checkVersionsAgainstDockerfile,
     compareVersionsToDockerfile,
     envVarForPackage,
@@ -355,13 +356,40 @@ class CheckVersionsAgainstDockerfileTestCase(lsst.utils.tests.TestCase):
             f.write(body)
         return path
 
-    def test_warnsOnMismatch(self) -> None:
+    def test_raisesOnMismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._writeDockerfile(tmp, 'ARG ts_wep_ref="v2.0.0"\n')
+            pv = PackageVersions(versions={"ts_wep": "v1.0.0"})
+            with self.assertRaisesRegex(PackageVersionMismatchError, "ts_wep.*v1.0.0.*v2.0.0"):
+                checkVersionsAgainstDockerfile(pv, path)
+
+    def test_warnsInsteadOfRaisingWhenAsked(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = self._writeDockerfile(tmp, 'ARG ts_wep_ref="v2.0.0"\n')
             pv = PackageVersions(versions={"ts_wep": "v1.0.0"})
             with self.assertLogs(level="WARNING") as cm:
+                checkVersionsAgainstDockerfile(pv, path, raiseOnMismatch=False)
+            self.assertTrue(any("ts_wep" in msg and "cannot run on BTS" in msg for msg in cm.output))
+
+    def test_raiseListsEveryMismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._writeDockerfile(
+                tmp,
+                'ARG ts_wep_ref="v2.0.0"\nARG summit_utils_ref="2c3f3d3e322c"\nARG donut_viz_ref="v3.0.0"\n',
+            )
+            pv = PackageVersions(
+                versions={
+                    "ts_wep": "v1.0.0",
+                    "summit_utils": "5dc810c80e38e9569f91ed4fed1ae28338d78c94",
+                    "donut_viz": "v3.0.0",
+                }
+            )
+            with self.assertRaises(PackageVersionMismatchError) as cm:
                 checkVersionsAgainstDockerfile(pv, path)
-            self.assertTrue(any("ts_wep" in msg for msg in cm.output))
+            message = str(cm.exception)
+            self.assertIn("ts_wep", message)
+            self.assertIn("summit_utils", message)
+            self.assertNotIn("donut_viz", message)
 
     def test_silentWhenMatching(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
