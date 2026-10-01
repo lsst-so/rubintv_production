@@ -33,18 +33,17 @@ pulling in new worker pod images without restarting the fleet this is
 considered illegal.
 
 This module owns the *scraping* side only: reading versions out of the running
-environment, and the advisory cross-check against the ``Dockerfile``. The
+environment, and the cross-check against the ``Dockerfile``. The
 ``PackageVersions`` data model itself, with its content-hash identity and its
 ConsDB round-trip, lives in ``lsst.summit.utils.packageVersions``, so that
 users without access to this package can still read the recorded data back.
 
-As a sanity check, the versions git actually reports can be cross-checked
-against the refs pinned in the ``Dockerfile``. Git is the source of truth; the
-Dockerfile merely says what *should* have been checked out. That cross-check is
-purely advisory - it only ever emits a warning and must never raise, because
-the Dockerfile format can drift independently of this code. A unit test pins
-the Dockerfile format so that a drift which breaks the parser is caught in CI
-rather than silently turning the runtime check into a no-op.
+The Dockerfile is the source of truth for what runs on BTS and the summit, so
+the versions git actually reports are cross-checked against the refs pinned
+there, and a mismatch raises `PackageVersionMismatchError` (or, in CI, logs a
+warning). A Dockerfile that can't be read or parsed only produces a warning.
+A unit test pins the Dockerfile format so that a drift which breaks the parser
+is caught in CI rather than silently turning the runtime check into a no-op.
 """
 
 from __future__ import annotations
@@ -63,6 +62,7 @@ __all__ = [
     "TRACKED_PACKAGES",
     "TRACKED_INSTALLED_PACKAGES",
     "PACKAGE_VERSIONS_METADATA_KEY",
+    "PackageVersionMismatchError",
     "VersionComparison",
     "envVarForPackage",
     "getGitVersion",
@@ -408,6 +408,12 @@ def versionsMatch(gitVersion: str, dockerfileRef: str) -> bool:
     return False
 
 
+class PackageVersionMismatchError(RuntimeError):
+    """Raised when a running package's version disagrees with its Dockerfile
+    pin.
+    """
+
+
 @dataclass
 class VersionComparison:
     """The result of comparing one package's git version to the Dockerfile.
@@ -466,7 +472,7 @@ def compareVersionsToDockerfile(
     except OSError as e:
         log.warning(f"Could not read the Dockerfile at {dockerfilePath} for version cross-check: {e}")
         refs = {}
-    except Exception as e:  # noqa: BLE001 - advisory check must never take down the head node
+    except Exception as e:  # noqa: BLE001 - a parse failure must never take down the head node
         log.warning(f"Unexpected error parsing the Dockerfile at {dockerfilePath}: {e}")
         refs = {}
 
@@ -487,15 +493,15 @@ def checkVersionsAgainstDockerfile(
     packageVersions: PackageVersions,
     dockerfilePath: str,
     log: logging.Logger | None = None,
+    raiseOnMismatch: bool = True,
 ) -> None:
-    """Warn if the recorded git versions disagree with the Dockerfile pins.
+    """Check the recorded git versions against the Dockerfile pins.
 
-    Git is the source of truth; this is purely a sanity check that the running
-    checkouts are what the Dockerfile asked for. It is advisory only: it never
-    raises, and any problem (the Dockerfile being unreadable, the format having
-    drifted so nothing parses, etc.) results in at most a warning. A package
-    with no ``_ref`` pin in the Dockerfile (e.g. ``rubintv_production``) is
-    skipped silently.
+    The Dockerfile is the source of truth for what runs on BTS and the summit,
+    so any package whose version differs from its pin is an error there. A
+    package with no pin in the Dockerfile (e.g. ``rubintv_production``) or
+    whose version could not be determined is skipped, and an unreadable
+    Dockerfile only produces a warning.
 
     Parameters
     ----------
@@ -505,15 +511,29 @@ def checkVersionsAgainstDockerfile(
         The path to the Dockerfile to cross-check against.
     log : `logging.Logger`, optional
         The logger to warn on. Defaults to this module's logger.
+    raiseOnMismatch : `bool`, optional
+        Raise on a mismatch if `True`, otherwise log a warning that this
+        combination of code cannot run on BTS or the summit.
+
+    Raises
+    ------
+    PackageVersionMismatchError
+        Raised if ``raiseOnMismatch`` is set and any package's version
+        disagrees with its Dockerfile pin. All the mismatching packages are
+        listed in the message.
     """
     if log is None:
         log = _log
 
-    for comparison in compareVersionsToDockerfile(packageVersions, dockerfilePath, log=log):
-        if comparison.matches is False:
-            log.warning(
-                "Package %s is at git version %r but the Dockerfile pins it to %r",
-                comparison.package,
-                comparison.gitVersion,
-                comparison.dockerfileRef,
-            )
+    comparisons = compareVersionsToDockerfile(packageVersions, dockerfilePath, log=log)
+    mismatches = [c for c in comparisons if c.matches is False]
+    if not mismatches:
+        return
+
+    details = "; ".join(
+        f"{c.package} is at {c.gitVersion!r} but pinned to {c.dockerfileRef!r}" for c in mismatches
+    )
+    message = f"Running package versions do not match the Dockerfile at {dockerfilePath}: {details}"
+    if raiseOnMismatch:
+        raise PackageVersionMismatchError(message)
+    log.warning(f"{message}. This combination of code cannot run on BTS or the summit as-is.")
