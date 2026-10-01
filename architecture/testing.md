@@ -147,6 +147,11 @@ cross-checks them against the refs pinned in the `Dockerfile` (`ARG
   `*_DIR` env var (a git package isn't set up) or an unimportable `danish`
   means the running image is broken, so the run goes red.
 
+To check just the package versions, without running the suite, use
+`python tests/ci/test_rapid_analysis.py -p`. It prints the same version
+summary and exits non-zero unless every pinned package matches and every
+version could be determined, so pins can be adjusted until it passes.
+
 ### Test Phases
 
 **Phase 1: Meta Tests** (30 s timeout)
