@@ -50,10 +50,18 @@ from lsst.obs.base import DefineVisitsConfig, DefineVisitsTask
 from lsst.obs.lsst import LsstCam
 from lsst.pex.config.configurableField import ConfigurableInstance
 from lsst.pipe.base import Instrument, Pipeline, PipelineGraph, TaskFactory
+from lsst.summit.utils.packageVersions import PackageVersions
 from lsst.utils import getPackageDir
 from lsst.utils.packages import Packages
 
 from .locationConfig import LocationConfig
+from .packageVersions import (
+    PACKAGE_VERSIONS_METADATA_KEY,
+    checkVersionsAgainstDockerfile,
+    findDockerfile,
+    getCurrentPackageVersions,
+    packageVersionsToDisplayDict,
+)
 from .payloads import Payload, pipelineGraphToBytes
 from .podDefinition import PodDetails, PodFlavor
 from .predicates import completesWepPair, isCalibration, isWepImage, runningCI
@@ -758,6 +766,72 @@ class HeadProcessController:
             f" Data will be written to {self.outputRun}"
         )
 
+        # The package versions can't change for the lifetime of the pod, so
+        # get them once here rather than in the dispatch loop, and cross-check
+        # them against the Dockerfile.
+        self.packageVersions: PackageVersions = getCurrentPackageVersions()
+        self.log.info(
+            f"Tracked package versions (hash {self.packageVersions.versionHash()}):"
+            f" {self.packageVersions.versions}"
+        )
+        self._checkPackageVersionsAgainstDockerfile()
+
+    def _checkPackageVersionsAgainstDockerfile(self) -> None:
+        """Raise if the running package versions disagree with the Dockerfile.
+
+        Only warns in the CI location (``usdf_testing``), where the tests may
+        legitimately pass before the Dockerfile pins are bumped. A missing or
+        unreadable Dockerfile only produces a warning.
+
+        Raises
+        ------
+        lsst.rubintv.production.packageVersions.PackageVersionMismatchError
+            Raised outside CI if any tracked package differs from its
+            Dockerfile pin.
+        """
+        dockerfilePath = findDockerfile()  # logs the reason if it returns None
+        if dockerfilePath is None:
+            self.log.warning("Skipping package-version cross-check")
+            return
+        checkVersionsAgainstDockerfile(
+            self.packageVersions,
+            dockerfilePath,
+            log=self.log,
+            raiseOnMismatch=self.locationConfig.location != "usdf_testing",
+        )
+
+    def writePackageVersionShard(self, expRecord: DimensionRecord) -> None:
+        """Record the tracked package versions for a dispatched image.
+
+        Writes the package versions to the AOS metadata as a "Package
+        versions" dict column (see `packageVersionsToDisplayDict`) and a
+        "Package version hash" column. The ConsDB backfill reads the versions
+        back from the merged metadata. There is no AOS metadata for LATISS, so
+        this is a no-op there. Never raises - recording provenance must not be
+        able to disrupt dispatch.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record being dispatched.
+        """
+        if expRecord.instrument == "LATISS":
+            return  # no AOS metadata page for LATISS
+        try:
+            aosShardPath = getShardPath(self.locationConfig, expRecord, isAos=True)
+            writeMetadataShard(
+                aosShardPath,
+                expRecord.day_obs,
+                {
+                    expRecord.seq_num: {
+                        PACKAGE_VERSIONS_METADATA_KEY: packageVersionsToDisplayDict(self.packageVersions),
+                        "Package version hash": self.packageVersions.versionHash(),
+                    }
+                },
+            )
+        except Exception:
+            self.log.exception(f"Failed to write package-version shard for {expRecord.id}")
+
     def getLatestRunAndPrep(self, forceNewRun: bool) -> str:
         if runningCI():  # always need a new run for CI for timing plots
             self.log.warning("Forcing new run because this is running in CI")  # check we don't see in prod
@@ -905,7 +979,7 @@ class HeadProcessController:
         `updateConfigsFromRubinTV`), so reinstate it here on startup.
 
         The persisted state is the source of truth. When it is entirely absent
-        — e.g. the first startup after this feature was deployed — the value
+        - e.g. the first startup after this feature was deployed - the value
         RubinTV last displayed (the readback) is adopted instead, so existing
         selections aren't lost on the upgrade. The readback is only a one-time
         migration bridge: once a ``_STATE`` key exists it is used verbatim and
@@ -1383,7 +1457,7 @@ class HeadProcessController:
         for expId in activeIds:
             info = self.redisHelper.getExposureProcessingInfo(self.instrument, expId)
             if info is None:
-                # Tracking hash expired — clean up stale active set entry
+                # Tracking hash expired - clean up stale active set entry
                 self.redisHelper.completeExposure(self.instrument, expId)
                 continue
 
@@ -1627,6 +1701,7 @@ class HeadProcessController:
                 assert self.instrument == expRecord.instrument
                 self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.ONE_OFF_EXPRECORD_WORKER)
                 writeExpRecordMetadataShard(expRecord, getShardPath(self.locationConfig, expRecord))
+                self.writePackageVersionShard(expRecord)
                 self.doDetectorFanout(expRecord)
                 if self.instrument == "LSSTCam":
                     self.dispatchOneOffProcessing(expRecord, podFlavor=PodFlavor.GUIDER_WORKER)
