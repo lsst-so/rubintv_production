@@ -1482,6 +1482,7 @@ def print_package_version_summary(
     comparisons: list[VersionComparison],
     dockerfilePath: str | None,
     versionHash: str | None = None,
+    isCiRun: bool = True,
 ) -> None:
     """Print the tracked package versions and their Dockerfile agreement.
 
@@ -1489,6 +1490,18 @@ def print_package_version_summary(
     rendered scarily but is explicitly *not* a CI failure - the tests can pass
     before the Dockerfile pins are bumped, but the head node won't start on
     BTS or the summit until they are.
+
+    Parameters
+    ----------
+    comparisons : `list` [`VersionComparison`]
+        One entry per tracked package.
+    dockerfilePath : `str` or `None`
+        The Dockerfile compared against, or `None` if none was found.
+    versionHash : `str`, optional
+        The version set hash, printed if given.
+    isCiRun : `bool`, optional
+        Whether this is printed at the end of a CI run, which a mismatch does
+        not fail.
     """
     width = 78
     print()
@@ -1521,12 +1534,33 @@ def print_package_version_summary(
     if mismatches:
         print(_colour(bar, _RED, _BOLD))
         print(_colour("  ⚠️  ACTIVE PACKAGE VERSIONS DO NOT MATCH THE DOCKERFILE  ⚠️", _RED, _BOLD))
-        print(_colour("  This is NOT a CI failure, but this combination of code CANNOT run", _RED, _BOLD))
+        if isCiRun:
+            print(_colour("  This is NOT a CI failure, but this combination of code CANNOT run", _RED, _BOLD))
+        else:
+            print(_colour("  This combination of code CANNOT run", _RED, _BOLD))
         print(_colour("  on BTS or the summit: the head node refuses to start until the", _RED, _BOLD))
         print(_colour("  Dockerfile pins are updated to match.", _RED, _BOLD))
         print(_colour(bar, _RED, _BOLD))
     else:
         print(_colour("  All Dockerfile-pinned packages match. 👍", _GREEN))
+
+
+def check_package_versions() -> bool:
+    """Print the tracked package versions against the Dockerfile pins.
+
+    Runs nothing else, so pins can be adjusted and re-checked quickly.
+
+    Returns
+    -------
+    allMatch : `bool`
+        `True` if a Dockerfile was found, every version could be determined,
+        and every pinned package matches its pin.
+    """
+    versions, comparisons, dockerfilePath = gather_package_version_comparisons()
+    print_package_version_summary(comparisons, dockerfilePath, versions.versionHash(), isCiRun=False)
+    return dockerfilePath is not None and all(
+        c.matches is not False and c.gitVersion != UNKNOWN_VERSION for c in comparisons
+    )
 
 
 class TestRunner:
@@ -1843,7 +1877,18 @@ def main() -> None:
         help="Optional label for this test run (timestamp will be appended for uniqueness)",
     )
 
+    parser.add_argument(
+        "--check-packages",
+        "-p",
+        action="store_true",
+        help="Only check the tracked package versions against the Dockerfile pins, exiting non-zero if"
+        " any don't match",
+    )
+
     args = parser.parse_args()
+
+    if args.check_packages:
+        sys.exit(0 if check_package_versions() else 1)
 
     runner = TestRunner(run_label=args.label)
     runner.run()
