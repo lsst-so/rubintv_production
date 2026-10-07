@@ -42,6 +42,7 @@ from fixtureExposures import (  # noqa: E402
     LATISS_CWFS_INTRA,
     LATISS_ON_SKY,
     LSSTCAM_BIAS,
+    LSSTCAM_BLITZ,
     LSSTCAM_DARK,
     LSSTCAM_EXPOSURES,
     LSSTCAM_FAM_EXTRA,
@@ -386,6 +387,17 @@ class TestConfig:
         aos_workers.extend(
             [TestScript("scripts/LSSTCam/runAosWorker.py", ["usdf_testing", str(i)]) for i in range(1, 8)]
         )
+        # a single blitz worker, with the summit pod's core count, for the one
+        # image the drip-feeder sends through a blitz pipeline
+        aos_workers.append(
+            TestScript(
+                "scripts/LSSTCam/runAosBlitzWorker.py",
+                ["usdf_testing"],
+                display_on_pass=True,
+                tee_output=True,
+                env={"LIMITS_CPU": "8"},
+            )
+        )
 
         # Additional LSSTCam scripts
         # runStep1baAosWorker deals with the outputs from the regular CWFS and
@@ -623,7 +635,8 @@ class RedisManager:
         inst = "LSSTCam"
 
         # single-snap visits, so the visit ids are the exposure ids
-        visits_sfm: list[int] = [LSSTCAM_IN_FOCUS.id]
+        visits_sfm: list[int] = [LSSTCAM_IN_FOCUS.id, LSSTCAM_BLITZ.id]
+        # the blitz image goes through a blitz pipeline, which has no step1b
         visits_aos: list[int] = [LSSTCAM_IN_FOCUS.id, LSSTCAM_FAM_INTRA.id, LSSTCAM_FAM_EXTRA.id]
         visits_fam: list[int] = [LSSTCAM_FAM_INTRA.id, LSSTCAM_FAM_EXTRA.id]
 
@@ -681,6 +694,62 @@ class RedisManager:
                         f"MTAOS Zernike count for FAM image {visit}: expected {expectedFam}, got {gotFam}",
                     )
                 )
+
+        self._check_lsstcam_blitz(redisHelper, checks)
+
+    def _check_lsstcam_blitz(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
+        """Check the blitz processing of the one image sent through it.
+
+        Blitz writes one ``zernikes`` table per corner, keyed on its
+        extra-focal detector, and does all its outputs from a single
+        visit-level quantum, so it reports as a visit-level step1a.
+        """
+        inst = "LSSTCam"
+        blitzVisit = LSSTCAM_BLITZ.id
+        extraFocalIds = (191, 195, 199, 203)
+
+        n_step1a_aos = redisHelper.getNumVisitLevelFinished(inst, "step1a", "AOS")
+        if n_step1a_aos == 1:
+            checks.append(Check(True, "1x AOS blitz visit-level step1a finished"))
+        else:
+            checks.append(
+                Check(False, f"Expected 1 AOS blitz visit-level step1a to finish, got {n_step1a_aos}")
+            )
+
+        gotBlitz = redisHelper.getMTAOSZernikeCount(inst, blitzVisit)
+        if gotBlitz == len(extraFocalIds):
+            checks.append(Check(True, f"MTAOS Zernike count for blitz image {blitzVisit} is {gotBlitz}"))
+        else:
+            checks.append(
+                Check(
+                    False,
+                    f"MTAOS Zernike count for blitz image {blitzVisit}: expected {len(extraFocalIds)},"
+                    f" got {gotBlitz}",
+                )
+            )
+
+        # only look in this run's collection, as earlier CI runs further down
+        # the chain will also hold outputs for this visit
+        locationConfig = LocationConfig("usdf_testing")
+        butler = Butler.from_config(locationConfig.lsstCamButlerPath, instrument=inst)
+        thisRun = getCurrentOutputRun(butler, locationConfig, inst)
+        assert thisRun is not None, "Only None under scons, which never runs the CI suite"
+        lookups: list[tuple[str, dict[str, Any]]] = [
+            ("donutBlitzCornerResults", {"visit": blitzVisit}),
+            ("aggregateAOSVisitTableRaw", {"visit": blitzVisit}),
+            ("aggregateAOSVisitTableAvg", {"visit": blitzVisit}),
+        ]
+        lookups += [("zernikes", {"visit": blitzVisit, "detector": det}) for det in extraFocalIds]
+        for datasetType, dataId in lookups:
+            try:
+                ref = butler.find_dataset(datasetType, dataId, collections=[thisRun])
+            except Exception as e:
+                checks.append(Check(False, f"Error looking up blitz {datasetType} for {dataId}: {e}"))
+                continue
+            if ref is not None:
+                checks.append(Check(True, f"Found blitz output {datasetType} for {dataId}"))
+            else:
+                checks.append(Check(False, f"Did not find blitz output {datasetType} for {dataId}"))
 
     def _check_latiss_data(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
         """Check LATISS data in Redis."""
@@ -1034,6 +1103,7 @@ class ProcessManager:
                         "lsstDebug": lsstDebug,
                     }
                     sys.argv = [script_path] + script_args if script_args else [script_path]
+                    os.environ.update(test_script.env or {})  # each script runs in its own process
                     time.sleep(test_script.delay)
                     exec(script_content, exec_globals)
                     exit_code = 0
@@ -1270,8 +1340,8 @@ class ResultCollector:
         locationConfig = LocationConfig("usdf_testing")
 
         # (path relative to locationConfig.plotPath, minimum size in bytes)
-        inFocus, intra, extra = LSSTCAM_IN_FOCUS, LSSTCAM_FAM_INTRA, LSSTCAM_FAM_EXTRA
-        onSky = (inFocus, intra, extra)
+        inFocus, intra, extra, blitz = LSSTCAM_IN_FOCUS, LSSTCAM_FAM_INTRA, LSSTCAM_FAM_EXTRA, LSSTCAM_BLITZ
+        onSky = (inFocus, intra, extra, blitz)
         calibs = (LSSTCAM_BIAS, LSSTCAM_DARK, LSSTCAM_FLAT)
         plotSize = 5000
         expected: list[tuple[str, int]] = []
@@ -1281,28 +1351,35 @@ class ResultCollector:
             expected.append((exposure.getPlotPath("event_timeline", "png"), plotSize))
             expected.append((exposure.getPlotPath("focal_plane_mosaic", "jpg"), plotSize))  # post ISR mosaic
             expected.append((exposure.getPlotPath("timing_diagram", "jpg"), plotSize))  # performance analysis
-        for exposure in (inFocus, *calibs):  # witness detector images for all with postISR that aren't CWFS
+        for exposure in (
+            inFocus,
+            blitz,
+            *calibs,
+        ):  # witness detector images for all with postISR that aren't CWFS
             expected.append((exposure.getPlotPath("witness_detector", "jpg"), plotSize))
         for exposure in onSky:  # mount plots, donut galleries and guider movies for the on-sky images
             expected.append((exposure.getPlotPath("mount", "png"), plotSize))
             expected.append((exposure.getPlotPath("fp_donut_gallery", "png"), plotSize))
             expected.append((exposure.getPlotPath("full_movie", "mp4"), 200_000))
             expected.append((exposure.getPlotPath("star_movie", "mp4"), 100_000))
-        # plots only the in-focus image gets. TODO: DM-51391 add psfAzEl plot
+        # plots only the in-focus images get. TODO: DM-51391 add psfAzEl plot
         for plotName, extension in (
             ("calexp_mosaic", "jpg"),
             ("fwhm_focal_plane", "png"),
             ("imexam", "png"),
             ("psf_shape_azel", "png"),
-            ("fp_pairing_plot", "png"),
             ("donut_fits", "png"),
-            ("zernike_predicted_fwhm", "png"),
-            ("dof_predicted_fwhm", "png"),
             ("centroid_alt_az", "jpg"),
             ("flux_trend", "jpg"),
             ("psf_trend", "jpg"),
         ):
-            expected.append((inFocus.getPlotPath(plotName, extension), plotSize))
+            for exposure in (inFocus, blitz):
+                expected.append((exposure.getPlotPath(plotName, extension), plotSize))
+        # blitz draws its own selection plot and has no step1b, so no pairing
+        # or predicted FWHM plots, nor any of the AOS plots below
+        for plotName in ("fp_pairing_plot", "zernike_predicted_fwhm", "dof_predicted_fwhm"):
+            expected.append((inFocus.getPlotPath(plotName, "png"), plotSize))
+        expected.append((blitz.getPlotPath("fp_selection_plot", "png"), plotSize))
 
         # AOS plots -------
         # these land on the FAM pair's extra-focal id and on the in-focus image
