@@ -172,8 +172,11 @@ Full pipeline execution:
   plus the dedicated LATISS AOS worker (detector 0) for the WEP
   monolith pair processing
 - 18 SFM detectors for LSSTCam (90-98, 144-152)
+- One LSSTCam `AOS_BLITZ_WORKER`, run with `LIMITS_CPU=8` like the summit
+  pods (via the per-script `env` on `TestScript`)
 - Real Butler queries against test data (dayObs=20251115)
-- Test exposures: 226 (SFM), 227+228 (FAM CWFS pair), 436 (bias)
+- Test exposures: 226 (SFM), 227+228 (FAM CWFS pair), 436 (bias), 229
+  (SFM, with its AOS run through `AOS_BLITZ_BIN_2`)
 
 **Phase 3: Round 2** (200 s timeout)
 Post-processing and visualization:
@@ -190,7 +193,15 @@ Post-processing and visualization:
    - 227 first (intra-focal, must arrive before 228)
    - Then 436 (bias), 226 (SFM), 228 (extra-focal)
    - 2 s delays between pushes
-4. Also tests LATISS:
+4. Switches the AOS pipeline to blitz the way RubinTV does, then pushes
+   229: once the head node has popped every other image and the blitz
+   worker is up, sets `RUBINTV_CONTROL_AOS_PIPELINE` to `BLITZ_BIN_2`,
+   waits for the head node's readback to show `AOS_BLITZ_BIN_2`, then
+   pushes 229. The final checks assert one visit-level `step1a`/`AOS`
+   finished, an MTAOS Zernike count of 4 for 229, and that
+   `donutBlitzCornerResults`, `aggregateAOSVisitTable{Raw,Avg}` and the
+   four extra-focal `zernikes` landed in the current run
+5. Also tests LATISS:
    - exposure 20240813/632 (on-sky science, exercises SFM)
    - exposures 20260625/12+13 (a CWFS intra/extra pair, pushed intra
      first; the extra-focal image landing triggers the `AOS_LATISS`

@@ -1,5 +1,6 @@
 # import sys
 import time
+from collections.abc import Callable
 
 t0 = time.time()
 
@@ -7,10 +8,37 @@ from lsst.daf.butler import Butler, DimensionRecord  # noqa: E402
 from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig  # noqa: E402
 from lsst.rubintv.production.payloads import Payload  # noqa: E402
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor  # noqa: E402
+from lsst.rubintv.production.predicates import isCalibration, isWepImage  # noqa: E402
+from lsst.rubintv.production.redisKeys import getNewDataQueueName  # noqa: E402
 from lsst.rubintv.production.redisUtils import RedisHelper  # noqa: E402
 
 print(f"Imports took {(time.time() - t0):.2f} seconds")
 t0 = time.time()
+
+
+def waitFor(condition: Callable[[], bool], description: str, timeout: float = 300) -> None:
+    """Wait for a condition to become true, raising if it never does.
+
+    Parameters
+    ----------
+    condition : `Callable` [[], `bool`]
+        The condition to wait for.
+    description : `str`
+        What is being waited for, for the logs and the error.
+    timeout : `float`, optional
+        How long to wait, in seconds.
+
+    Raises
+    ------
+    RuntimeError
+        Raised if the condition is not met within the timeout.
+    """
+    print(f"Waiting for {description}...")
+    start = time.time()
+    while not condition():
+        if time.time() - start > timeout:
+            raise RuntimeError(f"Timed out after {timeout}s waiting for {description}")
+        time.sleep(0.5)
 
 
 instrument = "LSSTCam"
@@ -31,13 +59,14 @@ redisHelper = RedisHelper(butler, locationConfig)
 # 228 - FAM CWFS image, goes as a FAM pair, but to the SFM pods
 # CWFS goes to AOS pods
 # 437 - a bias, to test cpVerify pipelines and mosaicing
+# 229 - in focus, like 226, but its AOS goes through a blitz pipeline
 
 where = (
-    "exposure.day_obs=20251115 AND exposure.seq_num in (226..228,436)"
+    "exposure.day_obs=20251115 AND exposure.seq_num in (226..229,436)"
     f" AND instrument='{instrument}'"  # on sky!
 )
 records = list(butler.registry.queryDimensionRecords("exposure", where=where))
-assert len(records) == 4, f"Expected 4 records, got {len(records)}"
+assert len(records) == 5, f"Expected 5 records, got {len(records)}"
 records = sorted(records, key=lambda x: (x.day_obs, x.seq_num))  # always dispatch in order
 assert len(set(r.day_obs for r in records)) == 1, "Expected all records to have the same day_obs"
 recordDict = {r.seq_num: r for r in records}  # so we can dispatch in specific order
@@ -103,6 +132,30 @@ for record in (recordDict[227], recordDict[436], recordDict[226], recordDict[228
 
 t1 = time.time()
 print(f"Butler init and query took {(time.time() - t0):.2f} seconds")
+
+# Switch the AOS pipeline to blitz the way RubinTV does, and send 229 through
+# it. The head node applies controls at the top of its loop, before popping
+# the next image, so waiting for the queue to empty first guarantees none of
+# the images above are processed with blitz.
+blitzRecord = recordDict[229]
+assert not isCalibration(blitzRecord) and not isWepImage(blitzRecord), "229 must be a normal on-sky image"
+controlKey = "RUBINTV_CONTROL_AOS_PIPELINE"
+waitFor(
+    lambda: redisHelper.redis.llen(getNewDataQueueName(instrument)) == 0,
+    "the head node to pop all the other images",
+)
+waitFor(
+    lambda: len(redisHelper.getAllWorkers(instrument=instrument, podFlavor=PodFlavor.AOS_BLITZ_WORKER)) > 0,
+    "the blitz worker to come online",
+)
+redisHelper.redis.set(controlKey, "BLITZ_BIN_2")  # RubinTV sends the name without the AOS_ prefix
+waitFor(
+    lambda: redisHelper.getControlReadback(controlKey) == "AOS_BLITZ_BIN_2",
+    "the head node to switch to AOS_BLITZ_BIN_2",
+)
+redisHelper.pushNewExposureToHeadNode(blitzRecord)
+redisHelper.pushToButlerWatcherList(instrument, blitzRecord)
+redisHelper.enqueuePayload(Payload(blitzRecord.dataId, b"", "", who=""), performancePod)
 
 # do LATISS with the same drip-feeder
 instrument = "LATISS"

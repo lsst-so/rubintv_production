@@ -37,6 +37,7 @@ from ciutils import Check, TestScript, conditional_redirect  # type: ignore # no
 
 # Only import from lsst packages after logging is configured
 from lsst.daf.butler import Butler  # noqa: E402
+from lsst.rubintv.production.butlerQueries import getCurrentOutputRun  # noqa: E402
 from lsst.rubintv.production.locationConfig import LocationConfig, findMissingConfigKeys  # noqa: E402
 from lsst.rubintv.production.packageVersions import (  # noqa: E402
     TRACKED_INSTALLED_PACKAGES,
@@ -340,6 +341,17 @@ class TestConfig:
         aos_workers.extend(
             [TestScript("scripts/LSSTCam/runAosWorker.py", ["usdf_testing", str(i)]) for i in range(1, 8)]
         )
+        # a single blitz worker, with the summit pod's core count, for the one
+        # image the drip-feeder sends through a blitz pipeline
+        aos_workers.append(
+            TestScript(
+                "scripts/LSSTCam/runAosBlitzWorker.py",
+                ["usdf_testing", "0"],
+                display_on_pass=True,
+                tee_output=True,
+                env={"LIMITS_CPU": "8"},
+            )
+        )
 
         # Additional LSSTCam scripts
         # runStep1baAosWorker deals with the outputs from the regular CWFS and
@@ -576,7 +588,8 @@ class RedisManager:
         """Check LSSTCam data in Redis."""
         inst = "LSSTCam"
 
-        visits_sfm: list[int] = [2025111500226]
+        visits_sfm: list[int] = [2025111500226, 2025111500229]
+        # 229 goes through a blitz pipeline, which has no step1b
         visits_aos: list[int] = [2025111500226, 2025111500227, 2025111500228]
         visits_fam: list[int] = [2025111500227, 2025111500228]
 
@@ -634,6 +647,62 @@ class RedisManager:
                         f"got {gotFam}",
                     )
                 )
+
+        self._check_lsstcam_blitz(redisHelper, checks)
+
+    def _check_lsstcam_blitz(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
+        """Check the blitz processing of the one image sent through it.
+
+        Blitz writes one ``zernikes`` table per corner, keyed on its
+        extra-focal detector, and does all its outputs from a single
+        visit-level quantum, so it reports as a visit-level step1a.
+        """
+        inst = "LSSTCam"
+        blitzVisit = 2025111500229
+        extraFocalIds = (191, 195, 199, 203)
+
+        n_step1a_aos = redisHelper.getNumVisitLevelFinished(inst, "step1a", "AOS")
+        if n_step1a_aos == 1:
+            checks.append(Check(True, "1x AOS blitz visit-level step1a finished"))
+        else:
+            checks.append(
+                Check(False, f"Expected 1 AOS blitz visit-level step1a to finish, got {n_step1a_aos}")
+            )
+
+        gotBlitz = redisHelper.getMTAOSZernikeCount(inst, blitzVisit)
+        if gotBlitz == len(extraFocalIds):
+            checks.append(Check(True, f"MTAOS Zernike count for blitz image {blitzVisit} is {gotBlitz}"))
+        else:
+            checks.append(
+                Check(
+                    False,
+                    f"MTAOS Zernike count for blitz image {blitzVisit}: expected {len(extraFocalIds)},"
+                    f" got {gotBlitz}",
+                )
+            )
+
+        # only look in this run's collection, as earlier CI runs further down
+        # the chain will also hold outputs for this visit
+        locationConfig = LocationConfig("usdf_testing")
+        butler = Butler.from_config(locationConfig.lsstCamButlerPath, instrument=inst)
+        thisRun = getCurrentOutputRun(butler, locationConfig, inst)
+        assert thisRun is not None, "Only None under scons, which never runs the CI suite"
+        lookups: list[tuple[str, dict[str, Any]]] = [
+            ("donutBlitzCornerResults", {"visit": blitzVisit}),
+            ("aggregateAOSVisitTableRaw", {"visit": blitzVisit}),
+            ("aggregateAOSVisitTableAvg", {"visit": blitzVisit}),
+        ]
+        lookups += [("zernikes", {"visit": blitzVisit, "detector": det}) for det in extraFocalIds]
+        for datasetType, dataId in lookups:
+            try:
+                ref = butler.find_dataset(datasetType, dataId, collections=[thisRun])
+            except Exception as e:
+                checks.append(Check(False, f"Error looking up blitz {datasetType} for {dataId}: {e}"))
+                continue
+            if ref is not None:
+                checks.append(Check(True, f"Found blitz output {datasetType} for {dataId}"))
+            else:
+                checks.append(Check(False, f"Did not find blitz output {datasetType} for {dataId}"))
 
     def _check_latiss_data(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
         """Check LATISS data in Redis."""
@@ -987,6 +1056,7 @@ class ProcessManager:
                         "lsstDebug": lsstDebug,
                     }
                     sys.argv = [script_path] + script_args if script_args else [script_path]
+                    os.environ.update(test_script.env or {})  # each script runs in its own process
                     time.sleep(test_script.delay)
                     exec(script_content, exec_globals)
                     exit_code = 0
@@ -1288,6 +1358,28 @@ class ResultCollector:
             # AOS performance plots
             ("LSSTCam/20251115/LSSTCam_aos_timing_dayObs_20251115_seqNum_000226.jpg", 5000),
             ("LSSTCam/20251115/LSSTCam_aos_timing_dayObs_20251115_seqNum_000228.jpg", 5000),
+            # The blitz image, 229: the same as the other in-focus image, 226,
+            # except the AOS plots. Blitz draws the donut gallery, donut fits
+            # and selection plot itself, and has no step1b, so there are no
+            # Zernike pyramids, PSF Zernike, pairing, predicted FWHM or AOS
+            # timing plots
+            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000229.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000229.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000229.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_calexp_mosaic_dayObs_20251115_seqNum_000229.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_mount_dayObs_20251115_seqNum_000229.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_fwhm_focal_plane_dayObs_20251115_seqNum_000229.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_imexam_dayObs_20251115_seqNum_000229.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_psf_shape_azel_dayObs_20251115_seqNum_000229.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_fp_donut_gallery_dayObs_20251115_seqNum_000229.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_donut_fits_dayObs_20251115_seqNum_000229.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_fp_selection_plot_dayObs_20251115_seqNum_000229.png", 5000),
+            ("LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000229.mp4", 200_000),
+            ("LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000229.mp4", 100_000),
+            ("LSSTCam/20251115/LSSTCam_centroid_alt_az_dayObs_20251115_seqNum_000229.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_flux_trend_dayObs_20251115_seqNum_000229.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_psf_trend_dayObs_20251115_seqNum_000229.jpg", 5000),
+            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000229.jpg", 5000),
             # LATISS plots -------
             ("LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png", 5000),
             ("LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.jpg", 5000),
