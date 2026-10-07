@@ -168,6 +168,7 @@ both `tests/ci/test_rapid_analysis.py` and `tests/createUnitTestCollections.py`)
 | `RA_CI_ASTROMETRY_NET_REF_CAT_PATH` | astrometry.net reference-catalogue base. |
 | `TARTS_DATA_DIR` | TARTS pipeline data dir (read by the AOS worker). |
 | `AI_DONUT_DATA_DIR` | AI-donut model data dir. |
+| `EFDAUTH` | JSON file of EFD credentials read by `lsst_efd_client`; must contain a `usdf_efd` entry. Defaults to `${HOME}/.lsst/efdauth.json` unless already set. |
 | `RA_CI_REDIS_PORT` | Port for the CI's private redis-server (default 6111; bump if a colleague is using it on the same node). |
 
 Both scripts (`test_rapid_analysis.py` and `createUnitTestCollections.py`)

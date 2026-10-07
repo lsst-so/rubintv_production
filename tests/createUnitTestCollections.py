@@ -53,6 +53,7 @@ _REQUIRED_USER_ENV_VARS = (
     "RA_CI_ASTROMETRY_NET_REF_CAT_PATH",
     "TARTS_DATA_DIR",
     "AI_DONUT_DATA_DIR",
+    "EFDAUTH",
     "RA_CI_REDIS_PORT",
 )
 _missing = [v for v in _REQUIRED_USER_ENV_VARS if not os.environ.get(v)]
