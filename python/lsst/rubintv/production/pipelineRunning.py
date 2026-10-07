@@ -64,7 +64,7 @@ from .consdbUtils import ConsDBPopulator
 from .payloads import Payload, pipelineGraphFromBytes
 from .plotting.mosaicing import writeBinnedImage
 from .podDefinition import PodFlavor
-from .predicates import needsOutputClobbering, raiseIf
+from .predicates import isCpVerifyTask, isScienceDetector, needsOutputClobbering, raiseIf
 from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
 from .shardIo import getShardPath, writeMetadataShard
@@ -74,9 +74,10 @@ from .utils import getExpIdOrVisitId
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
 
+    from lsst.afw.cameraGeom import Camera
     from lsst.afw.image import ExposureSummaryStats
     from lsst.daf.butler import DatasetProvenance
-    from lsst.pipe.base.graph.quantumNode import QuantumNode
+    from lsst.pipe.base.pipeline_graph import TaskNode
     from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilder
 
     from .locationConfig import LocationConfig
@@ -155,6 +156,32 @@ def makeCachingLimitedButler(butler: Butler, pipelineGraphs: list[PipelineGraph]
     return MetricTolerantCachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
 
 
+def shouldSkipQuantum(camera: Camera, taskNode: TaskNode, dataCoord: DataCoordinate) -> bool:
+    """Decide whether a worker should skip a quantum rather than run it.
+
+    cp_verify's per-detector quanta are skipped on guiders and wavefront
+    sensors, whose statistics are not comparable with the science
+    detectors'. ISR still runs on them, for the post-ISR mosaics.
+
+    Parameters
+    ----------
+    camera : `lsst.afw.cameraGeom.Camera`
+        The camera, to classify the detector.
+    taskNode : `lsst.pipe.base.pipeline_graph.TaskNode`
+        The task the quantum belongs to.
+    dataCoord : `lsst.daf.butler.DataCoordinate`
+        The quantum's data ID.
+
+    Returns
+    -------
+    skip : `bool`
+        ``True`` if the quantum should be skipped.
+    """
+    if not isCpVerifyTask(taskNode) or "detector" not in dataCoord.dimensions.names:
+        return False
+    return not isScienceDetector(camera, int(dataCoord["detector"]))
+
+
 class SingleCorePipelineRunner(BaseButlerChannel):
     """Class for detector-parallel or single-core pipelines, e.g. SFM.
 
@@ -204,6 +231,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.instrument = instrument
         self.butler = butler
         self.step = step
+        self.camera = getCameraFromInstrumentName(instrument)  # for shouldSkipQuantum
 
         allGraphs, pipelines = buildPipelines(
             instrument=instrument,
@@ -256,17 +284,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         """
         # add any necessary data-driven logic here to choose if we process
         return True
-
-    def doDropQuantum(self, node: QuantumNode) -> bool:
-        taskName = node.task_node.label
-        dataCoord = node.quantum.dataId
-        assert dataCoord is not None, "dataCoord is None, this shouldn't be possible in RA"  # for mypy
-        if "calczernikes" in taskName.lower():
-            if "detector" in dataCoord and dataCoord["detector"] in INTRA_IDS:
-                # TODO: need to not drop this for unpaired runs
-                self.log.info(f"Dropping unpaired calcZernikes quantum for {dataCoord}")
-                return True
-        return False
 
     def finishAosQgBuilder(
         self,
@@ -683,11 +700,18 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                         preQuantum.dataId
                     )  # pull this out before the try so you can use in except block
                     assert dataCoord is not None, "dataCoord is None, this shouldn't be possible in RA"
+                    taskNode = qg.pipeline_graph.tasks[taskLabel]
+                    if shouldSkipQuantum(self.camera, taskNode, dataCoord):
+                        self.log.info(
+                            f"Skipping {taskLabel} for {dataCoord}:"
+                            " cp_verify tasks only run on science detectors"
+                        )
+                        continue
                     self.log.debug(f"Executing {taskLabel} for {dataCoord}")
                     self.log.info(f"Starting to process {taskLabel}")
 
                     try:
-                        postQuantum, _ = executor.execute(qg.pipeline_graph.tasks[taskLabel], preQuantum)
+                        postQuantum, _ = executor.execute(taskNode, preQuantum)
                         self.postProcessQuantum(postQuantum)
                         self.redisHelper.reportTaskFinished(self.instrument, taskLabel, dataCoord)
 

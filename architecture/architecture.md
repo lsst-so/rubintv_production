@@ -123,6 +123,14 @@ Each detector is processed independently on its own worker pod.
   which wraps drp_pipe's `quickLook<Type>.yaml`; the label split between
   step1a and step1b is `CALIBRATION_PIPELINE_LABELS` in
   `processingControl.py`
+- Science detectors only: the worker skips cp_verify's per-detector quanta
+  on guiders and wavefront sensors (LSSTCam detectors 189 and up, see
+  `pipelineRunning.shouldSkipQuantum()` and `predicates.isScienceDetector()`),
+  whose statistics are not comparable with the imaging array. ISR still
+  runs on them so the post-ISR mosaics are complete. The eight wavefront
+  sensors are in any case sent the plain ISR pipeline by `doAosFanout()`;
+  the skip covers the guiders, which the science fanout includes when
+  they are enabled
 
 **SFM (Source Finding & Measurement):**
 - Source detection, astrometry, photometry
