@@ -21,7 +21,6 @@
 from __future__ import annotations
 
 __all__ = [
-    "DonutLauncher",
     "PsfAzElPlotter",
     "FocalPlaneFWHMPlotter",
     "ZernikePredictedFWHMPlotter",
@@ -31,8 +30,6 @@ __all__ = [
 
 import logging
 import os
-import subprocess
-import threading
 from time import sleep, time
 from typing import TYPE_CHECKING, cast
 
@@ -74,7 +71,7 @@ from .aosUtils import (
 from .consdbUtils import ConsDBPopulator
 from .formatters import getRubinTvInstrumentName, makePlotFile
 from .redisUtils import RedisHelper, _extractExposureIds
-from .shardIo import writeExpRecordMetadataShard, writeMetadataShard
+from .shardIo import writeExpRecordMetadataShard
 from .timing import logDuration
 from .uploaders import MultiUploader
 from .watchers import RedisWatcher
@@ -85,229 +82,6 @@ if TYPE_CHECKING:
     from .locationConfig import LocationConfig
     from .payloads import Payload
     from .podDefinition import PodDetails
-
-
-class DonutLauncher:
-    """The DonutLauncher, for automatically launching donut processing.
-
-    NOTE: this class has been effectively dead since ComCam was
-    decommissioned. The ``LSSTComCam`` and ``LSSTComCamSim`` launcher
-    scripts in ``scripts/`` still construct it, but the
-    ``locationConfig.getAosPipelineFile`` call below references a
-    method that no longer exists on ``LocationConfig`` — anyone who
-    actually invoked the launcher would hit an ``AttributeError`` at
-    construction. Resurrecting it for any future shellable WEP
-    processing will require deciding what pipeline file to point at
-    for the new instrument and either restoring ``getAosPipelineFile``
-    or switching to one of the per-mode AOS pipeline-file properties
-    that are still on ``LocationConfig``.
-
-    Consumes exposure-ID pairs from an OCS-pushed Redis list (the wire
-    contract is ``f"{instrument}-FROM-OCS_DONUTPAIR"``) and shells out
-    a ``pipetask run`` for each pair. The ``podDetails`` argument is
-    used for identity, logging and operational monitoring; the OCS
-    queue name is computed from ``podDetails.instrument`` so the wire
-    contract lives here rather than in every launcher script.
-
-    Parameters
-    ----------
-    butler : `lsst.daf.butler.Butler`
-        The Butler object used for data access.
-    locationConfig : `lsst.rubintv.production.locationConfig.LocationConfig`
-        The locationConfig containing the path configs.
-    inputCollection : `str`
-        The name of the input collection.
-    outputCollection : `str`
-        The name of the output collection.
-    podDetails : `lsst.rubintv.production.podDefinition.PodDetails`
-        The pod identity. Must have ``podFlavor=PodFlavor.DONUT_LAUNCHER``.
-        Carries the instrument name used to derive the OCS queue.
-    metadataShardPath : `str`
-        The path to write metadata shards to.
-    allowMissingDependencies : `bool`, optional
-        Can the class be instantiated when there are missing dependencies?
-    """
-
-    runningProcesses: dict[int, subprocess.Popen[bytes]]
-
-    def __init__(
-        self,
-        *,
-        butler: Butler,
-        locationConfig: LocationConfig,
-        inputCollection: str,
-        outputCollection: str,
-        podDetails: PodDetails,
-        metadataShardPath: str,
-        allowMissingDependencies: bool = False,
-    ) -> None:
-        self.butler = butler
-        self.locationConfig = locationConfig
-        self.inputCollection = inputCollection
-        self.outputCollection = outputCollection
-        self.podDetails = podDetails
-        self.instrument: str = podDetails.instrument
-        # OCS-pushed queue: this is the wire contract with the OCS team.
-        # Centralised here rather than in each launcher script so a
-        # rename happens in one place.
-        self.queueName: str = f"{self.instrument}-FROM-OCS_DONUTPAIR"
-        self.metadataShardPath = metadataShardPath
-        self.allowMissingDependencies = allowMissingDependencies
-
-        # See the class docstring NOTE: ``getAosPipelineFile`` no
-        # longer exists on LocationConfig and this would AttributeError
-        # if anyone tried to instantiate the launcher. Left in place
-        # so the dead code remains visibly dead.
-        self.pipelineFile: str = locationConfig.getAosPipelineFile(  # type: ignore[attr-defined]
-            self.instrument
-        )
-        self.repo: str = locationConfig.comCamButlerPath.replace("/butler.yaml", "")
-        self.log = logging.getLogger(f"lsst.rubintv.production.aos.DonutLauncher.{self.instrument}")
-        self.redisHelper = RedisHelper(butler=butler, locationConfig=locationConfig)
-        self.checkSetup()
-        self.numCoresToUse: int = 9
-
-        self.runningProcesses = {}  # dict of running processes keyed by PID
-        self.lock = threading.Lock()
-
-    def checkSetup(self) -> None:
-        try:
-            import batoid  # noqa: F401
-            import danish  # noqa: F401
-
-            import lsst.donut.viz as donutViz  # noqa: F401
-            import lsst.ts.wep as tsWep  # noqa: F401
-        except ImportError:
-            if self.allowMissingDependencies:
-                pass
-            else:
-                raise RuntimeError("Missing dependencies - can't launch donut pipelines like this")
-
-    def _run_command(self, command: list[str]) -> None:
-        """Run a command as a subprocess.
-
-        Runs the specified command as a subprocess, storing the process on the
-        class in a thread-safe manner. It logs the start time, process ID
-        (PID), and waits for the command to complete. If the command fails
-        (return code is non-zero), it logs an error. Finally, it logs the
-        completion time and duration of the command execution.
-
-        Parameters
-        ----------
-        command : `str`
-            The command to be executed.
-        """
-        start_time = time()
-        process = subprocess.Popen(command, shell=False)
-        with self.lock:
-            self.runningProcesses[process.pid] = process
-        self.log.info(f"Process started with PID {process.pid}")
-        retcode = process.wait()
-        end_time = time()
-        duration = end_time - start_time
-        with self.lock:
-            self.runningProcesses.pop(process.pid)
-        if retcode != 0:
-            self.log.error(f"Command failed with return code {retcode}")
-        self.log.info(f"Command completed in {duration:.2f} seconds with return code {retcode}")
-
-    def launchDonutProcessing(self, exposureBytes: bytes, doRegister: bool = False) -> None:
-        """Launches the donut processing for a pair of donut exposures.
-
-        Parameters:
-        -----------
-        exposureBytes : bytes
-            The byte representation of the donut exposures, from redis.
-        doRegister : bool, optional
-            Add --register-dataset-types on the command line?
-
-        Notes:
-        ------
-        This method extracts the exposure IDs from the given byte
-        representation and launches the donut processing for the pair of donut
-        exposures. If the instrument is "LSSTComCamSim", it adjusts the
-        exposure IDs by adding 5000000000000 to account for the way this is
-        recorded in the butler. The command is executed in a separate thread,
-        and recorded as being in progress on the class.
-        """
-        exposureIds = _extractExposureIds(exposureBytes, self.instrument)
-        if len(exposureIds) != 2:
-            raise ValueError(f"Expected two exposureIds, got {exposureIds}")
-        expId1, expId2 = exposureIds
-        self.log.info(f"Received donut pair: {expId1, expId2}")
-
-        # TODO: reduce this sleep a bit once you know how long this needs, or
-        # write a function to poll. Better would be to write a blocking
-        # WaitForExpRecord function in redisHelper, and then flag that as
-        # existing in the same place as their picked up and fanned out
-        sleep(10)
-        for expId in exposureIds:
-            (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"exposure": expId})
-            writeExpRecordMetadataShard(expRecord, self.metadataShardPath)
-
-        self.log.info(f"Launching donut processing for donut pair: {expId1, expId2}")
-        query = f"exposure in ({expId1},{expId2}) and instrument='{self.instrument}'"
-        command = [
-            # stop black messing this section up
-            # fmt: off
-            # TODO: DM-45436 break this down into three commands to save
-            # hammering the butler. May well be moot though, as noted on the
-            # ticket.
-            "pipetask", "run",
-            "-j", str(self.numCoresToUse),
-            "-b", self.repo,
-            "-i", self.inputCollection,
-            "-o", self.outputCollection,
-            "-p", self.pipelineFile,
-            "-d", query,
-            "--rebase",
-            # remove the --register addition eventually
-            "--register-dataset-types",
-            # fmt: on
-        ]
-        if doRegister:
-            command.append("--register-dataset-types")
-
-        self.log.info(f"Launching with command line: {' '.join(command)}")
-        threading.Thread(target=self._run_command, args=(command,)).start()
-
-        # now that we've launched, add the FOCUSZ value to the table on RubinTV
-        for expId in exposureIds:
-            md = self.butler.get("raw.metadata", exposure=expId, detector=0)
-            (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", dataId={"exposure": expId})
-
-            focus = md.get("FOCUSZ", "MISSING VALUE")
-            mdDict = {expRecord.seq_num: {"Focus Z": focus}}
-            writeMetadataShard(self.metadataShardPath, expRecord.day_obs, mdDict)
-
-    def run(self) -> None:
-        """Start the event loop, listening for data and launching processing.
-
-        This method continuously checks for exposure pairs in the queue and
-        launches the donut processing for each pair. It also logs the status of
-        running processes at regular intervals.
-        """
-        lastLogTime = time()
-        logInterval = 10
-
-        while True:
-            exposurePairBytes = self.redisHelper.redis.lpop(self.queueName)
-            if exposurePairBytes is not None:
-                # lpop's reply type is over-broad (it can return a list with a
-                # count arg); we call it without one, so narrow to bytes.
-                self.launchDonutProcessing(cast(bytes, exposurePairBytes))
-            else:
-                sleep(0.5)
-
-            currentTime = time()
-            if currentTime - lastLogTime >= logInterval:
-                with self.lock:
-                    nRunning = len(self.runningProcesses)
-                if nRunning > 0:
-                    self.log.info(f"Currently running {nRunning} processes each with -j {self.numCoresToUse}")
-                else:
-                    self.log.info(f"Waiting for donut exposure arrival at {self.queueName}")
-                lastLogTime = currentTime
 
 
 class PsfAzElPlotter:
@@ -776,8 +550,9 @@ class FocusSweepAnalysis:
         self.locationConfig = locationConfig
         self.podDetails = podDetails
         self.instrument: str = podDetails.instrument
-        # OCS-pushed queue: see DonutLauncher for the rationale for
-        # putting the wire contract here.
+        # OCS-pushed queue: this is the wire contract with the OCS team.
+        # Centralised here rather than in each launcher script so a
+        # rename happens in one place.
         self.queueName: str = f"{self.instrument}-FROM-OCS_FOCUSSWEEP"
         self.metadataShardPath = metadataShardPath
 

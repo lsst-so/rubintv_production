@@ -244,13 +244,6 @@ RUBINTV_CONTROL_WITNESS_DETECTOR    -> set reference detector for AOS
 - Value: CSV list of detector numbers not being processed
 - Published by head node for frontend display
 
-**Donut pair announcements (from OCS):**
-```
-{instrument}-FROM-OCS_DONUTPAIR
-```
-- Value: comma-separated exposure IDs (e.g., "2025111500227,2025111500228")
-- Written by OCS to announce intra/extra focal pairs
-
 ## Work Distribution Flow
 
 ### Dispatch (Head Node -> Workers)

@@ -53,13 +53,12 @@ class PodFlavor(Enum):
     NIGHT_REPORT_WORKER = auto()
     GUIDER_WORKER = auto()
     BACKLOG_WORKER = auto()
-    # FOCUS_SWEEP_ANALYZER and DONUT_LAUNCHER consume from OCS-pushed
-    # Redis lists rather than the standard payload-based queue, so the
-    # ``queueName`` derived from PodDetails is unused — they live in
-    # the enum purely so the consumer classes have a real PodDetails
-    # for identity, logging and operational monitoring.
+    # FOCUS_SWEEP_ANALYZER consumes from an OCS-pushed Redis list rather
+    # than the standard payload-based queue, so the ``queueName`` derived
+    # from PodDetails is unused; it lives in the enum purely so the
+    # consumer class has a real PodDetails for identity, logging and
+    # operational monitoring.
     FOCUS_SWEEP_ANALYZER = auto()
-    DONUT_LAUNCHER = auto()
 
     HEAD_NODE = auto()
 
@@ -98,7 +97,6 @@ def podFlavorToPodType(podFlavor: PodFlavor) -> PodType:
         # a depth
         PodFlavor.BACKLOG_WORKER: PodType.PER_INSTRUMENT,
         PodFlavor.FOCUS_SWEEP_ANALYZER: PodType.PER_INSTRUMENT_SINGLETON,
-        PodFlavor.DONUT_LAUNCHER: PodType.PER_INSTRUMENT_SINGLETON,
     }
     return mapping[podFlavor]
 

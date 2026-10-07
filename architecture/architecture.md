@@ -85,10 +85,9 @@ type, optional depth, and optional detector number.
 - `RADIAL_PLOTTER` - radial diagnostic plotter
 - `PERFORMANCE_MONITOR` - timing metrics
 
-**OCS-driven singletons (consume from OCS-pushed Redis lists rather than
+**OCS-driven singleton (consumes from an OCS-pushed Redis list rather than
 the standard payload queues):**
 - `FOCUS_SWEEP_ANALYZER` - focus-sweep analysis on OCS command
-- `DONUT_LAUNCHER` - launches donut processing on OCS command
 
 ### Queue Naming
 
