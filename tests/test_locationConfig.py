@@ -160,6 +160,7 @@ def _buildFixtureConfig(rootDir: str) -> dict:
         "aosLSSTCamUnpairedDanishPipelineFile",
         "aosLSSTCamWcsDanishBin1PipelineFile",
         "aosLSSTCamWcsDanishBin2PipelineFile",
+        "aosLSSTCamBlitzPipelineFile",
     ):
         config[k] = f"/fixture/{k}.yaml"
 
@@ -300,6 +301,7 @@ class LocationConfigTestCase(lsst.utils.tests.TestCase):
             "aosLSSTCamUnpairedDanishPipelineFile",
             "aosLSSTCamWcsDanishBin1PipelineFile",
             "aosLSSTCamWcsDanishBin2PipelineFile",
+            "aosLSSTCamBlitzPipelineFile",
             "aosDataDir",
         ):
             with self.subTest(key=key):

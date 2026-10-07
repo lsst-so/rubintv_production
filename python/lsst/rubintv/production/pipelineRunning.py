@@ -210,6 +210,19 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         """
         return makeEfdClient()
 
+    def getRawWaitTimeout(self) -> float:
+        """Get how long to wait for raws to land before giving up on them.
+
+        Returns
+        -------
+        timeout : `float`
+            The timeout, in seconds.
+        """
+        if self.locationConfig.location == "bts":
+            # TODO : remove this when BTS gets a hardware upgrade
+            return 60  # ideally this would be in config not code
+        return 20  # ideally this wouldn't reassert the upsteam default
+
     def doProcessImage(self, dataId: DataCoordinate) -> bool:
         """Determine if we should skip this image.
 
@@ -411,6 +424,94 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         )
         return builder, where, {}, self.cachingButler
 
+    def makeAosBlitzQgBuilder(
+        self, payload: Payload, pipelineGraph: PipelineGraph, expRecord: DimensionRecord
+    ) -> tuple[QuantumGraphBuilder, str, dict[str, Any], LimitedButler]:
+        """Get the quantum graph builder for the AOS blitz pipelines.
+
+        The blitz quantum is visit-level and consumes the raws of all the
+        corner chips, which the trivial per-dataId builder can't express, so
+        this builds an all-dimensions graph constrained to the exposure's
+        corner chips. The payload is dispatched as soon as the exposure lands,
+        so the corner raws are waited for first. Blitz processes whichever
+        corner chips are present, so a timeout just means fewer of them.
+
+        Parameters
+        ----------
+        payload : `lsst.rubintv.production.payloads.Payload`
+            The payload to process. Carries an exposure-level dataId.
+        pipelineGraph : `lsst.pipe.base.PipelineGraph`
+            The pipeline graph.
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record for the payload's dataId.
+
+        Returns
+        -------
+        builder : `lsst.pipe.base.quantum_graph_builder.QuantumGraphBuilder`
+            The quantum graph builder to use.
+        where : `str`
+            The where clause used for building the quantum graph.
+        bind : `dict` [`str`, `Any`]
+            The bind parameters used for building the quantum graph.
+        butlerToUse : `lsst.daf.butler.LimitedButler`
+            The butler to use for executing the quantum graph.
+
+        Raises
+        ------
+        ValueError
+            Raised if the payload is for a CWFS (full array mode) image.
+        """
+        assert self.step == "step1a"
+        if expRecord.observation_type.lower() == "cwfs":
+            raise ValueError("The blitz pipelines are for the corner chips and should not be sent FAM images")
+
+        expId = getExpIdOrVisitId(payload.dataId)
+        cornerIds = sorted(EXTRA_IDS + INTRA_IDS)
+        where = (
+            f"instrument='{self.instrument}' AND exposure={expId}"
+            f" AND detector IN ({', '.join(str(d) for d in cornerIds)})"
+        )
+        self.waitForRaws(where, len(cornerIds))
+
+        collections = self.getCollections()
+        builder = AllDimensionsQuantumGraphBuilder(
+            pipelineGraph,
+            self.butler,
+            where=where,
+            clobber=True,
+            input_collections=collections,
+            output_run=self.runCollection,
+        )
+        return builder, where, {}, self.cachingButler
+
+    def waitForRaws(self, where: str, nExpected: int) -> int:
+        """Wait for the raws matching a query to land in the repo.
+
+        Parameters
+        ----------
+        where : `str`
+            The query constraint selecting the raws to wait for.
+        nExpected : `int`
+            The number of raws to wait for.
+
+        Returns
+        -------
+        nFound : `int`
+            The number of raws found, which is less than ``nExpected`` if the
+            wait timed out.
+        """
+        timeout = self.getRawWaitTimeout()
+        start = time.time()
+        while True:
+            nFound = len(self.butler.query_datasets("raw", where=where, explain=False))
+            if nFound >= nExpected or time.time() - start > timeout:
+                break
+            time.sleep(0.25)
+
+        if nFound < nExpected:
+            self.log.warning(f"Waited {timeout}s for {nExpected} raws but only found {nFound} for {where}")
+        return nFound
+
     def getCollections(self) -> list[str]:
         """Get the collections to use for this payload.
 
@@ -487,6 +588,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             if payload.who == "AOS" and self.instrument == "LATISS":
                 # the WEP monolith spans the whole CWFS pair
                 return self.makeLatissAosQgBuilder(payload, pipelineGraph, expRecord)
+            if payload.who == "AOS" and "detector" not in dataId.dimensions:
+                # blitz processes all the corner chips in one quantum
+                return self.makeAosBlitzQgBuilder(payload, pipelineGraph, expRecord)
 
             dataIds: dict[DimensionGroup, DataCoordinate] = {dataId.dimensions: dataId}
             self.log.info(f"Making TrivialQG builder for {self.step} for expId {expId} for {payload.who}")
@@ -573,11 +677,9 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             t0 = time.time()
 
             self.log.info(f"Waiting for {self.dataProduct} for {dataId}")
-            t = 20  # ideally this wouldn't reassert the upsteam default
-            if self.locationConfig.location == "bts":
-                # TODO : remove this when BTS gets a hardware upgrade
-                t = 60  # ideally this would be in config not code
-            dataProduct = self._waitForDataProduct(dataId, gettingButler=self.cachingButler, timeout=t)
+            dataProduct = self._waitForDataProduct(
+                dataId, gettingButler=self.cachingButler, timeout=self.getRawWaitTimeout()
+            )
 
             # self.dataProduct is the data product we are waiting for, so
             # if that's none the rest doesn't apply here, i.e. that's
@@ -672,9 +774,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
             # finished looping over nodes
             if self.step == "step1a":
-                detector = int(payload.dataId["detector"])
-                self.log.debug(f"Announcing completion of step1a for {expId} det {detector} for {who}")
-                self.redisHelper.reportDetectorFinished(self.instrument, expId, who=who, detector=detector)
+                self.reportStep1aFinished(payload)
             if self.step == "step1b":
                 self.log.debug(f"Announcing completion of step1b for {expId} for {who}")
                 self.redisHelper.reportVisitLevelFinished(self.instrument, "step1b", who=who)
@@ -694,15 +794,40 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         except Exception as e:
             if self.step == "step1a":
-                detector = int(payload.dataId["detector"])
-                self.redisHelper.reportDetectorFinished(
-                    self.instrument, expId, who=who, detector=detector, failed=True
-                )
+                self.reportStep1aFinished(payload, failed=True)
             if self.step == "step1b":
                 self.redisHelper.reportVisitLevelFinished(self.instrument, "step1b", who=who, failed=True)
             if self.step == "nightlyRollup":
                 self.redisHelper.reportNightLevelFinished(self.instrument, who=who, failed=True)
             raiseIf(self.doRaise, e, self.log)
+
+    def reportStep1aFinished(self, payload: Payload, failed: bool = False) -> None:
+        """Report that the step1a processing of a payload has finished.
+
+        Per-detector payloads are reported against their detector in the
+        exposure's tracking hash, for the head node's gather. Visit-level
+        payloads, i.e. those for the blitz pipelines, have no detector and
+        nothing to gather, so they are counted as a visit-level step1a.
+
+        Parameters
+        ----------
+        payload : `lsst.rubintv.production.payloads.Payload`
+            The payload which finished processing.
+        failed : `bool`, optional
+            Whether the processing failed.
+        """
+        expId = getExpIdOrVisitId(payload.dataId)
+        if "detector" in payload.dataId.dimensions:
+            detector = int(payload.dataId["detector"])
+            self.log.debug(f"Announcing completion of step1a for {expId} det {detector} for {payload.who}")
+            self.redisHelper.reportDetectorFinished(
+                self.instrument, expId, who=payload.who, detector=detector, failed=failed
+            )
+        else:
+            self.log.debug(f"Announcing completion of visit-level step1a for {expId} for {payload.who}")
+            self.redisHelper.reportVisitLevelFinished(
+                self.instrument, "step1a", who=payload.who, failed=failed
+            )
 
     def postProcessQuantum(self, quantum: Quantum) -> None:
         """Write shards here, make sure to keep these bits quick!
@@ -739,6 +864,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             self.postProcessVisitSummary(quantum)
         elif "AggregateZernikeTablesTask".lower() in taskName.lower():
             self.postProcessAggregateZernikeTables(quantum)
+        elif "DonutBlitzCornerTask".lower() in taskName.lower():
+            self.postProcessDonutBlitzCorner(quantum)
         elif "CalcZernikes".lower() in taskName.lower():
             # matches CalcZernikesTask and its variants (e.g.
             # CalcZernikesNeuralTask, CalcZernikesUnpairedTask), all of which
@@ -998,6 +1125,20 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         # consDB validates the location and only inserts if it's summit-like
         self.consDBPopulator.populateCcdVisitRowZernikes(visitRecord, detectorId, consDbValues)
+
+    def postProcessDonutBlitzCorner(self, quantum: Quantum) -> None:
+        """Announce the number of blitz Zernike tables written to MTAOS.
+
+        Unlike `postProcessCalcZernikes`, nothing is sent to ConsDB: the
+        blitz tables carry only the deviation Zernikes, not the total OPD
+        that ConsDB holds for the other pipelines.
+        """
+        zernikeRefs = list(quantum.outputs.get("zernikes", ()))
+        written = [ref for ref, exists in self.cachingButler.stored_many(zernikeRefs).items() if exists]
+        assert quantum.dataId is not None, "dataId is None, this shouldn't be possible in RA"
+        visitId = int(quantum.dataId["visit"])
+        self.log.info(f"Blitz wrote {len(written)} of {len(zernikeRefs)} possible zernikes for {visitId}")
+        self.redisHelper.sendZernikeCountToMTAOS(self.instrument, visitId, len(written))
 
     def postProcessAggregateZernikeTables(self, quantum: Quantum) -> None:
         try:

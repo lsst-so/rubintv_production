@@ -115,8 +115,8 @@ expire while others persist.
   - `_binnedIsr:{det}` -> "1" (binned post-ISR image produced; pipeline-
     agnostic since every step1a pipeline contains an ISR quantum)
   - `_mosaicDispatched` -> "1" (post-ISR focal-plane mosaic dispatched)
-  - `pipeline_config` -> AOS pipeline name ("AOS_DANISH", etc.; always
-    "AOS_LATISS" on LATISS)
+  - `pipeline_config` -> AOS pipeline name ("AOS_DANISH",
+    "AOS_BLITZ_BIN_2", etc.; always "AOS_LATISS" on LATISS)
 - Workers write `{who}:finished:{det}` via atomic `HSET` (no races)
 - Head node writes expected detectors and dispatch flags
 - Completion check: `finished_detectors >= expected_detectors` (set ops)
@@ -141,7 +141,9 @@ expire while others persist.
 {instrument}-{step}-{who}-VISIT_FAILED_COUNTER
 ```
 - Integer counter (note: typo "FINISIHED" is intentional in the code)
-- Incremented when step1b completes for a visit (global counter)
+- Incremented when step1b completes for a visit (global counter), and with
+  `step1a` when a visit-level step1a completes, which is only the AOS blitz
+  pipelines (`{instrument}-step1a-AOS-VISIT_FINISIHED_COUNTER`)
 
 **Night-level rollup counter (STRING):**
 ```
@@ -179,6 +181,10 @@ per-exposure tracking hash instead (see "PostISR Mosaic" below).
 ```
 - Fields: `{visitId}` -> zernike count
 - Reports wavefront processing completion to MTAOS system
+- Written by the head node when it dispatches an AOS step1b (the count is
+  the number of finished CWFS detectors), and by the blitz worker once its
+  quantum completes (the count is the number of `zernikes` tables written,
+  one per corner with any fits)
 
 ### 9. ConsDB Announcements (HASH with TTL)
 
@@ -267,6 +273,19 @@ wavefront sensors (AOS), each dispatched to a dedicated worker pod.
      LPUSH AOS_WORKER-LSSTCam-001-{det} <payload JSON>
 ```
 
+**Blitz dispatch** (`dispatchAosBlitz`, when the selected AOS pipeline is
+`AOS_BLITZ_BIN_1` or `AOS_BLITZ_BIN_2`, non-calibration images only): a
+single exposure-level payload replaces the 8 per-detector ones, and no
+`AOS:expected` field is written. Blitz writes no binned post-ISR images, so
+expected CWFS detectors would block the post-ISR mosaic, and there is no
+step1b to gather for.
+```
+1. Record which AOS pipeline is active:
+     HSET LSSTCam-TRACKING-{expId} pipeline_config "AOS_BLITZ_BIN_2"
+2. Pick one blitz worker via getSingleWorker (free preferred):
+     LPUSH AOS_BLITZ_WORKER-LSSTCam-{depth} <payload JSON, no detector>
+```
+
 **SFM fanout** (`doDetectorFanout`, enabled imaging detectors):
 ```
 1. Initialize tracking (idempotent, may already exist from doAosFanout):
@@ -314,6 +333,8 @@ won't block the gather step.
      HSET {instrument}-TRACKING-{expId} _binnedIsr:{det} 1
 6. After all quanta done, report detector-level completion:
      HSET {instrument}-TRACKING-{expId} {who}:finished:{det} 1
+   or, for a payload with no detector (the blitz pipelines), visit-level:
+     INCR {instrument}-step1a-{who}-VISIT_FINISIHED_COUNTER
 7. Back to step 1
 ```
 
@@ -389,7 +410,6 @@ SFM step1b completion:
 
 AOS step1b completion:
   HSET {instrument}-TRACKING-{expId} AOS:step1bFinished 1
-  HSET {instrument_upper}_WEP_PROCESSING_RESULT {visitId} {zernikeCount}
   INCR {instrument}-step1b-AOS-VISIT_FINISIHED_COUNTER
 ```
 

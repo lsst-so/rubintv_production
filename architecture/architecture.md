@@ -51,7 +51,7 @@ type, optional depth, and optional detector number.
 | Type | Has Depth | Has Detector | Example |
 |------|-----------|-------------|---------|
 | `PER_DETECTOR` | Yes | Yes | SFM_WORKER, AOS_WORKER |
-| `PER_INSTRUMENT` | Yes | No | STEP1B_WORKER, MOSAIC_WORKER |
+| `PER_INSTRUMENT` | Yes | No | STEP1B_WORKER, MOSAIC_WORKER, AOS_BLITZ_WORKER |
 | `PER_INSTRUMENT_SINGLETON` | No | No | HEAD_NODE, PERFORMANCE_MONITOR |
 
 ### Pod Flavors (`PodFlavor` enum)
@@ -64,6 +64,11 @@ type, optional depth, and optional detector number.
   LATISS: identity-less replicas all sharing the detector-0 depth-0 queue,
   running the WEP monolith on CWFS pairs - each payload is atomically
   popped by exactly one replica, so they scale by plain replica count)
+
+**Per-instrument step1a worker:**
+- `AOS_BLITZ_WORKER` - LSSTCam AOS blitz pipelines: all 8 corner wavefront
+  sensors in a single visit-level quantum, on a multi-core pod. Any free
+  replica takes the whole corner set, so they scale by replica count
 
 **Per-instrument workers (step1b / aggregation):**
 - `STEP1B_WORKER` - visit-level SFM gather
@@ -124,6 +129,17 @@ Each detector is processed independently on its own worker pod.
 - LSSTCam: runs only on 8 corner wavefront sensors (detectors 191-204);
   handles paired (intra/extra focal) and FAM (full array mode) observations,
   with a special quantum graph builder handling donut pair merging
+- LSSTCam blitz: the `AOS_BLITZ_BIN_1` and `AOS_BLITZ_BIN_2` pipelines
+  (unbinned and 2x binned Danish fits, the donut_viz blitz pipeline with
+  `wavefrontFit.binning` overridden) run ts_wep's `DonutBlitzCornerTask`:
+  ISR, donut selection, cutouts and Zernike fitting for all the corner
+  sensors in one visit-level quantum, forking across the pod's cores and
+  writing no intermediates. It writes the per-corner `zernikes` tables MTAOS
+  reads, keyed on the extra-focal detector, plus the
+  `aggregateAOSVisitTable*` tables, and uploads its own diagnostic plots.
+  There is no step1b, and no post-ISR images for the corner sensors. The
+  worker builds an `AllDimensionsQuantumGraphBuilder` graph constrained to
+  the exposure's corner detectors, after waiting for their raws to land
 - LATISS: a single hard-coded pipeline (`AOS_LATISS`, the ts_wep
   `LatissMonolithTask`) processes a whole CWFS intra/extra pair - both
   raws - in one quantum on the dedicated LATISS AOS worker, so the
@@ -155,7 +171,7 @@ The head node's `getPipelineConfig()` routes exposures:
 | BIAS, DARK, FLAT | ISR-only | SFM_WORKER |
 | CWFS (LSSTCam, FAM) | AOS FAM | SFM_WORKER |
 | CWFS (LATISS) | ISR-only | SFM_WORKER |
-| Science images | SFM | SFM_WORKER + AOS_WORKER (corner chips) |
+| Science images | SFM | SFM_WORKER + AOS_WORKER (corner chips), or AOS_BLITZ_WORKER if a blitz AOS pipeline is selected |
 
 LATISS CWFS images get per-exposure ISR only (they are donut images, so
 SFM would fail downstream); the wavefront processing itself is dispatched
@@ -213,7 +229,10 @@ currently triggered.*
    step1a exception: `makeLatissAosQgBuilder()` uses an
    `AllDimensionsQuantumGraphBuilder` constrained to
    `exposure IN (intra, extra)`, because the monolith's single quantum
-   spans both raws of the CWFS pair
+   spans both raws of the CWFS pair. AOS payloads with no detector (the
+   blitz pipelines) are the other: `makeAosBlitzQgBuilder()` waits for the
+   corner raws, then constrains an `AllDimensionsQuantumGraphBuilder` to the
+   exposure's 8 corner detectors
 8. **Execute quanta** - iterate through quantum graph nodes:
    - Run quantum via `SingleQuantumExecutor`
    - Post-process: write binned images, metadata shards, ConsDB rows
@@ -224,6 +243,7 @@ currently triggered.*
      `ConsDBPopulator` in `consdbUtils.py`.)
    - Report task finished to Redis
 9. **Report completion** - detector-level and visit-level finish signals
+   (a step1a payload without a detector reports as a visit-level step1a)
 10. **Loop** - back to step 1
 
 ## Payload Serialization
@@ -329,6 +349,14 @@ When a new exposure arrives, `doDetectorFanout()` in the head node:
 1. **AOS first** (non-FAM images only): calls `doAosFanout()` which always
    sends all 8 CWFS detectors to `AOS_WORKER` pods. Writes expected
    detectors into the tracking hash for both "AOS" and "ISR" who-tags.
+   When a blitz pipeline is selected (via RubinTV's AOS pipeline control),
+   non-calibration images instead go to `dispatchAosBlitz()`, which sends
+   one exposure-level payload to a single `AOS_BLITZ_WORKER` and writes no
+   expected detectors, so nothing waits on the corner sensors: no AOS gather
+   fires, and the post-ISR mosaic doesn't wait for corner images that blitz
+   never writes. The worker reports a visit-level step1a for "AOS" and the
+   Zernike count for MTAOS itself (see
+   [redis-coordination.md](redis-coordination.md)).
 
 2. **Imaging detectors**: gets the enabled detector list from
    `CameraControlConfig`, creates a `Payload` per detector, and writes

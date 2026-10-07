@@ -227,6 +227,9 @@ def main() -> None:
         commands.extend(["-d", dataQuery, "-j", str(nCores)])
         totalCores += nCores
 
+        for label, key, value in pipeline.overrides:  # the same overrides the pods build the graphs with
+            commands.extend(["-c", f"{label}:{key}={value}"])
+
         if pipelineName in PER_PIPELINE_EXTRAS:
             configOptions = PER_PIPELINE_EXTRAS[pipelineName]
             for configOption in configOptions:

@@ -21,6 +21,8 @@
 
 """Test cases for utils."""
 
+import base64
+import json
 import logging
 import unittest
 from types import SimpleNamespace
@@ -28,11 +30,13 @@ from typing import cast
 from unittest.mock import patch
 
 import fakeredis
+from utils import getSampleExpRecord
 
 import lsst.utils.tests
 from lsst.daf.butler import Butler
 from lsst.rubintv.production import redisUtils as redisUtilsModule
 from lsst.rubintv.production.locationConfig import LocationConfig
+from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
 from lsst.rubintv.production.processingControl import (
     LATISS_PIPELINE_NAMES,
     PIPELINE_NAMES,
@@ -42,7 +46,7 @@ from lsst.rubintv.production.processingControl import (
     WorkerProcessingMode,
 )
 from lsst.rubintv.production.redisKeys import getControlReadbackKey
-from lsst.rubintv.production.redisUtils import RedisHelper
+from lsst.rubintv.production.redisUtils import RedisHelper, decode_list
 
 
 def _makeFakeRedis(*args: object, **kwargs: object) -> fakeredis.FakeStrictRedis:
@@ -257,6 +261,15 @@ class PipelineNamesTestCase(lsst.utils.tests.TestCase):
         self.assertIn("SFM", PIPELINE_NAMES)
         self.assertIn("SFM", LATISS_PIPELINE_NAMES)
 
+    def test_blitzPipelinesPresent(self) -> None:
+        # RubinTV's dropdown sends "BLITZ_BIN_1"/"BLITZ_BIN_2", which the head
+        # node prefixes with "AOS_" and validates against the built pipelines,
+        # so these exact names are the wire contract with the frontend.
+        self.assertIn("AOS_BLITZ_BIN_1", PIPELINE_NAMES)
+        self.assertIn("AOS_BLITZ_BIN_2", PIPELINE_NAMES)
+        self.assertNotIn("AOS_BLITZ_BIN_1", LATISS_PIPELINE_NAMES)
+        self.assertNotIn("AOS_BLITZ_BIN_2", LATISS_PIPELINE_NAMES)
+
     def test_latissAosPresent(self) -> None:
         # "AOS_LATISS" is dispatched by name in doLatissAosFanout and in the
         # worker's QG-builder selection, so guard it explicitly. It must not
@@ -445,6 +458,90 @@ class RestoreAosPipelinesTestCase(lsst.utils.tests.TestCase):
         self.assertIsNone(self.helper.getControlReadback(self.FAM[0]))
         self.assertEqual(self.helper.getControlState(self.AOS[0]), "AOS_TIE")
         self.assertEqual(self.helper.getControlReadback(self.AOS[0]), "AOS_TIE")
+
+
+class DispatchAosBlitzTestCase(lsst.utils.tests.TestCase):
+    """`HeadProcessController.dispatchAosBlitz`, which sends a whole corner
+    set to one blitz worker.
+
+    Invoked unbound against a duck-typed ``self``, as in
+    `RestoreAosPipelinesTestCase`. These tests catch (1) blitz being sent as
+    per-detector payloads, which the visit-level blitz quantum can't use, (2)
+    the corner chips being registered as expected detectors, which would hold
+    the post-ISR mosaic and the exposure open forever, as blitz writes no
+    binned post-ISR images, and (3) a missing blitz worker raising in the head
+    node's main loop rather than just dropping the work.
+    """
+
+    PIPELINE = "AOS_BLITZ_BIN_2"
+
+    def setUp(self) -> None:
+        self._patcher = patch.object(redisUtilsModule.redis, "Redis", side_effect=_makeFakeRedis)
+        self._patcher.start()
+        self.helper = RedisHelper(
+            butler=cast(Butler, None),
+            locationConfig=cast(LocationConfig, None),
+            isHeadNode=True,
+        )
+        self.record = getSampleExpRecord()
+
+    def tearDown(self) -> None:
+        self._patcher.stop()
+
+    def _dispatch(self) -> None:
+        controller = SimpleNamespace(
+            instrument="LSSTCam",
+            redisHelper=self.helper,
+            log=logging.getLogger("test.dispatchAosBlitz"),
+            pipelines={self.PIPELINE: SimpleNamespace(graphBytes={"step1a": b"blitz graph"})},
+            currentAosPipeline=self.PIPELINE,
+            outputRun="LSSTCam/runs/test/1",
+            timeAlive=3600.0,  # long-lived, so a missing worker doesn't wait 30s for one
+        )
+        HeadProcessController.dispatchAosBlitz(cast(HeadProcessController, controller), self.record)
+
+    def _registerBlitzWorker(self, depth: int) -> PodDetails:
+        pod = PodDetails("LSSTCam", PodFlavor.AOS_BLITZ_WORKER, detectorNumber=None, depth=depth)
+        self.helper.announceExistence(pod)
+        self.helper.announceFree(pod)
+        return pod
+
+    def test_sendsOneExposureLevelPayload(self) -> None:
+        # One payload for the whole corner set, with no detector in its
+        # dataId: that absence is what routes it to the blitz QG builder on
+        # the worker, and what the worker reports completion against.
+        pod = self._registerBlitzWorker(depth=0)
+        self._dispatch()
+
+        queued = [json.loads(item) for item in decode_list(self.helper.redis.lrange(pod.queueName, 0, -1))]
+        self.assertEqual(len(queued), 1)
+        payload = queued[0]
+        self.assertNotIn("detector", payload["dataId"])
+        self.assertEqual(payload["dataId"]["exposure"], self.record.id)
+        self.assertEqual(payload["who"], "AOS")
+        self.assertEqual(payload["run"], "LSSTCam/runs/test/1")
+        self.assertEqual(base64.b64decode(payload["pipelineGraphBytes"]), b"blitz graph")
+
+    def test_recordsPipelineButNoExpectedDetectors(self) -> None:
+        # The pipeline name must still be recorded per exposure, but nothing
+        # may be expected of the corner chips: getAllExpectedDetectors() gates
+        # the post-ISR mosaic on binned-ISR images, which blitz never writes.
+        self._registerBlitzWorker(depth=0)
+        self.helper.initExposureTracking("LSSTCam", self.record.id)  # as doDetectorFanout does first
+        self._dispatch()
+
+        info = self.helper.getExposureProcessingInfo("LSSTCam", self.record.id)
+        assert info is not None
+        self.assertEqual(info.pipelineConfig, self.PIPELINE)
+        self.assertEqual(info.getAllExpectedDetectors(), set())
+        self.assertTrue(info.allGathersDispatched())
+
+    def test_noBlitzWorkerDoesNotRaise(self) -> None:
+        # e.g. BLITZ selected at a site with no blitz pods: log and drop, as
+        # raising here would take down the head node's main loop.
+        self._dispatch()
+        pod = PodDetails("LSSTCam", PodFlavor.AOS_BLITZ_WORKER, detectorNumber=None, depth=0)
+        self.assertEqual(self.helper.redis.llen(pod.queueName), 0)
 
 
 class IsBetweenFamPairTestCase(lsst.utils.tests.TestCase):

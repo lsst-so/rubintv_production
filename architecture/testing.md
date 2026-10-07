@@ -59,6 +59,7 @@ source ~/stack.sh && . ~/setup_packages.sh && pytest tests/ -q -n logical
 | `test_timedServices.py` | `deep_update` recursive dict merge | No |
 | `test_exposureProcessingInfo.py` | `ExposureProcessingInfo.fromRedisHash` parsing and predicates | No |
 | `test_redisUtils.py` | `RedisHelper` lifecycle / queueing / tracking, against `fakeredis` | No |
+| `test_pipelineRunning.py` | `SingleCorePipelineRunner` step1a completion reporting (per-detector vs visit-level), against `fakeredis` | No |
 
 ### Test Data
 
@@ -224,9 +225,12 @@ Features:
 `tests/createUnitTestCollections.py` builds Butler collections for CI:
 - Sets `RAPID_ANALYSIS_LOCATION=usdf_testing`
 - Runs pipelines in parallel via `ThreadPoolExecutor`
-- Creates collections for: FAM, AOS, SFM, calibration pipelines (LSSTCam),
-  plus `AOS_LATISS` (the LATISS WEP monolith, run on the CWFS pair
-  20260625/12+13)
+- Creates collections for: FAM, AOS (including the two blitz pipelines),
+  SFM, calibration pipelines (LSSTCam), plus `AOS_LATISS` (the LATISS WEP
+  monolith, run on the CWFS pair 20260625/12+13)
+- Passes each pipeline's `PipelineComponents.overrides` to `pipetask` as
+  `-c` options, so the collections are made with the same configs the pods
+  build (e.g. the blitz binning)
 - Used to create the underlying collections for `test_pipelines.py` unit tests
 - Only needs to be rerun when outputs change
 
