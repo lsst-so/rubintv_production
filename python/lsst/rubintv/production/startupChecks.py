@@ -35,6 +35,7 @@ import os
 from typing import TYPE_CHECKING
 
 import sentry_sdk
+from sentry_sdk.integrations.redis import RedisIntegration
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -80,13 +81,18 @@ def setupSentry() -> None:
     Initializes the Sentry SDK with the reporting environment set to the
     deployment site (e.g. ``SUMMIT``, ``BTS``) so that events and alert
     emails identify where they came from, rather than carrying the SDK's
-    default environment of ``production``.
+    default environment of ``production``. Only Sentry's default
+    integrations and the Redis integration are enabled.
     """
     logger = logging.getLogger(__name__)
     environment = getSentryEnvironment()
     if environment is None:
         logger.warning("No Sentry environment found - events will be reported as 'production'")
-    sentry_sdk.init(environment=environment)
+    sentry_sdk.init(
+        environment=environment,
+        auto_enabling_integrations=False,
+        integrations=[RedisIntegration()],
+    )
     client = sentry_sdk.get_client()  # never None, but inactive if failing to initialize
     if not client.is_active() or client.dsn is None:
         logger.warning("Sentry DSN not found or client inactive - events will not be reported")
