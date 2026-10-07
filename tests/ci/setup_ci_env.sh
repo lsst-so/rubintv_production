@@ -27,6 +27,10 @@ export TARTS_DATA_DIR="/sdf/home/m/mfl/temp/TARTS"
 # AI donut model data directory (read by the AOS worker).
 export AI_DONUT_DATA_DIR="/sdf/home/m/mfl/u/rubintv/aos_data/AI_DONUT"
 
+# JSON file of EFD credentials read by lsst_efd_client. Must contain a
+# usdf_efd entry, which is the EFD the suite's pods query from a dev node.
+export EFDAUTH="${EFDAUTH:-${HOME}/.lsst/efdauth.json}"
+
 # Port the CI suite spawns its private redis-server on. Override if a
 # colleague is already using this port on the same dev node.
 export RA_CI_REDIS_PORT="${RA_CI_REDIS_PORT:-6111}"
@@ -42,7 +46,7 @@ esac
 echo "[setup_ci_env] CI environment variables exported for user '${USER}':"
 for v in RA_CI_DATA_ROOT RA_CI_STAR_TRACKER_DATA_PATH \
          RA_CI_ASTROMETRY_NET_REF_CAT_PATH TARTS_DATA_DIR \
-         AI_DONUT_DATA_DIR RA_CI_REDIS_PORT; do
+         AI_DONUT_DATA_DIR EFDAUTH RA_CI_REDIS_PORT; do
     # printenv rather than ${!v}: bash-only indirect expansion makes
     # `source`-ing this file fail with "bad substitution" under zsh
     echo "    ${v}=$(printenv "${v}")"
