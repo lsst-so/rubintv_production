@@ -473,6 +473,10 @@ class LocationConfig:
         return self._config["aosLSSTCamWcsDanishBin2PipelineFile"]
 
     @cached_property
+    def aosLSSTCamBlitzPipelineFile(self) -> str:
+        return self._config["aosLSSTCamBlitzPipelineFile"]
+
+    @cached_property
     def aosLATISSPipelineFile(self) -> str:
         return self._config["aosLATISSPipelineFile"]
 
