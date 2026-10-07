@@ -14,10 +14,13 @@ class TestScript:
     display_on_pass: bool = False
     tee_output: bool = False
     do_debug: bool = False
+    env: dict[str, str] | None = None  # set in the script's process only, on top of the suite's env
 
     def __post_init__(self) -> None:
         if self.args is None:
             self.args = []
+        if self.env is None:
+            self.env = {}
         if self.tee_output is False and self.do_debug is True:
             print("INFO: Enabling debug mode requires tee_output to be True. Forcing tee_output to True.")
             self.tee_output = True  # this is required for redirection to work
@@ -41,6 +44,7 @@ class TestScript:
             display_on_pass=existing.display_on_pass,
             tee_output=existing.tee_output,
             do_debug=existing.do_debug,
+            env=existing.env,
         )
 
 
