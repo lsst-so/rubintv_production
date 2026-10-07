@@ -62,7 +62,7 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     -c lsstts \
     rubin-env-rsp \
     # Drop once unpinned builds get >=3.2; 3.0.0 pulls fastmcp 2.x, which emits an authlib.jose warning
-    jupyter-ai>=3.2 \
+    'jupyter-ai>=3.2' \
     redis-py \
     batoid \
     danish=1.3.0 \
