@@ -542,6 +542,13 @@ code:
   `dataset_tag=rapid_analysis_ci` for the CI suite so test data can be
   filtered out. Timestamps are the dispatch time, since our run names
   carry no timestamp of their own.
+- Records are findable by exposure. analysis_tools fills each record's
+  `exposure`, `day_obs` etc. fields from the bundle's own data id, which
+  for the calibration metrics is just the instrument. So around each
+  quantum the workers add the payload's `exposure` and `day_obs` (where it
+  has them) to the Sasquatch datastores' extra fields
+  (`pipelineRunning.addSasquatchFields`), filling those columns as strings
+  like the rest so that the topics' schemas are unchanged.
 - Publishing is best-effort and must never break processing. The
   datastore swallows dispatch failures and applies an HTTP timeout, and
   on top of that the workers' `MetricTolerantCachingLimitedButler`

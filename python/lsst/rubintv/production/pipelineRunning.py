@@ -25,12 +25,15 @@ import datetime
 import logging
 import os
 import time
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from functools import cached_property
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from astropy.time import Time
 
+from lsst.analysis.tools.interfaces.datastore import SasquatchDatastore
 from lsst.daf.butler import (
     Butler,
     DataCoordinate,
@@ -41,6 +44,7 @@ from lsst.daf.butler import (
     LimitedButler,
     Quantum,
 )
+from lsst.daf.butler.datastores.chainedDatastore import ChainedDatastore
 from lsst.pipe.base import ExecutionResources, PipelineGraph, TaskFactory
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.blocking_limited_butler import BlockingLimitedButler
@@ -77,6 +81,7 @@ if TYPE_CHECKING:
     from lsst.afw.cameraGeom import Camera
     from lsst.afw.image import ExposureSummaryStats
     from lsst.daf.butler import DatasetProvenance
+    from lsst.daf.butler.datastore import Datastore
     from lsst.pipe.base.pipeline_graph import TaskNode
     from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilder
 
@@ -113,6 +118,11 @@ EXTRA_IDS = (191, 195, 199, 203)
 # The storage class of analysis_tools metric bundles, which the butler's
 # Sasquatch datastore forwards to Chronograf on put.
 METRIC_BUNDLE_STORAGE_CLASS = "MetricMeasurementBundle"
+
+# Payload data id keys added to the Sasquatch records of its metric bundles.
+# analysis_tools already sends these (empty unless in the bundle's data id),
+# so the topics' schemas are unchanged.
+SASQUATCH_PAYLOAD_FIELDS = ("exposure", "day_obs")
 
 
 class MetricTolerantCachingLimitedButler(CachingLimitedButler):
@@ -154,6 +164,68 @@ def makeCachingLimitedButler(butler: Butler, pipelineGraphs: list[PipelineGraph]
     log = logging.getLogger("lsst.rubintv.production.pipelineRunning.makeCachingLimitedButler")
     log.info(f"Creating CachingLimitedButler with {cachedOnPut=}, {cachedOnGet=}, {noCopyOnCache=}")
     return MetricTolerantCachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
+
+
+def getSasquatchDatastores(datastore: Datastore) -> list[SasquatchDatastore]:
+    """Get the Sasquatch datastores in a possibly chained datastore.
+
+    Parameters
+    ----------
+    datastore : `lsst.daf.butler.datastore.Datastore`
+        The datastore, e.g. a butler's.
+
+    Returns
+    -------
+    sasquatchDatastores : `list` [`SasquatchDatastore`]
+        The datastores that publish metric bundles to Sasquatch, empty if
+        there are none.
+    """
+    if isinstance(datastore, SasquatchDatastore):
+        return [datastore]
+    if isinstance(datastore, ChainedDatastore):
+        return [found for child in datastore.datastores for found in getSasquatchDatastores(child)]
+    return []
+
+
+def getSasquatchFields(dataId: DataCoordinate) -> dict[str, str]:
+    """Get the fields of a payload's data id to add to the Sasquatch records
+    of the metric bundles written while processing it.
+
+    Parameters
+    ----------
+    dataId : `lsst.daf.butler.DataCoordinate`
+        The payload's data id.
+
+    Returns
+    -------
+    fields : `dict` [`str`, `str`]
+        The ``SASQUATCH_PAYLOAD_FIELDS`` that the data id has. The values are
+        strings, like the values analysis_tools gives these fields.
+    """
+    mapping = dataId.mapping
+    return {key: str(mapping[key]) for key in SASQUATCH_PAYLOAD_FIELDS if key in mapping}
+
+
+@contextmanager
+def addSasquatchFields(datastores: Iterable[SasquatchDatastore], fields: Mapping[str, str]) -> Iterator[None]:
+    """Add fields to every record the datastores publish within the context.
+
+    Parameters
+    ----------
+    datastores : `~collections.abc.Iterable` [`SasquatchDatastore`]
+        The datastores.
+    fields : `~collections.abc.Mapping` [`str`, `str`]
+        The fields to add. These override any of the same name, whether from
+        the datastores' own extra fields or from the bundle's data id.
+    """
+    originals = [(datastore, datastore.extra_fields) for datastore in datastores]
+    for datastore, extraFields in originals:
+        datastore.extra_fields = {**(extraFields or {}), **fields}
+    try:
+        yield
+    finally:
+        for datastore, extraFields in originals:
+            datastore.extra_fields = extraFields
 
 
 def shouldSkipQuantum(camera: Camera, taskNode: TaskNode, dataCoord: DataCoordinate) -> bool:
@@ -245,6 +317,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         self.runCollection: str = "uninitialized!"
         self.cachingButler = makeCachingLimitedButler(butler, self.allGraphs)
+        self.sasquatchDatastores = getSasquatchDatastores(butler._datastore)
         self.log.info(f"Pipeline running configured to consume from {self.podDetails.queueName}")
 
         self.consdbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
@@ -689,6 +762,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                 resources=ExecutionResources(num_cores=nCpus),
             )
 
+            sasquatchFields = getSasquatchFields(dataId)
             quanta = qg.build_execution_quanta()
             for taskLabel, quantaForTask in qg.quanta_by_task.items():
                 postQuantum = None  # reset inside the loop so it can't be stale inside except block
@@ -711,7 +785,8 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                     self.log.info(f"Starting to process {taskLabel}")
 
                     try:
-                        postQuantum, _ = executor.execute(taskNode, preQuantum)
+                        with addSasquatchFields(self.sasquatchDatastores, sasquatchFields):
+                            postQuantum, _ = executor.execute(taskNode, preQuantum)
                         self.postProcessQuantum(postQuantum)
                         self.redisHelper.reportTaskFinished(self.instrument, taskLabel, dataCoord)
 

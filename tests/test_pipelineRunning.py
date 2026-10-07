@@ -26,15 +26,26 @@ from types import SimpleNamespace
 from typing import cast
 from unittest.mock import MagicMock
 
+from astropy.units import adu
+from fixtureExposures import LSSTCAM_BIAS, LSSTCAM_IN_FOCUS
+
 import lsst.utils.tests
+from lsst.analysis.tools.interfaces import MetricMeasurementBundle
+from lsst.analysis.tools.interfaces.datastore import SasquatchDatastore, SasquatchDispatcher
 from lsst.daf.butler import DataCoordinate, DatasetRef, DatasetType, DimensionUniverse, LimitedButler
+from lsst.daf.butler.datastore import Datastore
+from lsst.daf.butler.datastores.chainedDatastore import ChainedDatastore
 from lsst.obs.lsst import LsstCam
 from lsst.pipe.base.pipeline_graph import TaskNode
 from lsst.rubintv.production.pipelineRunning import (
     METRIC_BUNDLE_STORAGE_CLASS,
     MetricTolerantCachingLimitedButler,
+    addSasquatchFields,
+    getSasquatchDatastores,
+    getSasquatchFields,
     shouldSkipQuantum,
 )
+from lsst.verify import Measurement
 
 
 class MetricTolerantCachingLimitedButlerTestCase(lsst.utils.tests.TestCase):
@@ -126,6 +137,106 @@ class ShouldSkipQuantumTestCase(lsst.utils.tests.TestCase):
     def test_exposureLevelCpVerifyNeverSkipped(self) -> None:
         # the step1b merges have no detector, so there is nothing to judge by
         self.assertFalse(shouldSkipQuantum(self.camera, self.cpVerifyMergeTask, self._makeDataId()))
+
+
+class SasquatchFieldsTestCase(lsst.utils.tests.TestCase):
+    """Tests for adding the payload's exposure and day_obs to the Sasquatch
+    records of the metric bundles written while processing it.
+
+    The calibration metric bundles are instrument-level, so without these
+    fields nothing in their records tells one exposure's metrics from the
+    next except the dispatch time. These catch the fields going missing,
+    being sent with a different type or under new names (either of which
+    changes the topic's schema, so Sasquatch rejects the records), and one
+    payload's fields leaking into the next payload's records.
+    """
+
+    def setUp(self) -> None:
+        self.universe = DimensionUniverse()
+        # full, as payloads' data ids are expanded on arrival
+        self.exposureDataId = DataCoordinate.standardize(
+            instrument="LSSTCam",
+            exposure=LSSTCAM_BIAS.id,
+            day_obs=LSSTCAM_BIAS.dayObs,
+            group="group",
+            physical_filter="empty",
+            band="white",
+            universe=self.universe,
+        )
+        self.fields = {"exposure": str(LSSTCAM_BIAS.id), "day_obs": str(LSSTCAM_BIAS.dayObs)}
+
+    def test_getSasquatchFields(self) -> None:
+        self.assertEqual(getSasquatchFields(self.exposureDataId), self.fields)
+
+    def test_getSasquatchFieldsOnlyUsesWhatTheDataIdHas(self) -> None:
+        # a visit-level payload (e.g. SFM step1b) has a day_obs but no exposure
+        visitDataId = DataCoordinate.standardize(
+            instrument="LSSTCam",
+            visit=LSSTCAM_IN_FOCUS.id,
+            day_obs=LSSTCAM_IN_FOCUS.dayObs,
+            physical_filter="r_57",
+            band="r",
+            universe=self.universe,
+        )
+        self.assertEqual(getSasquatchFields(visitDataId), {"day_obs": str(LSSTCAM_IN_FOCUS.dayObs)})
+
+    def test_getSasquatchDatastoresSearchesChains(self) -> None:
+        # the +sasquatch repos chain the Sasquatch datastore after the file
+        # datastore, and a chain can itself be a child of a chain
+        sasquatch = MagicMock(spec=SasquatchDatastore)
+        fileDatastore = MagicMock(spec=Datastore)
+        innerChain = MagicMock(spec=ChainedDatastore)
+        innerChain.datastores = [sasquatch]
+        outerChain = MagicMock(spec=ChainedDatastore)
+        outerChain.datastores = [fileDatastore, innerChain]
+        self.assertEqual(getSasquatchDatastores(outerChain), [sasquatch])
+        self.assertEqual(getSasquatchDatastores(fileDatastore), [])
+
+    def test_addSasquatchFieldsAddsThenRestores(self) -> None:
+        # the dataset_tag (from SASQUATCH_EXTRAS or the datastore config) must
+        # survive, and once the quantum is done the payload's fields must go,
+        # or they would end up on the next payload's records
+        tagged = SimpleNamespace(extra_fields={"dataset_tag": "rapid_analysis_ci"})
+        untagged = SimpleNamespace(extra_fields=None)
+        datastores = cast(list[SasquatchDatastore], [tagged, untagged])
+        with addSasquatchFields(datastores, self.fields):
+            self.assertEqual(tagged.extra_fields, {"dataset_tag": "rapid_analysis_ci", **self.fields})
+            self.assertEqual(untagged.extra_fields, self.fields)
+        self.assertEqual(tagged.extra_fields, {"dataset_tag": "rapid_analysis_ci"})
+        self.assertIsNone(untagged.extra_fields)
+
+    def test_addSasquatchFieldsRestoresWhenTheQuantumFails(self) -> None:
+        datastore = SimpleNamespace(extra_fields=None)
+        with self.assertRaises(RuntimeError):
+            with addSasquatchFields(cast(list[SasquatchDatastore], [datastore]), self.fields):
+                raise RuntimeError("task failed")
+        self.assertIsNone(datastore.extra_fields)
+
+    def test_fieldsFillTheRecordsExistingColumns(self) -> None:
+        # analysis_tools already sends exposure and day_obs in every record,
+        # as strings and empty for an instrument-level bundle. The added
+        # fields must fill those, adding no columns and changing no types.
+        dispatcher = SasquatchDispatcher("https://sasquatch.invalid", "token", "lsst.dm")
+        bundle = MetricMeasurementBundle({"biasMeanPerAmp": [Measurement("calib.biasMean", 1.0 * adu)]})
+
+        def prepareRecord(extraFields: dict[str, str] | None) -> dict:
+            records, _ = dispatcher._prepareBundle(
+                bundle,
+                run="run",
+                datasetType="cpBiasCore_metrics",
+                identifierFields={"instrument": "LSSTCam"},
+                extraFields=extraFields,
+            )
+            (record,) = records["biasMeanPerAmp"]
+            return record["value"]
+
+        plain = prepareRecord(None)
+        withFields = prepareRecord(self.fields)
+        self.assertEqual(plain["exposure"], "")
+        self.assertEqual(plain["day_obs"], "")
+        self.assertEqual(withFields["exposure"], self.fields["exposure"])
+        self.assertEqual(withFields["day_obs"], self.fields["day_obs"])
+        self.assertEqual(withFields.keys(), plain.keys())
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
