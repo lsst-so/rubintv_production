@@ -176,8 +176,9 @@ Triggered by the head node when all expected detectors finish step1a.
   if it was written before the worker built its graph, and two running
   at once fail the second put with `ConflictingDefinitionError`.
 - `analyzeBiasCore`/`analyzeDarkCore` write a `MetricMeasurementBundle`
-  (per-amp medians across the focal plane). `analyzeFlatDetCore`
-  currently only produces plots.
+  (per-amp medians across the focal plane) which the butler's Sasquatch
+  datastore publishes to Chronograf; see "Sasquatch metric publishing"
+  below. `analyzeFlatDetCore` currently only produces plots.
 
 ### Pipeline Selection Logic
 
@@ -499,6 +500,49 @@ which was incremented once per ISR quantum — and therefore overcounted
 for on-sky images, since every step1a pipeline (SFM, AOS, ISR)
 contains an ISR quantum.
 
+## Sasquatch metric publishing
+
+Every `MetricMeasurementBundle` a pipeline task writes (currently only
+the calibration `analyze*Core` tasks) is forwarded to Sasquatch, and so
+to Chronograf, by the butler itself rather than by any rapid analysis
+code:
+
+- The butler configs in `config/config_*.yaml` point at the
+  `+sasquatch` (`+sasquatch_dev` at USDF) variants of each repo. These
+  are the same repo (same registry, same file datastore) with the
+  datastore wrapped in a `ChainedDatastore` whose second child is
+  analysis_tools' `SasquatchDatastore`. That child only accepts the
+  `MetricMeasurementBundle` storage class, so every other dataset is
+  untouched, and it is write-only: reads never touch Sasquatch.
+- At USDF the `/repo/embargo+sasquatch_dev` and `/repo/main+sasquatch_dev`
+  configs already exist. At the summit, base and Tucson test stands the
+  `LSSTCam+sasquatch` / `LATISS+sasquatch` repos must be created by hand
+  next to the originals and registered in the site's repository index;
+  `scripts/admin/makeSasquatchButlerConfig.py` writes the config, pointing
+  at that site's REST proxy (`https://<site>-lsp.lsst.codes/sasquatch-rest-proxy`).
+- The summit sites publish to the `lsst.cp` namespace. Each site's REST
+  proxy may only create and write topics under the prefixes phalanx
+  grants it (`rest-proxy.kafka.topicPrefixes` in
+  `applications/sasquatch/values-<site>.yaml`), and a namespace only
+  reaches Chronograf if that site's Telegraf ingests it. `lsst.cp` is
+  granted and ingested at the summit and base, and the summit's is
+  mirrored to USDF; the Tucson test stand has neither, so publishing
+  there fails with 403 Forbidden until the Sasquatch team adds it.
+- Records are tagged: `dataset_tag=<Instrument>/rapid_analysis` (set via
+  `extra_fields` in the generated config at the summit sites, and via the
+  `SASQUATCH_EXTRAS` env var in phalanx at USDF), and
+  `dataset_tag=rapid_analysis_ci` for the CI suite so test data can be
+  filtered out. Timestamps are the dispatch time, since our run names
+  carry no timestamp of their own.
+- Publishing is best-effort and must never break processing. The
+  datastore swallows dispatch failures and applies an HTTP timeout, and
+  on top of that the workers' `MetricTolerantCachingLimitedButler`
+  (`pipelineRunning.py`) logs and swallows *any* exception from a
+  metric-bundle put, so a task's remaining outputs are still written and
+  the quantum still succeeds. The head node and butler watcher never
+  write bundles and constructing the butler never contacts Sasquatch, so
+  an outage only ever costs the metrics themselves.
+
 ## External Dependencies
 
 - **Butler**: LSST data access framework (read/write datasets)
@@ -506,5 +550,7 @@ contains an ISR quantum.
 - **S3**: Object storage for frontend consumption
 - **ConsDB**: Consolidated database for engineering metrics
 - **EFD**: Engineering Facilities Database (telescope telemetry)
+- **Sasquatch**: Metrics/time-series service behind Chronograf; receives
+  `MetricMeasurementBundle`s via the butler (see above)
 - **Sentry**: Error tracking and monitoring
 - **Google Cloud Storage**: Legacy upload path (being replaced by S3)

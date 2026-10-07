@@ -1772,6 +1772,9 @@ class TestRunner:
         os.environ["RAPID_ANALYSIS_CI"] = "true"
         os.environ["RAPID_ANALYSIS_DO_RAISE"] = "True"
         os.environ["LIMITS_CPU"] = "4"  # this should roughly match the lsstcamAosWorkerSet LIMITS_CPU value
+        # the CI butlers publish to the dev Sasquatch, so tag the records for
+        # filtering out
+        os.environ["SASQUATCH_EXTRAS"] = "dataset_tag=rapid_analysis_ci"
 
         # Verify environment settings
         if getDoRaise() is not True:

@@ -75,6 +75,7 @@ if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
 
     from lsst.afw.image import ExposureSummaryStats
+    from lsst.daf.butler import DatasetProvenance
     from lsst.pipe.base.graph.quantumNode import QuantumNode
     from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilder
 
@@ -108,6 +109,34 @@ PSF_GRADIENT_BAD = 0.85
 INTRA_IDS = (192, 196, 200, 204)
 EXTRA_IDS = (191, 195, 199, 203)
 
+# The storage class of analysis_tools metric bundles, which the butler's
+# Sasquatch datastore forwards to Chronograf on put.
+METRIC_BUNDLE_STORAGE_CLASS = "MetricMeasurementBundle"
+
+
+class MetricTolerantCachingLimitedButler(CachingLimitedButler):
+    """A `CachingLimitedButler` for which a failed put of a metric bundle is
+    not fatal.
+
+    The butler's Sasquatch datastore publishes metric bundles as they are
+    put. Publishing is best-effort, so any exception from such a put is
+    logged and swallowed, and the task carries on writing its remaining
+    outputs. All other puts raise as normal.
+    """
+
+    def put(self, obj: Any, ref: DatasetRef, /, *, provenance: DatasetProvenance | None = None) -> DatasetRef:
+        try:
+            return super().put(obj, ref, provenance=provenance)
+        except Exception:
+            if ref.datasetType.storageClass_name != METRIC_BUNDLE_STORAGE_CLASS:
+                raise
+            log = logging.getLogger(__name__)
+            log.exception(
+                f"Failed to put metric bundle {ref}, so it will not be published to Sasquatch."
+                " Continuing regardless, as publishing metrics is best-effort."
+            )
+            return ref
+
 
 def makeCachingLimitedButler(butler: Butler, pipelineGraphs: list[PipelineGraph]) -> CachingLimitedButler:
     cachedOnGet = set()
@@ -123,7 +152,7 @@ def makeCachingLimitedButler(butler: Butler, pipelineGraphs: list[PipelineGraph]
     noCopyOnCache = NO_COPY_ON_CACHE
     log = logging.getLogger("lsst.rubintv.production.pipelineRunning.makeCachingLimitedButler")
     log.info(f"Creating CachingLimitedButler with {cachedOnPut=}, {cachedOnGet=}, {noCopyOnCache=}")
-    return CachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
+    return MetricTolerantCachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
 
 
 class SingleCorePipelineRunner(BaseButlerChannel):

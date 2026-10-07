@@ -178,6 +178,9 @@ Full pipeline execution:
   2026070200203 (bias), 2026070200201 (dark), 2026070200192 (flat). The
   calibs are deliberately from a much newer night than the on-sky images,
   because older raw headers lack information cp_verify needs
+- The butlers are the `+sasquatch_dev` ones, so metric bundles really are
+  published to the USDF dev Sasquatch, tagged `dataset_tag=rapid_analysis_ci`
+  (set in `setup_environment()`) so they can be filtered out
 - Every expected plot path, visit id and query is built from the
   `FixtureExposure` objects in `tests/fixtureExposures.py` (which derive
   dayObs and seqNum from the exposure id), never from hard-coded numbers
