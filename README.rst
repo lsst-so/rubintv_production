@@ -14,6 +14,8 @@ The environment variable ``DAF_BUTLER_REPOSITORY_INDEX`` must be set in the runn
 
 The environment variable ``GOOGLE_APPLICATION_CREDENTIALS`` must be set and point to a secrets file with credentials for uploading to the Google Cloud Storage bucket.
 
+The environment variable ``EFDAUTH`` must be set and point to a JSON file with the EFD credentials for the site.
+
 ``google.cloud.storage`` must be installed and available.
 
 ``lsst_efd_client`` must be installed and available.
