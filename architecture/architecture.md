@@ -84,10 +84,8 @@ type, optional depth, and optional detector number.
 - `ZERNIKE_PREDICTED_FWHM_PLOTTER` - predicted FWHM from Zernikes
 - `RADIAL_PLOTTER` - radial diagnostic plotter
 - `PERFORMANCE_MONITOR` - timing metrics
-
-**OCS-driven singleton (consumes from an OCS-pushed Redis list rather than
-the standard payload queues):**
-- `FOCUS_SWEEP_ANALYZER` - focus-sweep analysis on OCS command
+- `FOCUS_SWEEP_ANALYZER` - focus-sweep parabola plots; nothing triggers
+  these at present and there is no launcher script
 
 ### Queue Naming
 

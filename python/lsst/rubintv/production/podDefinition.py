@@ -53,11 +53,6 @@ class PodFlavor(Enum):
     NIGHT_REPORT_WORKER = auto()
     GUIDER_WORKER = auto()
     BACKLOG_WORKER = auto()
-    # FOCUS_SWEEP_ANALYZER consumes from an OCS-pushed Redis list rather
-    # than the standard payload-based queue, so the ``queueName`` derived
-    # from PodDetails is unused; it lives in the enum purely so the
-    # consumer class has a real PodDetails for identity, logging and
-    # operational monitoring.
     FOCUS_SWEEP_ANALYZER = auto()
 
     HEAD_NODE = auto()

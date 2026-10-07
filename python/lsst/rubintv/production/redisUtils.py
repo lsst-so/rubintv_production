@@ -511,36 +511,6 @@ def getRedisSecret(filename: str = "$HOME/.lsst/redis_secret.ini") -> str:
         return f.read().strip()
 
 
-def _extractExposureIds(exposureBytes: bytes, instrument: str) -> list[int]:
-    """Extract the exposure IDs from the byte string.
-
-    Parameters
-    ----------
-    exposureBytes : `bytes`
-        The byte string containing the comma-separated exposure IDs.
-    instrument : `str`
-        The instrument the IDs belong to. ``LSSTComCamSim`` simulated IDs are
-        offset to put them in the simulated year, since OCS does not know about
-        the offset that the butler applies.
-
-    Returns
-    -------
-    expIds : `list` [`int`]
-        The exposure IDs extracted from the byte string.
-    """
-    exposureIdStrs = exposureBytes.decode("utf-8").split(",")
-    exposureIds = [int(v) for v in exposureIdStrs]
-
-    if instrument == "LSSTComCamSim":
-        # simulated exp ids are in the year 702X so add this manually, as
-        # OCS doesn't know about the fact the butler will add this on. This
-        # is only true for LSSTComCamSim though.
-        log = logging.getLogger("lsst.rubintv.production.redisUtils._extractExposureIds")
-        log.info(f"Adding 5000000000000 to {exposureIds=} to adjust for simulated LSSTComCamSim data")
-        exposureIds = [expId + 5000000000000 for expId in exposureIds]
-    return exposureIds
-
-
 def makeRedisClient(host: str, password: str | None, port: int) -> redis.Redis:
     """Construct a redis client with this project's tuned connection settings.
 

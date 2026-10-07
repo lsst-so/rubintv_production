@@ -30,8 +30,8 @@ __all__ = [
 
 import logging
 import os
-from time import sleep, time
-from typing import TYPE_CHECKING, cast
+from time import time
+from typing import TYPE_CHECKING
 
 import numpy as np
 from matplotlib.figure import Figure
@@ -70,7 +70,7 @@ from .aosUtils import (
 )
 from .consdbUtils import ConsDBPopulator
 from .formatters import getRubinTvInstrumentName, makePlotFile
-from .redisUtils import RedisHelper, _extractExposureIds
+from .redisUtils import RedisHelper
 from .shardIo import writeExpRecordMetadataShard
 from .timing import logDuration
 from .uploaders import MultiUploader
@@ -515,14 +515,10 @@ class FocalPlaneFWHMPlotter:
 
 
 class FocusSweepAnalysis:
-    """The FocusSweepAnalysis, for automatically plotting focus sweep data.
+    """The FocusSweepAnalysis, for plotting focus sweep data.
 
-    Consumes a list of visit IDs from an OCS-pushed Redis list (the
-    wire contract is ``f"{instrument}-FROM-OCS_FOCUSSWEEP"``) and makes
-    a focus-sweep parabola plot for each. The ``podDetails`` argument
-    is used for identity, logging and operational monitoring; the OCS
-    queue name is computed from ``podDetails.instrument`` so the wire
-    contract lives here rather than in every launcher script.
+    Nothing triggers it at present; a trigger should call ``makePlot``
+    with the visit IDs that make up the sweep.
 
     Parameters
     ----------
@@ -533,7 +529,7 @@ class FocusSweepAnalysis:
     podDetails : `lsst.rubintv.production.podDefinition.PodDetails`
         The pod identity. Must have
         ``podFlavor=PodFlavor.FOCUS_SWEEP_ANALYZER``. Carries the
-        instrument name used to derive the OCS queue.
+        instrument name.
     metadataShardPath : `str`
         The path to write metadata shards to.
     """
@@ -550,10 +546,6 @@ class FocusSweepAnalysis:
         self.locationConfig = locationConfig
         self.podDetails = podDetails
         self.instrument: str = podDetails.instrument
-        # OCS-pushed queue: this is the wire contract with the OCS team.
-        # Centralised here rather than in each launcher script so a
-        # rename happens in one place.
-        self.queueName: str = f"{self.instrument}-FROM-OCS_FOCUSSWEEP"
         self.metadataShardPath = metadataShardPath
 
         self.camera = getCameraFromInstrumentName(self.instrument)
@@ -614,18 +606,6 @@ class FocusSweepAnalysis:
             seqNum=lastRecord.seq_num,
             filename=plotFile,
         )
-
-    def run(self) -> None:
-        """Start the event loop, listening for data and launching plotting."""
-        while True:
-            visitIdsBytes = self.redisHelper.redis.lpop(self.queueName)
-            if visitIdsBytes is not None:
-                # lpop reply type is over-broad; narrow to bytes.
-                visitIds = _extractExposureIds(cast(bytes, visitIdsBytes), self.instrument)
-                self.log.info(f"Making focus sweep plots for visitIds: {visitIds}")
-                self.makePlot(visitIds)
-            else:
-                sleep(0.5)
 
 
 class RadialPlotter:
