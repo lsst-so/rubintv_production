@@ -38,6 +38,7 @@ class PodFlavor(Enum):
     # all items must provide their type via an entry in podFlavorToPodType
     SFM_WORKER = auto()
     AOS_WORKER = auto()
+    AOS_BLITZ_WORKER = auto()
     PSF_PLOTTER = auto()
     FWHM_PLOTTER = auto()
     ZERNIKE_PREDICTED_FWHM_PLOTTER = auto()
@@ -74,6 +75,7 @@ def podFlavorToPodType(podFlavor: PodFlavor) -> PodType:
         PodFlavor.HEAD_NODE: PodType.PER_INSTRUMENT_SINGLETON,
         PodFlavor.SFM_WORKER: PodType.PER_DETECTOR,
         PodFlavor.AOS_WORKER: PodType.PER_DETECTOR,
+        PodFlavor.AOS_BLITZ_WORKER: PodType.PER_INSTRUMENT,  # each worker does all eight corner detectors
         PodFlavor.PSF_PLOTTER: PodType.PER_INSTRUMENT,
         PodFlavor.FWHM_PLOTTER: PodType.PER_INSTRUMENT,
         PodFlavor.ZERNIKE_PREDICTED_FWHM_PLOTTER: PodType.PER_INSTRUMENT,
