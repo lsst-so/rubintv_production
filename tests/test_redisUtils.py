@@ -245,6 +245,24 @@ class WorkerEnumerationTestCase(_RedisHelperTestBase):
         # the "all busy" fallback above.
         self.assertIsNone(self.helper.getSingleWorker("LSSTCam", PodFlavor.SFM_WORKER))
 
+    def test_getFixedWorkerIgnoresBusyness(self) -> None:
+        # getFixedWorker serialises work by sending all of it to one pod. If
+        # it ever preferred a free worker, as getSingleWorker does, work that
+        # must not overlap would be spread across pods again and run
+        # concurrently: for the calibration step1bs that is a
+        # ConflictingDefinitionError on their instrument-level outputs.
+        first = self._registerPod(PodFlavor.SFM_WORKER, 94, 0)
+        self._registerPod(PodFlavor.SFM_WORKER, 95, 0)
+        self.assertEqual(self.helper.getFixedWorker("LSSTCam", PodFlavor.SFM_WORKER), first)
+
+        self.helper.announceBusy(first)
+        self.assertEqual(self.helper.getFixedWorker("LSSTCam", PodFlavor.SFM_WORKER), first)
+
+    def test_getFixedWorkerReturnsNoneWhenNoWorkers(self) -> None:
+        # As for getSingleWorker, None means no pod of this flavor exists, so
+        # the caller logs and skips.
+        self.assertIsNone(self.helper.getFixedWorker("LSSTCam", PodFlavor.SFM_WORKER))
+
 
 class PayloadQueueTestCase(_RedisHelperTestBase):
     """enqueuePayload + getQueueLength.

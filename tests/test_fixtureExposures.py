@@ -41,6 +41,7 @@ from fixtureExposures import (
 import lsst.utils.tests
 from lsst.rubintv.production.formatters import makePlotFile
 from lsst.rubintv.production.locationConfig import LocationConfig
+from lsst.rubintv.production.processingControl import CALIBRATION_PIPELINE_LABELS
 
 
 class FixtureExposureTestCase(lsst.utils.tests.TestCase):
@@ -81,7 +82,7 @@ class FixtureExposureTestCase(lsst.utils.tests.TestCase):
 
     def test_calibExposuresMatchPipelines(self) -> None:
         # one fixture per calibration pipeline, and the CI feeds all of them
-        self.assertEqual(set(CALIB_EXPOSURES), {"BIAS", "DARK", "FLAT"})
+        self.assertEqual(set(CALIB_EXPOSURES), set(CALIBRATION_PIPELINE_LABELS))
         for pipelineName, exposure in CALIB_EXPOSURES.items():
             self.assertEqual(exposure.role, pipelineName.lower())
             self.assertIn(exposure, LSSTCAM_EXPOSURES)

@@ -36,7 +36,12 @@ from utils import getUserRunCollectionName, removeUserRunCollection
 
 import lsst.summit.utils.butlerUtils as butlerUtils
 from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
-from lsst.rubintv.production.processingControl import PIPELINE_NAMES, PipelineComponents, buildPipelines
+from lsst.rubintv.production.processingControl import (
+    CALIBRATION_PIPELINE_LABELS,
+    PIPELINE_NAMES,
+    PipelineComponents,
+    buildPipelines,
+)
 from lsst.summit.utils.utils import setupLogging
 
 # single-snap visits, so the visit ids are the exposure ids
@@ -210,16 +215,14 @@ def main() -> None:
         runCollection = getUserRunCollectionName(pipelineName)
         removeUserRunCollection(butler, pipelineName)
 
-        # hard coding for now because we can't use #isr for bias/dark/flat
-        # pipelines as they don't have these steps/labels, but we need #isr
-        # for the isr pipeline because that will drop the quanta otherwise
-        substep = "#isr" if pipelineName == "ISR" else ""  # TODO: remove hardcoding later
-        if pipelineName == "BIAS":
-            substep = "#verifyBiasIsr"
-        if pipelineName == "DARK":
-            substep = "#verifyDarkIsr"
-        if pipelineName == "FLAT":
-            substep = "#verifyFlatIsr"
+        # ISR is built from the SFM file, so needs #isr. The calib pipelines
+        # run all their step1a labels so the collections hold the step1b
+        # tests' inputs.
+        substep = "#isr" if pipelineName == "ISR" else ""
+        if pipelineName in CALIBRATION_PIPELINE_LABELS:
+            step1aLabels, _ = CALIBRATION_PIPELINE_LABELS[pipelineName]
+            substep = f"#{step1aLabels}"
+            assert pipelineName in CALIB_EXPOSURES, f"No fixture exposure defined for {pipelineName}"
 
         commands.extend(
             [

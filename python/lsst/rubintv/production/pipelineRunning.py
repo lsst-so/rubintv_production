@@ -64,7 +64,7 @@ from .consdbUtils import ConsDBPopulator
 from .payloads import Payload, pipelineGraphFromBytes
 from .plotting.mosaicing import writeBinnedImage
 from .podDefinition import PodFlavor
-from .predicates import raiseIf
+from .predicates import needsOutputClobbering, raiseIf
 from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
 from .shardIo import getShardPath, writeMetadataShard
@@ -629,11 +629,16 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             nCpus = int(os.getenv("LIMITS_CPU", 1))
             self.log.info(f"Using {nCpus} CPUs for {self.instrument} {self.step} {who}")
 
+            # Instrument-level tasks rewrite the same datasets for every
+            # exposure, so let the executor find and prune the previous
+            # outputs. Elsewhere outputs are unique per exposure, so skip the
+            # existence check, which makes clobber_outputs mostly inoperative.
+            assumeNoExistingOutputs = not needsOutputClobbering(pipelineGraph)
             executor = SingleQuantumExecutor(
                 butler=butlerToUse,
                 task_factory=TaskFactory(),
                 clobber_outputs=True,
-                assume_no_existing_outputs=True,  # this makes *this* clobber (above) mostly inoperative
+                assume_no_existing_outputs=assumeNoExistingOutputs,
                 raise_on_partial_outputs=False,
                 resources=ExecutionResources(num_cores=nCpus),
             )

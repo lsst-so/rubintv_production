@@ -114,6 +114,16 @@ Each detector is processed independently on its own worker pod.
 - Produces `post_isr_image`
 - Always runs first in any pipeline
 
+**Calibration verification (bias/dark/flat exposures only):**
+- cp_verify's ISR configuration (`verifyBiasIsr` etc., writing
+  `post_isr_image`) plus the per-detector verification task
+  (`verifyBiasDet` etc.), which measures per-amp statistics of the
+  residual calibration frame
+- Built from `pipelines/<instrument>/verify<Type>.yaml` in this package,
+  which wraps drp_pipe's `quickLook<Type>.yaml`; the label split between
+  step1a and step1b is `CALIBRATION_PIPELINE_LABELS` in
+  `processingControl.py`
+
 **SFM (Source Finding & Measurement):**
 - Source detection, astrometry, photometry
 - Produces `preliminary_visit_image` at end of step1a
@@ -146,13 +156,37 @@ Triggered by the head node when all expected detectors finish step1a.
 - Applies OFC Y2 correction per detector
 - Computes residual AOS FWHM prediction
 
+**Calibration Step1b (bias/dark/flat):**
+- Dispatched under `who="ISR"` to a regular `STEP1B_WORKER`, but on an
+  *exposure* dataId rather than a visit one, because calibs have no
+  visits and cp_verify's merge tasks use exposure dimensions. The head
+  node picks the BIAS/DARK/FLAT pipeline from the exposure's
+  `observation_type` (`getIsrStep1bPipelineKey()`); other ISR-only image
+  types (e.g. `unknown`) have no step1b.
+- `verifyBiasExp` etc. merge the per-detector cp_verify results for the
+  exposure, then `verifyBias` etc. (cp_verify's *run* merge) and the
+  analysis_tools `analyzeBiasCore` etc. run on top. Those last two have
+  instrument-only dimensions (instrument + filter for flats), so they
+  rewrite the same dataset for every exposure: the worker enables output
+  clobbering for any graph containing such tasks
+  (`predicates.needsOutputClobbering()`), and the previous exposure's
+  copy is pruned before each run. The head node sends every such step1b
+  to the same `STEP1B_WORKER` (`RedisHelper.getFixedWorker()`), busy or
+  not, so they run one at a time: a worker only finds the previous copy
+  if it was written before the worker built its graph, and two running
+  at once fail the second put with `ConflictingDefinitionError`.
+- `analyzeBiasCore`/`analyzeDarkCore` write a `MetricMeasurementBundle`
+  (per-amp medians across the focal plane). `analyzeFlatDetCore`
+  currently only produces plots.
+
 ### Pipeline Selection Logic
 
 The head node's `getPipelineConfig()` routes exposures:
 
 | Observation Type | Pipeline | Workers |
 |-----------------|----------|---------|
-| BIAS, DARK, FLAT | ISR-only | SFM_WORKER |
+| BIAS, DARK, FLAT | cp_verify `verify<Type>`: step1a ISR + per-detector verify, step1b exposure merge + metrics | SFM_WORKER, then STEP1B_WORKER |
+| UNKNOWN | ISR-only | SFM_WORKER |
 | CWFS (LSSTCam, FAM) | AOS FAM | SFM_WORKER |
 | CWFS (LATISS) | ISR-only | SFM_WORKER |
 | Science images | SFM | SFM_WORKER + AOS_WORKER (corner chips) |
@@ -188,7 +222,10 @@ pipeline is sent to the detector-0 `AOS_WORKER`, covering both exposures.
    exposure in the active set when the last step1a completes
 8. **Check gather readiness** - `dispatchGatherSteps()` for SFM, AOS,
    ISR: compares finished detector count vs expected; dispatches step1b
-   when ready. `dispatchGatherSteps("ISR")` also fans out downstream
+   when ready. For ISR the step1b dispatched is the calibration
+   pipeline's (bias/dark/flat, chosen from the exposure's
+   `observation_type`, on an exposure dataId); other ISR-only images have
+   none. `dispatchGatherSteps("ISR")` also fans out downstream
    one-off/plotter work from within itself
 9. **Repattern** - LSSTCam only, apply the focal plane detector pattern if
    configured (runs after fanout so commands apply to the next image)
@@ -388,7 +425,9 @@ This does `HSET` on the tracking hash, writing a single field
 **Triggering step1b:**
 When an exposure is complete:
 1. Create a visit-level `Payload` with the step1b pipeline graph
-2. Enqueue to `STEP1B_WORKER` (SFM) or `STEP1B_AOS_WORKER` (AOS)
+2. Enqueue to `STEP1B_WORKER` (SFM, ISR) or `STEP1B_AOS_WORKER` (AOS):
+   a free one, except for step1b graphs that rewrite instrument-level
+   datasets, which all go to one fixed worker (see "Calibration Step1b")
 3. Mark dispatched: `markStep1aDispatched()` + `markStep1bDispatched()`
 4. If all whos are dispatched: `completeExposure()` (SREM from active set)
 5. Dispatch downstream one-off workers (postISR mosaic, visit image, etc.)

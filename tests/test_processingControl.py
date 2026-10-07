@@ -23,26 +23,32 @@
 
 import logging
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import fakeredis
 
 import lsst.utils.tests
-from lsst.daf.butler import Butler
+from lsst.daf.butler import Butler, DimensionUniverse
+from lsst.pipe.base import Pipeline
 from lsst.rubintv.production import redisUtils as redisUtilsModule
 from lsst.rubintv.production.locationConfig import LocationConfig
+from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
 from lsst.rubintv.production.processingControl import (
+    CALIBRATION_PIPELINE_LABELS,
     LATISS_PIPELINE_NAMES,
     PIPELINE_NAMES,
     CameraControlConfig,
     HeadProcessController,
     VisitProcessingMode,
     WorkerProcessingMode,
+    getIsrStep1bPipelineKey,
 )
 from lsst.rubintv.production.redisKeys import getControlReadbackKey
 from lsst.rubintv.production.redisUtils import RedisHelper
+from lsst.utils import getPackageDir
 
 
 def _makeFakeRedis(*args: object, **kwargs: object) -> fakeredis.FakeStrictRedis:
@@ -492,6 +498,150 @@ class IsBetweenFamPairTestCase(lsst.utils.tests.TestCase):
         # must give False, never raise
         record = SimpleNamespace(observation_type="cwfs", observation_reason=None)
         self.assertFalse(self._check(record))
+
+
+class CalibrationPipelinesTestCase(lsst.utils.tests.TestCase):
+    """Tests for the calibration pipeline table and the ISR step1b routing.
+
+    These pin the contract between ``CALIBRATION_PIPELINE_LABELS``, the
+    pipeline yaml files shipped in this package, and the head node's choice
+    of which step1b to run for an ISR-only exposure, plus the task configs
+    the calib pipelines end up with. Building their quantum graphs needs a
+    Butler and is covered by ``test_pipelines.py``.
+    """
+
+    def test_calibPipelinesAreKnownPipelines(self) -> None:
+        for pipelineKey in CALIBRATION_PIPELINE_LABELS:
+            self.assertIn(pipelineKey, PIPELINE_NAMES)
+
+    def test_pipelineFilesExistForEveryInstrument(self) -> None:
+        # buildPipelines builds all three calib pipelines for every instrument
+        # a head node runs for, so a missing file stops a head node booting
+        pipelineDir = Path(getPackageDir("rubintv_production")) / "pipelines"
+        for instrument in ("LSSTCam", "LATISS"):
+            for pipelineKey in CALIBRATION_PIPELINE_LABELS:
+                pipelineFile = pipelineDir / instrument / f"verify{pipelineKey.capitalize()}.yaml"
+                self.assertTrue(pipelineFile.is_file(), f"Missing {pipelineFile}")
+
+    def test_stepLabels(self) -> None:
+        for pipelineKey, (step1aLabels, step1bLabels) in CALIBRATION_PIPELINE_LABELS.items():
+            calibType = pipelineKey.capitalize()  # e.g. Bias
+            # step1a is per detector: cp_verify's ISR and per-detector verify
+            self.assertEqual(step1aLabels.split(","), [f"verify{calibType}Isr", f"verify{calibType}Det"])
+            # step1b is per exposure: the exposure merge, the run merge, then
+            # the analysis_tools task that makes the metric bundle
+            step1b = step1bLabels.split(",")
+            self.assertEqual(step1b[:2], [f"verify{calibType}Exp", f"verify{calibType}"])
+            self.assertEqual(len(step1b), 3)
+            self.assertTrue(step1b[2].startswith("analyze"), step1b[2])
+
+    def test_isrAppliesTheCalibBeingVerified(self) -> None:
+        # cp_verify's per-detector verify tasks read the distribution
+        # statistics of the calib they verify, which ISR only copies for calibs
+        # it applies (and the verification is meaningless without it anyway).
+        # drp_pipe's LSSTCam quickLookFlat.yaml turned flat-fielding off for a
+        # while (drp_pipe 76a2dd7), which failed every LSSTCam flat in
+        # verifyFlatDet with KeyError: 'LSST CALIB FLAT C10 DISTRIBUTION
+        # 0.0-PCT', and only at run time, on data. This fails if the drp_pipe
+        # that is set up (see drp_pipe_ref in the Dockerfile) does that again.
+        pipelineDir = Path(getPackageDir("rubintv_production")) / "pipelines"
+        for instrument in ("LSSTCam", "LATISS"):
+            for pipelineKey in CALIBRATION_PIPELINE_LABELS:
+                calibType = pipelineKey.capitalize()
+                isrLabel = f"verify{calibType}Isr"
+                pipelineFile = pipelineDir / instrument / f"verify{calibType}.yaml"
+                with self.subTest(instrument=instrument, calibType=calibType):
+                    graph = Pipeline.from_uri(f"{pipelineFile}#{isrLabel}").to_graph()
+                    self.assertTrue(getattr(graph.tasks[isrLabel].config, f"do{calibType}"))
+
+    def test_getIsrStep1bPipelineKey(self) -> None:
+        self.assertEqual(getIsrStep1bPipelineKey("bias"), "BIAS")
+        self.assertEqual(getIsrStep1bPipelineKey("DARK"), "DARK")  # case-insensitive
+        self.assertEqual(getIsrStep1bPipelineKey("flat"), "FLAT")
+        # everything else that ends up on the ISR path has no step1b
+        for observationType in ("unknown", "science", "cwfs", "engtest", ""):
+            self.assertEqual(getIsrStep1bPipelineKey(observationType), "ISR", observationType)
+
+
+class Step1bWorkerChoiceTestCase(lsst.utils.tests.TestCase):
+    """`HeadProcessController.dispatchGatherSteps`'s choice of step1b worker.
+
+    A step1b graph with instrument-level tasks (the calibration step1bs, with
+    cp_verify's run merges and the analysis_tools metrics) rewrites the same
+    datasets for every exposure. A worker only prunes the previous
+    exposure's copy if it was there when the worker built its graph, so two
+    such step1bs running at once on different workers fail the second put
+    with ConflictingDefinitionError, as happened on BTS for a run of darks.
+    These pin that those step1bs all go to the same worker, busy or not,
+    while per-exposure ones still go to a free worker.
+
+    As in `RestoreAosPipelinesTestCase`, the method runs against a duck-typed
+    ``self`` backed by a real `RedisHelper` over fakeredis.
+    """
+
+    EXP_IDS = (2026070200201, 2026070200202)
+
+    def setUp(self) -> None:
+        self._patcher = patch.object(redisUtilsModule.redis, "Redis", side_effect=_makeFakeRedis)
+        self._patcher.start()
+        self.helper = RedisHelper(
+            butler=cast(Butler, None),
+            locationConfig=cast(LocationConfig, None),
+            isHeadNode=True,
+        )
+        self.workers = [
+            PodDetails(
+                instrument="LSSTCam", podFlavor=PodFlavor.STEP1B_WORKER, detectorNumber=None, depth=depth
+            )
+            for depth in (0, 1)
+        ]
+        for worker in self.workers:
+            self.helper.announceExistence(worker)
+        # The first worker is still running the step1b of an earlier dark.
+        self.helper.announceBusy(self.workers[0])
+
+        for expId in self.EXP_IDS:
+            self.helper.initExposureTracking("LSSTCam", expId)
+            self.helper.setExpectedDetectors("LSSTCam", expId, [0, 1], "ISR")
+            for detector in (0, 1):
+                self.helper.reportDetectorFinished("LSSTCam", expId, who="ISR", detector=detector)
+
+    def tearDown(self) -> None:
+        self._patcher.stop()
+
+    def _dispatch(self, step1bDimensions: set[str]) -> list[int]:
+        """Run the ISR gather for darks whose step1b graph has a single task
+        with the given dimensions, and return each worker's queue length.
+        """
+        step1bGraph = SimpleNamespace(tasks={"step1bTask": SimpleNamespace(raw_dimensions=step1bDimensions)})
+        butler = MagicMock()
+        butler.dimensions = DimensionUniverse()
+        butler.registry.queryDimensionRecords.side_effect = lambda element, exposure: [
+            SimpleNamespace(id=exposure, observation_type="dark")
+        ]
+        controller = SimpleNamespace(
+            instrument="LSSTCam",
+            redisHelper=self.helper,
+            log=logging.getLogger("test.step1bWorkerChoice"),
+            butler=butler,
+            pipelines={"DARK": SimpleNamespace(graphs={"step1b": step1bGraph}, graphBytes={"step1b": b""})},
+            outputRun="LSSTCam/runs/quickLook/1",
+            dispatchOneOffProcessing=MagicMock(),
+        )
+        self.assertTrue(
+            HeadProcessController.dispatchGatherSteps(cast(HeadProcessController, controller), "ISR")
+        )
+        return [int(self.helper.redis.llen(worker.queueName)) for worker in self.workers]
+
+    def test_instrumentLevelStep1bsShareOneWorker(self) -> None:
+        # The regression: these went to whichever worker was free, so the
+        # second dark's step1b ran alongside the first's on another pod.
+        self.assertEqual(self._dispatch({"instrument"}), [2, 0])
+
+    def test_perExposureStep1bsGoToAFreeWorker(self) -> None:
+        # Serialising is only for graphs that need it: everything else must
+        # not queue behind a busy worker while another sits idle.
+        self.assertEqual(self._dispatch({"instrument", "exposure"}), [0, 2])
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

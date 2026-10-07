@@ -182,6 +182,18 @@ Full pipeline execution:
   `FixtureExposure` objects in `tests/fixtureExposures.py` (which derive
   dayObs and seqNum from the exposure id), never from hard-coded numbers
 
+**Result checks** (all must pass): every script exits cleanly, the expected
+plots exist, the Redis step1b counters match, no `FAILED` keys, and
+`check_calib_step1b_datasets()` finds every step1b output of each
+calibration exposure's pipeline in the CI output run (the dataset types are
+read off the pipeline graphs). It also fails outright if the fed exposures
+do not include a bias, a dark and a flat, so all three calibration
+pipelines are always exercised, and warns if a pipeline writes no
+`MetricMeasurementBundle` (currently true of flats, see DM-52068).
+The dataset check exists because a step1b whose inputs never landed
+builds an empty quantum graph and "finishes" with nothing written, which
+no other check can see.
+
 **Phase 3: Round 2** (200 s timeout)
 Post-processing and visualization:
 - Plotting scripts (PSF, FWHM, Zernike, radial)
@@ -235,6 +247,17 @@ Features:
 - Creates collections for: FAM, AOS, SFM, calibration pipelines (LSSTCam),
   plus `AOS_LATISS` (the LATISS WEP monolith, run on the CWFS pair
   2026062500012+13)
+- The calibration pipelines are run with both their step1a labels (cp_verify
+  ISR plus the per-detector verify task) so that the collections hold the
+  inputs the calib step1b tests (`testCalibPipelinesStep1b`) build their
+  graphs from; the fixture exposures are `CALIB_EXPOSURES` in
+  `tests/fixtureExposures.py`, shared with `test_pipelines.py` and the CI
+- The step1b tests pin their input collections to the pipeline's own test
+  collection and first check it holds the step1a products the step1b
+  consumes, failing with a "rebuild the collections" message rather than an
+  empty graph if it doesn't. Without that a stale collection shows up as a
+  bare `0 != 1` quanta count, and a test could pass by finding outputs the CI
+  happened to leave in the output chain instead
 - Used to create the underlying collections for `test_pipelines.py` unit tests
 - Only needs to be rerun when outputs change
 
