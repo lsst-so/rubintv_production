@@ -24,6 +24,14 @@ import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from fixtureExposures import (
+    CALIB_EXPOSURES,
+    LATISS_CWFS_EXTRA,
+    LATISS_CWFS_INTRA,
+    LSSTCAM_FAM_EXTRA,
+    LSSTCAM_FAM_INTRA,
+    LSSTCAM_IN_FOCUS,
+)
 from utils import getUserRunCollectionName, removeUserRunCollection
 
 import lsst.summit.utils.butlerUtils as butlerUtils
@@ -31,12 +39,11 @@ from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
 from lsst.rubintv.production.processingControl import PIPELINE_NAMES, PipelineComponents, buildPipelines
 from lsst.summit.utils.utils import setupLogging
 
-FAM_VISIT_QUERY = "visit in (2025111500227,2025111500228)"
-SFM_VISIT_QUERY = "visit in (2025111500226)"
-# calib frames don't get visit records defined, so query on exposure
-CALIB_EXPOSURE_QUERY = "exposure in (2025111500436)"
+# single-snap visits, so the visit ids are the exposure ids
+FAM_VISIT_QUERY = f"visit in ({LSSTCAM_FAM_INTRA.id},{LSSTCAM_FAM_EXTRA.id})"
+SFM_VISIT_QUERY = f"visit in ({LSSTCAM_IN_FOCUS.id})"
 # a LATISS CWFS intra/extra pair, for the AOS_LATISS (WEP monolith) pipeline
-LATISS_AOS_EXPOSURE_QUERY = "exposure in (2026062500012, 2026062500013)"
+LATISS_AOS_EXPOSURE_QUERY = f"exposure in ({LATISS_CWFS_INTRA.id}, {LATISS_CWFS_EXTRA.id})"
 
 INTRA_IDS = (192, 196, 200, 204)
 EXTRA_IDS = (191, 195, 199, 203)
@@ -153,9 +160,9 @@ def getDataQueryForPipeline(pipeline: PipelineComponents, pipelineName: str) -> 
     query = ""
 
     detectors: tuple[int, ...] = ()
-    if pipelineName in ("BIAS", "DARK", "FLAT"):  # calibs get the calib frame on the full focal plane
+    if pipelineName in CALIB_EXPOSURES:  # calibs get the calib frame on the full focal plane
         detectors = ALL_DETECTOR_IDS
-        query += CALIB_EXPOSURE_QUERY
+        query += f"exposure in ({CALIB_EXPOSURES[pipelineName].id})"  # calibs have no visit records
     elif pipeline.isFullArrayMode:  # FAM gets science detectors and FAM images
         detectors = SFM_DETECTORS
         query += FAM_VISIT_QUERY

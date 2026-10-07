@@ -35,6 +35,20 @@ CliLog.initLog = do_nothing  # type: ignore
 # Import test utilities
 from ciutils import Check, TestScript, conditional_redirect  # type: ignore # noqa: E402
 
+# for fixtureExposures, shared with the unit tests; exec'd scripts inherit it
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from fixtureExposures import (  # noqa: E402
+    LATISS_CWFS_EXTRA,
+    LATISS_CWFS_INTRA,
+    LATISS_ON_SKY,
+    LSSTCAM_BIAS,
+    LSSTCAM_DARK,
+    LSSTCAM_FAM_EXTRA,
+    LSSTCAM_FAM_INTRA,
+    LSSTCAM_FLAT,
+    LSSTCAM_IN_FOCUS,
+)
+
 # Only import from lsst packages after logging is configured
 from lsst.daf.butler import Butler  # noqa: E402
 from lsst.rubintv.production.locationConfig import LocationConfig, findMissingConfigKeys  # noqa: E402
@@ -576,9 +590,10 @@ class RedisManager:
         """Check LSSTCam data in Redis."""
         inst = "LSSTCam"
 
-        visits_sfm: list[int] = [2025111500226]
-        visits_aos: list[int] = [2025111500226, 2025111500227, 2025111500228]
-        visits_fam: list[int] = [2025111500227, 2025111500228]
+        # single-snap visits, so the visit ids are the exposure ids
+        visits_sfm: list[int] = [LSSTCAM_IN_FOCUS.id]
+        visits_aos: list[int] = [LSSTCAM_IN_FOCUS.id, LSSTCAM_FAM_INTRA.id, LSSTCAM_FAM_EXTRA.id]
+        visits_fam: list[int] = [LSSTCAM_FAM_INTRA.id, LSSTCAM_FAM_EXTRA.id]
 
         n_visits_sfm = len(visits_sfm)
         n_visits_aos = len(visits_aos)
@@ -607,31 +622,31 @@ class RedisManager:
         # check zernike announcement for MTAOS
         # TODO: will need to double this for unpaired pipelines
         expectedNonFam = 8
-        gotNonFam = redisHelper.getMTAOSZernikeCount("LSSTCam", 2025111500226)
+        nonFamVisit = LSSTCAM_IN_FOCUS.id
+        gotNonFam = redisHelper.getMTAOSZernikeCount(inst, nonFamVisit)
         if gotNonFam == expectedNonFam:
             checks.append(
-                Check(True, f"MTAOS Zernike count for non-FAM image 2025111500226 is {expectedNonFam}")
+                Check(True, f"MTAOS Zernike count for non-FAM image {nonFamVisit} is {expectedNonFam}")
             )
         else:
             checks.append(
                 Check(
                     False,
-                    f"MTAOS Zernike count for non-FAM image 2025111500226: expected {expectedNonFam}, "
+                    f"MTAOS Zernike count for non-FAM image {nonFamVisit}: expected {expectedNonFam}, "
                     f"got {gotNonFam}",
                 )
             )
 
         expectedFam = 18
         for visit in visits_fam:
-            gotFam = redisHelper.getMTAOSZernikeCount("LSSTCam", visit)
+            gotFam = redisHelper.getMTAOSZernikeCount(inst, visit)
             if gotFam == expectedFam:
                 checks.append(Check(True, f"MTAOS Zernike count for FAM image {visit} is {expectedFam}"))
             else:
                 checks.append(
                     Check(
                         False,
-                        f"MTAOS Zernike count for FAM image 2025111500227: expected {expectedFam}, "
-                        f"got {gotFam}",
+                        f"MTAOS Zernike count for FAM image {visit}: expected {expectedFam}, got {gotFam}",
                     )
                 )
 
@@ -639,7 +654,7 @@ class RedisManager:
         """Check LATISS data in Redis."""
         inst = "LATISS"
 
-        visits_sfm = [2024081300632]
+        visits_sfm = [LATISS_ON_SKY.id]  # a single-snap visit, so the visit id is the exposure id
         n_visits_sfm = len(visits_sfm)
 
         n_step1b_sfm = redisHelper.getNumVisitLevelFinished(inst, "step1b", "SFM")
@@ -655,7 +670,7 @@ class RedisManager:
 
         # The CWFS pair's single AOS payload is tracked against the
         # extra-focal image's exposure ID
-        cwfsExtraExpId = 2026062500013
+        cwfsExtraExpId = LATISS_CWFS_EXTRA.id
         info = redisHelper.getExposureProcessingInfo(inst, cwfsExtraExpId)
         if info is None:
             checks.append(Check(False, f"No exposure tracking info found for {inst} {cwfsExtraExpId}"))
@@ -686,7 +701,7 @@ class RedisManager:
             instrument="LATISS",
             collections=[locationConfig.getOutputChain("LATISS")],
         )
-        dataId = {"instrument": "LATISS", "visit": 2026062500013, "detector": 0}
+        dataId = {"instrument": "LATISS", "visit": LATISS_CWFS_EXTRA.id, "detector": 0}
         for datasetType in ("zernikes", "donutStampsExtra", "donutStampsIntra"):
             try:
                 ref = butler.find_dataset(datasetType, dataId)
@@ -1222,89 +1237,66 @@ class ResultCollector:
         """Check that expected plots were generated."""
         locationConfig = LocationConfig("usdf_testing")
 
-        expected = [  # (path, size) tuples where path is relative to locationConfig.plotPath
-            # Regular LSSTCam plots -------
-            # event timelines for all images
-            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000227.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000228.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000226.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_event_timeline_dayObs_20251115_seqNum_000436.png", 5000),
-            # post ISR mosaics for all images
-            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000227.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000228.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000226.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_focal_plane_mosaic_dayObs_20251115_seqNum_000436.jpg", 5000),
-            # witness detector images for all with postISR that aren't CWFS
-            ("LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000226.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_witness_detector_dayObs_20251115_seqNum_000436.jpg", 5000),
-            # calexp mosaic for the only in-focus image
-            ("LSSTCam/20251115/LSSTCam_calexp_mosaic_dayObs_20251115_seqNum_000226.jpg", 5000),
-            # mount plots for the three on-sky images
-            ("LSSTCam/20251115/LSSTCam_mount_dayObs_20251115_seqNum_000227.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_mount_dayObs_20251115_seqNum_000228.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_mount_dayObs_20251115_seqNum_000226.png", 5000),
-            # all the other plots for the on-sky image: fwhm, imexam
-            # TODO: DM-51391 add psfAzEl plot
-            ("LSSTCam/20251115/LSSTCam_fwhm_focal_plane_dayObs_20251115_seqNum_000226.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_imexam_dayObs_20251115_seqNum_000226.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_psf_shape_azel_dayObs_20251115_seqNum_000226.png", 5000),
-            # AOS plots -------
-            # FAM donut galleries
-            ("LSSTCam/20251115/LSSTCam_fp_donut_gallery_dayObs_20251115_seqNum_000227.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_fp_donut_gallery_dayObs_20251115_seqNum_000228.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_fp_donut_gallery_dayObs_20251115_seqNum_000226.png", 5000),
-            # Extrafocal id for FAM plot
-            ("LSSTCam/20251115/LSSTCam_zk_measurement_pyramid_dayObs_20251115_seqNum_000228.png", 5000),
-            # CWFS plot
-            ("LSSTCam/20251115/LSSTCam_zk_measurement_pyramid_dayObs_20251115_seqNum_000226.png", 5000),
-            # Extrafocal id for FAM plot
-            ("LSSTCam/20251115/LSSTCam_zk_residual_pyramid_dayObs_20251115_seqNum_000228.png", 5000),
-            # CWFS plot
-            ("LSSTCam/20251115/LSSTCam_zk_residual_pyramid_dayObs_20251115_seqNum_000226.png", 5000),
-            # PSF zernike panels FAM extra-focal and regular image
-            ("LSSTCam/20251115/LSSTCam_psf_zk_panel_dayObs_20251115_seqNum_000228.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_psf_zk_panel_dayObs_20251115_seqNum_000226.png", 5000),
-            # Donut pairing plot for regular image
-            ("LSSTCam/20251115/LSSTCam_fp_pairing_plot_dayObs_20251115_seqNum_000226.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_donut_fits_dayObs_20251115_seqNum_000226.png", 5000),
-            # Zernike and DOF FWHM prediction plots
-            ("LSSTCam/20251115/LSSTCam_zernike_predicted_fwhm_dayObs_20251115_seqNum_000226.png", 5000),
-            ("LSSTCam/20251115/LSSTCam_dof_predicted_fwhm_dayObs_20251115_seqNum_000226.png", 5000),
-            # Guider plots and movies
-            ("LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000226.mp4", 200_000),
-            ("LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000227.mp4", 200_000),
-            ("LSSTCam/20251115/LSSTCam_full_movie_dayObs_20251115_seqNum_000228.mp4", 200_000),
-            ("LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000226.mp4", 100_000),
-            ("LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000227.mp4", 100_000),
-            ("LSSTCam/20251115/LSSTCam_star_movie_dayObs_20251115_seqNum_000228.mp4", 100_000),
-            ("LSSTCam/20251115/LSSTCam_centroid_alt_az_dayObs_20251115_seqNum_000226.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_flux_trend_dayObs_20251115_seqNum_000226.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_psf_trend_dayObs_20251115_seqNum_000226.jpg", 5000),
-            # Performance analysis plots for all detectors
-            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000226.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000227.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000228.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_timing_diagram_dayObs_20251115_seqNum_000436.jpg", 5000),
-            # AOS performance plots
-            ("LSSTCam/20251115/LSSTCam_aos_timing_dayObs_20251115_seqNum_000226.jpg", 5000),
-            ("LSSTCam/20251115/LSSTCam_aos_timing_dayObs_20251115_seqNum_000228.jpg", 5000),
-            # LATISS plots -------
-            ("LATISS/20240813/LATISS_mount_dayObs_20240813_seqNum_000632.png", 5000),
-            ("LATISS/20240813/LATISS_monitor_dayObs_20240813_seqNum_000632.jpg", 5000),
-            ("LATISS/20240813/LATISS_imexam_dayObs_20240813_seqNum_000632.png", 5000),
-            ("LATISS/20240813/LATISS_specexam_dayObs_20240813_seqNum_000632.png", 5000),
-            # the CWFS pair gets per-exposure ISR, so monitor/imexam/mount
-            # plots for both images, but no specexam as they're not spectra
-            ("LATISS/20260625/LATISS_mount_dayObs_20260625_seqNum_000012.png", 5000),
-            ("LATISS/20260625/LATISS_mount_dayObs_20260625_seqNum_000013.png", 5000),
-            ("LATISS/20260625/LATISS_monitor_dayObs_20260625_seqNum_000012.jpg", 5000),
-            ("LATISS/20260625/LATISS_monitor_dayObs_20260625_seqNum_000013.jpg", 5000),
-            ("LATISS/20260625/LATISS_imexam_dayObs_20260625_seqNum_000012.png", 5000),
-            ("LATISS/20260625/LATISS_imexam_dayObs_20260625_seqNum_000013.png", 5000),
-        ]
+        # (path relative to locationConfig.plotPath, minimum size in bytes)
+        inFocus, intra, extra = LSSTCAM_IN_FOCUS, LSSTCAM_FAM_INTRA, LSSTCAM_FAM_EXTRA
+        onSky = (inFocus, intra, extra)
+        calibs = (LSSTCAM_BIAS, LSSTCAM_DARK, LSSTCAM_FLAT)
+        plotSize = 5000
+        expected: list[tuple[str, int]] = []
+
+        # Regular LSSTCam plots -------
+        for exposure in (*onSky, *calibs):  # every image gets these
+            expected.append((exposure.getPlotPath("event_timeline", "png"), plotSize))
+            expected.append((exposure.getPlotPath("focal_plane_mosaic", "jpg"), plotSize))  # post ISR mosaic
+            expected.append((exposure.getPlotPath("timing_diagram", "jpg"), plotSize))  # performance analysis
+        for exposure in (inFocus, *calibs):  # witness detector images for all with postISR that aren't CWFS
+            expected.append((exposure.getPlotPath("witness_detector", "jpg"), plotSize))
+        for exposure in onSky:  # mount plots, donut galleries and guider movies for the on-sky images
+            expected.append((exposure.getPlotPath("mount", "png"), plotSize))
+            expected.append((exposure.getPlotPath("fp_donut_gallery", "png"), plotSize))
+            expected.append((exposure.getPlotPath("full_movie", "mp4"), 200_000))
+            expected.append((exposure.getPlotPath("star_movie", "mp4"), 100_000))
+        # plots only the in-focus image gets. TODO: DM-51391 add psfAzEl plot
+        for plotName, extension in (
+            ("calexp_mosaic", "jpg"),
+            ("fwhm_focal_plane", "png"),
+            ("imexam", "png"),
+            ("psf_shape_azel", "png"),
+            ("fp_pairing_plot", "png"),
+            ("donut_fits", "png"),
+            ("zernike_predicted_fwhm", "png"),
+            ("dof_predicted_fwhm", "png"),
+            ("centroid_alt_az", "jpg"),
+            ("flux_trend", "jpg"),
+            ("psf_trend", "jpg"),
+        ):
+            expected.append((inFocus.getPlotPath(plotName, extension), plotSize))
+
+        # AOS plots -------
+        # these land on the FAM pair's extra-focal id and on the in-focus image
+        for exposure in (extra, inFocus):
+            expected.append((exposure.getPlotPath("zk_measurement_pyramid", "png"), plotSize))
+            expected.append((exposure.getPlotPath("zk_residual_pyramid", "png"), plotSize))
+            expected.append((exposure.getPlotPath("psf_zk_panel", "png"), plotSize))
+            expected.append((exposure.getPlotPath("aos_timing", "jpg"), plotSize))
+
+        # LATISS plots -------
+        for plotName, extension in (
+            ("mount", "png"),
+            ("monitor", "jpg"),
+            ("imexam", "png"),
+            ("specexam", "png"),
+        ):
+            expected.append((LATISS_ON_SKY.getPlotPath(plotName, extension), plotSize))
+        # the CWFS pair gets per-exposure ISR, so monitor/imexam/mount plots
+        # for both images, but no specexam as they're not spectra
+        for exposure in (LATISS_CWFS_INTRA, LATISS_CWFS_EXTRA):
+            for plotName, extension in (("mount", "png"), ("monitor", "jpg"), ("imexam", "png")):
+                expected.append((exposure.getPlotPath(plotName, extension), plotSize))
 
         # Create a set of the expected plot paths for comparison
         expectedPlotPaths = {file for file, _ in expected}
+        assert len(expectedPlotPaths) == len(expected), "duplicate expected plots; check the loops above"
 
         destinationDir = Path("~/public_html/ra_ci_automated_output/").expanduser()
         if config.copy_plots_to_public_html:

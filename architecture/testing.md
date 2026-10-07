@@ -171,8 +171,16 @@ Full pipeline execution:
   plus the dedicated LATISS AOS worker (detector 0) for the WEP
   monolith pair processing
 - 18 SFM detectors for LSSTCam (90-98, 144-152)
-- Real Butler queries against test data (dayObs=20251115)
-- Test exposures: 226 (SFM), 227+228 (FAM CWFS pair), 436 (bias)
+- Real Butler queries against test data
+- Test exposures, defined once in `tests/fixtureExposures.py` (shared with
+  the unit tests) as full exposure ids, so nothing assumes they share a
+  night: LSSTCam 2025111500226 (SFM), 2025111500227+228 (FAM CWFS pair),
+  2026070200203 (bias), 2026070200201 (dark), 2026070200192 (flat). The
+  calibs are deliberately from a much newer night than the on-sky images,
+  because older raw headers lack information cp_verify needs
+- Every expected plot path, visit id and query is built from the
+  `FixtureExposure` objects in `tests/fixtureExposures.py` (which derive
+  dayObs and seqNum from the exposure id), never from hard-coded numbers
 
 **Phase 3: Round 2** (200 s timeout)
 Post-processing and visualization:
@@ -186,17 +194,17 @@ Post-processing and visualization:
 1. Initializes Butler and RedisHelper
 2. Waits for SFM workers and head node to come online
 3. Pushes exposures to Redis with specific ordering and delays:
-   - 227 first (intra-focal, must arrive before 228)
-   - Then 436 (bias), 226 (SFM), 228 (extra-focal)
+   - The intra-focal FAM image first (it must arrive before the extra-focal)
+   - Then the bias, dark and flat, the in-focus SFM image, and the
+     extra-focal FAM image
    - 2 s delays between pushes
 4. Also tests LATISS:
-   - exposure 20240813/632 (on-sky science, exercises SFM)
-   - exposures 20260625/12+13 (a CWFS intra/extra pair, pushed intra
-     first; the extra-focal image landing triggers the `AOS_LATISS`
-     WEP monolith processing of the pair). The final checks assert the
-     AOS detector finished in the tracking hash and that `zernikes`,
-     `donutStampsExtra` and `donutStampsIntra` landed in the butler for
-     the extra-focal visit
+   - its on-sky fixture exposure (2024081300632, exercises SFM)
+   - its CWFS intra/extra pair (2026062500012+13, pushed intra first; the
+     extra-focal image landing triggers the `AOS_LATISS` WEP monolith
+     processing of the pair). The final checks assert the AOS detector
+     finished in the tracking hash and that `zernikes`, `donutStampsExtra`
+     and `donutStampsIntra` landed in the butler for the extra-focal visit
 
 ### Redis in CI
 
@@ -226,7 +234,7 @@ Features:
 - Runs pipelines in parallel via `ThreadPoolExecutor`
 - Creates collections for: FAM, AOS, SFM, calibration pipelines (LSSTCam),
   plus `AOS_LATISS` (the LATISS WEP monolith, run on the CWFS pair
-  20260625/12+13)
+  2026062500012+13)
 - Used to create the underlying collections for `test_pipelines.py` unit tests
 - Only needs to be rerun when outputs change
 

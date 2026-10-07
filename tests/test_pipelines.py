@@ -28,6 +28,15 @@ import unittest
 from contextlib import contextmanager
 from typing import Iterator
 
+from fixtureExposures import (
+    CALIB_EXPOSURES,
+    LATISS_CWFS_EXTRA,
+    LATISS_CWFS_INTRA,
+    LATISS_ON_SKY,
+    LSSTCAM_FAM_EXTRA,
+    LSSTCAM_FAM_INTRA,
+    LSSTCAM_IN_FOCUS,
+)
 from utils import getUserRunCollectionName
 
 import lsst.utils.tests
@@ -174,15 +183,22 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         cls.minimalButler = cls._makeMinimalButler()
         cls.graphs, cls.pipelines = buildPipelines("LSSTCam", cls.locationConfig, cls.minimalButler)
 
-        where = "exposure.day_obs=20251115 AND exposure.seq_num in (226..228,436) AND instrument='LSSTCam'"
+        onSkyIds = {
+            "inFocus": LSSTCAM_IN_FOCUS.id,
+            "intra": LSSTCAM_FAM_INTRA.id,
+            "extra": LSSTCAM_FAM_EXTRA.id,
+        }
+        calibIds = {pipelineName.lower(): exposure.id for pipelineName, exposure in CALIB_EXPOSURES.items()}
+        fixtureIds = sorted(set(onSkyIds.values()) | set(calibIds.values()))
+        where = f"exposure in ({','.join(str(i) for i in fixtureIds)}) AND instrument='LSSTCam'"
         records = cls.minimalButler.query_dimension_records("exposure", where=where)
-        assert len(records) == 4, f"Expected 4 fixture exposure records, got {len(records)}"
-        rd = {r.seq_num: r for r in records}
-        cls.records = {}
-        cls.records["inFocus"] = rd[226]
-        cls.records["intra"] = rd[227]
-        cls.records["extra"] = rd[228]
-        cls.records["dark"] = rd[436]
+        assert len(records) == len(
+            fixtureIds
+        ), f"Expected {len(fixtureIds)} fixture records, got {len(records)}"
+        rd = {r.id: r for r in records}
+        # keyed by what the record is used as: "inFocus", "intra", "extra"
+        # and the calib pipeline each calib fixture belongs to ("bias" etc.)
+        cls.records = {imageType: rd[expId] for imageType, expId in (onSkyIds | calibIds).items()}
         cls.intraDetector = 192
         cls.extraDetector = 191
         cls.scienceDetector = 94
@@ -229,13 +245,13 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         # calib pipelines run the verify<product>Isr tasks but the quanta that
         # they actually execute are isr quanta, so check they exist with the
         # right names, but check the quanta counts under 'isr'
-        for pipelineName in ["BIAS", "DARK", "FLAT"]:
+        for pipelineName in CALIB_EXPOSURES:
             taskName = f"verify{pipelineName.lower().capitalize()}Isr"
             taskExpectations: dict[str, int] = {taskName: 1}
             quantaExpectations: dict[str, int] = {"isr": 1}
             self.runTest(
                 step="step1a",
-                imageType="inFocus",
+                imageType=pipelineName.lower(),
                 detector=self.scienceDetector,
                 pipelinesToRun=[pipelineName],
                 taskExpectations=taskExpectations,
@@ -266,7 +282,7 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         taskExpectations: dict[str, int] = {"isr": 1}
         self.runTest(
             step="step1a",
-            imageType="dark",
+            imageType="bias",
             detector=self.scienceDetector,
             pipelinesToRun=["ISR"],
             taskExpectations=taskExpectations,
@@ -484,8 +500,8 @@ class TestLatissPipelineGeneration(lsst.utils.tests.TestCase):
     against AOS payloads for the wrong image type, or the wrong half of the
     pair, no longer raising.
 
-    The fixture data is a real CWFS pair: exposures 2026062500012 (intra)
-    and 2026062500013 (extra), the same pair the CI drip-feeds.
+    The fixture data is a real CWFS pair, ``LATISS_CWFS_INTRA`` and
+    ``LATISS_CWFS_EXTRA``, the same pair the CI drip-feeds.
     """
 
     locationConfig: LocationConfig
@@ -509,12 +525,12 @@ class TestLatissPipelineGeneration(lsst.utils.tests.TestCase):
         )
         cls.graphs, cls.pipelines = buildPipelines(cls.instrument, cls.locationConfig, cls.butler)
 
-        where = "exposure.day_obs=20260625 AND exposure.seq_num in (12, 13) AND instrument='LATISS'"
+        where = f"exposure in ({LATISS_CWFS_INTRA.id},{LATISS_CWFS_EXTRA.id}) AND instrument='LATISS'"
         records = cls.butler.query_dimension_records("exposure", where=where)
         assert len(records) == 2, f"Expected 2 fixture exposure records, got {len(records)}"
-        rd = {r.seq_num: r for r in records}
-        cls.intraRecord = rd[12]
-        cls.extraRecord = rd[13]
+        rd = {r.id: r for r in records}
+        cls.intraRecord = rd[LATISS_CWFS_INTRA.id]
+        cls.extraRecord = rd[LATISS_CWFS_EXTRA.id]
 
         podDetails = PodDetails(
             instrument="FAKE_INSTRUMENT", podFlavor=PodFlavor.SFM_WORKER, detectorNumber=0, depth=0
@@ -592,7 +608,7 @@ class TestLatissPipelineGeneration(lsst.utils.tests.TestCase):
 
     def testLatissAosRaisesOnNonCwfsPayload(self) -> None:
         # guard against AOS payloads for non-CWFS images entirely
-        where = "exposure.day_obs=20240813 AND exposure.seq_num=632 AND instrument='LATISS'"
+        where = f"exposure = {LATISS_ON_SKY.id} AND instrument='LATISS'"
         (scienceRecord,) = self.butler.query_dimension_records("exposure", where=where)
         payload = self._makeAosPayload(scienceRecord)
         graph = self.pipelines["AOS_LATISS"].graphs["step1a"]
