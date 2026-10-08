@@ -387,6 +387,19 @@ class LocationConfig:
         directory = self._config["lsstCamButlerPath"]
         return directory
 
+    # Summit→USDF AOS sync config (see summitSync.py):
+    @cached_property
+    def summitSyncStagingPath(self) -> str:
+        """Local staging directory for AOS sync bundles.
+
+        At the summit this is where the exporter writes per-day export
+        bundles before uploading them to S3; at USDF it is where the importer
+        downloads bundles to before importing them.
+        """
+        directory = self._config["summitSyncStagingPath"]
+        self._checkDir(directory)
+        return directory
+
     # TMA config:
     @cached_property
     def tmaMetadataPath(self) -> str:

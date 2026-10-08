@@ -117,6 +117,7 @@ _CREATED_DIR_KEYS = (
     "lsstCamMetadataShardPath",
     "tmaMetadataPath",
     "tmaMetadataShardPath",
+    "summitSyncStagingPath",
 )
 
 
