@@ -78,7 +78,6 @@ USER saluser
 RUN source ${WORKDIR}/loadLSST.bash && \
     pip install google-cloud-storage \
     pytorch_lightning \
-    easyocr \
     sentry-sdk \
     && rm -rf ~/.cache/pip
 

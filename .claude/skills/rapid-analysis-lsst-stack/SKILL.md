@@ -28,8 +28,16 @@ re-source on every invocation — there is no caching between calls.
 ```bash
 source ~/stack.sh && . ~/setup_packages.sh && pytest tests/test_podDefinition.py
 source ~/stack.sh && . ~/setup_packages.sh && python -c "from lsst.rubintv.production.podDefinition import PodFlavor; print(list(PodFlavor))"
-source ~/stack.sh && . ~/setup_packages.sh && python tests/ci/test_rapid_analysis.py -l ci_smoke
+# CI suite also needs the per-user CI env vars exported:
+source tests/ci/setup_ci_env.sh && source ~/stack.sh && . ~/setup_packages.sh && python tests/ci/test_rapid_analysis.py -l ci_smoke
 ```
+
+Running `tests/ci/test_rapid_analysis.py` or
+`tests/createUnitTestCollections.py` without first sourcing
+`tests/ci/setup_ci_env.sh` exits immediately with a clear error
+listing the missing `RA_CI_*` / `TARTS_DATA_DIR` / `AI_DONUT_DATA_DIR`
+vars — see [architecture/testing.md](../../../architecture/testing.md)
+for what each one does.
 
 ## What does not work
 
