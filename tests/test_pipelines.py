@@ -34,6 +34,7 @@ from fixtureExposures import (
     LATISS_CWFS_EXTRA,
     LATISS_CWFS_INTRA,
     LATISS_ON_SKY,
+    LSSTCAM_BLITZ,
     LSSTCAM_FAM_EXTRA,
     LSSTCAM_FAM_INTRA,
     LSSTCAM_IN_FOCUS,
@@ -196,6 +197,7 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
             "inFocus": LSSTCAM_IN_FOCUS.id,
             "intra": LSSTCAM_FAM_INTRA.id,
             "extra": LSSTCAM_FAM_EXTRA.id,
+            "blitz": LSSTCAM_BLITZ.id,  # the in-focus image the CI sends through blitz
         }
         calibIds = {pipelineName.lower(): exposure.id for pipelineName, exposure in CALIB_EXPOSURES.items()}
         fixtureIds = sorted(set(onSkyIds.values()) | set(calibIds.values()))
@@ -205,8 +207,9 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
             fixtureIds
         ), f"Expected {len(fixtureIds)} fixture records, got {len(records)}"
         rd = {r.id: r for r in records}
-        # keyed by what the record is used as: "inFocus", "intra", "extra"
-        # and the calib pipeline each calib fixture belongs to ("bias" etc.)
+        # keyed by what the record is used as: "inFocus", "intra", "extra",
+        # "blitz", and the calib pipeline each calib fixture belongs to
+        # ("bias" etc.)
         cls.records = {imageType: rd[expId] for imageType, expId in (onSkyIds | calibIds).items()}
         cls.intraDetector = 192
         cls.extraDetector = 191
@@ -479,30 +482,44 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
     def testAosBlitzPipelines(self) -> None:
         # A blitz payload carries no detector, and must build exactly one
         # quantum for the corner set plus the reformatting quantum. More than
-        # one corner quantum would mean the graph was built per-detector.
+        # one corner quantum means the graph was built per-detector, or per
+        # visit the exposure belongs to (see the test below).
         taskExpectations: dict[str, int] = {"donutBlitzCornerTask": 1, "formatBlitzTask": 1}
-        self.runTest(
-            step="step1a",
-            imageType="inFocus",
-            pipelinesToRun=EXPECTED_BLITZ_PIPELINES,
-            taskExpectations=taskExpectations,
-        )
+        for imageType in ("inFocus", "blitz"):
+            self.runTest(
+                step="step1a",
+                imageType=imageType,
+                pipelinesToRun=EXPECTED_BLITZ_PIPELINES,
+                taskExpectations=taskExpectations,
+            )
 
-    def testAosBlitzQuantumConsumesOnlyCornerRaws(self) -> None:
-        # The blitz quantum is visit-level, so without the detector constraint
-        # in the worker's query it would be handed the raws of every detector
-        # in the exposure. DonutBlitzCornerTask raises on any non-corner raw,
-        # so this pins that the quantum gets all eight corners and only them.
-        for pipelineName in EXPECTED_BLITZ_PIPELINES:
-            with self.subTest(pipeline=pipelineName):
-                qg = self.buildQuantumGraph(pipelineName, "step1a", "inFocus", detector=None)
-                (quantum,) = [
-                    q
-                    for q in qg.build_execution_quanta().values()
-                    if q.taskName is not None and "donutblitzcornertask" in q.taskName.lower()
-                ]
-                rawDetectors = {int(ref.dataId["detector"]) for ref in quantum.inputs["raw"]}
-                self.assertEqual(rawDetectors, CORNER_DETECTORS)
+    def testAosBlitzQuantumIsForTheExposuresOwnVisit(self) -> None:
+        # The blitz quantum is visit-level, but an exposure in a multi-exposure
+        # sequence belongs to two visits: its own (keyed on the exposure ID, as
+        # used everywhere else in rapid analysis) and the sequence's, keyed on
+        # the sequence's first exposure. Constraining only the exposure built
+        # a quantum for each, and the second wrote 229's Zernikes and plots
+        # under visit 226, clobbering 226's own. The quantum must also get all
+        # eight corner raws, and only them and only from this exposure, as
+        # DonutBlitzCornerTask raises on a non-corner raw.
+        for imageType in ("inFocus", "blitz"):
+            expId = self.records[imageType].id
+            for pipelineName in EXPECTED_BLITZ_PIPELINES:
+                with self.subTest(imageType=imageType, pipeline=pipelineName):
+                    qg = self.buildQuantumGraph(pipelineName, "step1a", imageType, detector=None)
+                    blitzQuanta = [
+                        q
+                        for q in qg.build_execution_quanta().values()
+                        if q.taskName is not None and "donutblitzcornertask" in q.taskName.lower()
+                    ]
+                    self.assertEqual(len(blitzQuanta), 1, f"Got quanta for {[q.dataId for q in blitzQuanta]}")
+                    (quantum,) = blitzQuanta
+                    assert quantum.dataId is not None
+                    self.assertEqual(quantum.dataId["visit"], expId)
+
+                    raws = quantum.inputs["raw"]
+                    self.assertEqual({int(ref.dataId["detector"]) for ref in raws}, CORNER_DETECTORS)
+                    self.assertEqual({ref.dataId["exposure"] for ref in raws}, {expId})
 
     def testAosBlitzBinning(self) -> None:
         # The binning is applied as a config override keyed on the task label,
