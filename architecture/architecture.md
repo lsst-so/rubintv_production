@@ -139,7 +139,11 @@ Each detector is processed independently on its own worker pod.
   `aggregateAOSVisitTable*` tables, and uploads its own diagnostic plots.
   There is no step1b, and no post-ISR images for the corner sensors. The
   worker builds an `AllDimensionsQuantumGraphBuilder` graph constrained to
-  the exposure's corner detectors, after waiting for their raws to land
+  the exposure's corner detectors and to `visit` = the exposure ID, after
+  waiting for their raws to land. The visit constraint matters: an
+  exposure in a multi-exposure sequence also belongs to the sequence's
+  `by-seq-start-end` visit, named after its first exposure, which would
+  otherwise get a second quantum writing results under the wrong visit
 - LATISS: a single hard-coded pipeline (`AOS_LATISS`, the ts_wep
   `LatissMonolithTask`) processes a whole CWFS intra/extra pair - both
   raws - in one quantum on the dedicated LATISS AOS worker, so the
@@ -232,7 +236,7 @@ currently triggered.*
    spans both raws of the CWFS pair. AOS payloads with no detector (the
    blitz pipelines) are the other: `makeAosBlitzQgBuilder()` waits for the
    corner raws, then constrains an `AllDimensionsQuantumGraphBuilder` to the
-   exposure's 8 corner detectors
+   exposure's 8 corner detectors and its own visit
 8. **Execute quanta** - iterate through quantum graph nodes:
    - Run quantum via `SingleQuantumExecutor`
    - Post-process: write binned images, metadata shards, ConsDB rows

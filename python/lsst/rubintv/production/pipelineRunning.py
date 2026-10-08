@@ -432,9 +432,14 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         The blitz quantum is visit-level and consumes the raws of all the
         corner chips, which the trivial per-dataId builder can't express, so
         this builds an all-dimensions graph constrained to the exposure's
-        corner chips. The payload is dispatched as soon as the exposure lands,
-        so the corner raws are waited for first. Blitz processes whichever
-        corner chips are present, so a timeout just means fewer of them.
+        corner chips. The visit is constrained too, to the one keyed on the
+        exposure ID as everywhere else in rapid analysis: an exposure in a
+        multi-exposure sequence also belongs to the sequence's visit, named
+        after its first exposure, which would otherwise get a second quantum
+        writing this exposure's results under that visit. The payload is
+        dispatched as soon as the exposure lands, so the corner raws are
+        waited for first. Blitz processes whichever corner chips are present,
+        so a timeout just means fewer of them.
 
         Parameters
         ----------
@@ -467,11 +472,12 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         expId = getExpIdOrVisitId(payload.dataId)
         cornerIds = sorted(EXTRA_IDS + INTRA_IDS)
-        where = (
+        rawWhere = (
             f"instrument='{self.instrument}' AND exposure={expId}"
             f" AND detector IN ({', '.join(str(d) for d in cornerIds)})"
         )
-        self.waitForRaws(where, len(cornerIds))
+        self.waitForRaws(rawWhere, len(cornerIds))
+        where = f"{rawWhere} AND visit={expId}"
 
         collections = self.getCollections()
         builder = AllDimensionsQuantumGraphBuilder(

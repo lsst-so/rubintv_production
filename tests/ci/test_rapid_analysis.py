@@ -704,6 +704,19 @@ class RedisManager:
             else:
                 checks.append(Check(False, f"Did not find blitz output {datasetType} for {dataId}"))
 
+        # an extra quantum for another visit containing the exposure would
+        # write its results under that visit, clobbering that image's own
+        try:
+            refs = butler.query_datasets("donutBlitzCornerResults", collections=[thisRun], explain=False)
+            blitzVisits = sorted({int(ref.dataId["visit"]) for ref in refs})
+        except Exception as e:
+            checks.append(Check(False, f"Error querying blitz results in {thisRun}: {e}"))
+            return
+        if blitzVisits == [blitzVisit]:
+            checks.append(Check(True, f"Blitz only wrote results for {blitzVisit}"))
+        else:
+            checks.append(Check(False, f"Expected blitz results only for {blitzVisit}, got {blitzVisits}"))
+
     def _check_latiss_data(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
         """Check LATISS data in Redis."""
         inst = "LATISS"

@@ -200,7 +200,8 @@ Post-processing and visualization:
    pushes 229. The final checks assert one visit-level `step1a`/`AOS`
    finished, an MTAOS Zernike count of 4 for 229, and that
    `donutBlitzCornerResults`, `aggregateAOSVisitTable{Raw,Avg}` and the
-   four extra-focal `zernikes` landed in the current run
+   four extra-focal `zernikes` landed in the current run, and that blitz
+   wrote results for no other visit
 5. Also tests LATISS:
    - exposure 20240813/632 (on-sky science, exercises SFM)
    - exposures 20260625/12+13 (a CWFS intra/extra pair, pushed intra
