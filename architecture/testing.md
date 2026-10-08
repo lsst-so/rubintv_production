@@ -231,7 +231,8 @@ Post-processing and visualization:
    `AOS_BLITZ_BIN_2`, then pushes it. The final checks assert one
    visit-level `step1a`/`AOS` finished, an MTAOS Zernike count of 4 for it,
    and that `donutBlitzCornerResults`, `aggregateAOSVisitTable{Raw,Avg}` and
-   the four extra-focal `zernikes` landed in the current run
+   the four extra-focal `zernikes` landed in the current run, and that
+   blitz wrote results for no other visit
 5. Also tests LATISS:
    - its on-sky fixture exposure (2024081300632, exercises SFM)
    - its CWFS intra/extra pair (2026062500012+13, pushed intra first; the
