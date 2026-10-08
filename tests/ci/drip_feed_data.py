@@ -104,11 +104,6 @@ for record in (recordDict[227], recordDict[436], recordDict[226], recordDict[228
 t1 = time.time()
 print(f"Butler init and query took {(time.time() - t0):.2f} seconds")
 
-time.sleep(2)  # make sure the head node has done the dispatch of the SFM image
-
-print("Pushing pair announcement signal to redis (simulating OCS signal)")
-redisHelper.redis.rpush("LSSTCam-FROM-OCS_DONUTPAIR", "2025111500227,2025111500228")
-
 # do LATISS with the same drip-feeder
 instrument = "LATISS"
 locationConfig = getAutomaticLocationConfig()

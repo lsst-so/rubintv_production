@@ -197,7 +197,6 @@ class PodFlavorToPodTypeTestCase(lsst.utils.tests.TestCase):
         PodFlavor.GUIDER_WORKER: PodType.PER_INSTRUMENT,
         PodFlavor.BACKLOG_WORKER: PodType.PER_INSTRUMENT,
         PodFlavor.FOCUS_SWEEP_ANALYZER: PodType.PER_INSTRUMENT_SINGLETON,
-        PodFlavor.DONUT_LAUNCHER: PodType.PER_INSTRUMENT_SINGLETON,
     }
 
     def test_everyPodFlavorMapsToExpectedPodType(self) -> None:

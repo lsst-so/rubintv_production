@@ -366,15 +366,6 @@ them up. Low priority, low risk.
 "how did an empty set get passed here?", delete the branch if it never
 fires.
 
-#### O11 — Reduce `DonutLauncher` 10s sleep
-
-**Where:** [`aos.py`](../python/lsst/rubintv/production/aos.py).
-
-**Status:** moot — `DonutLauncher` is dead since ComCam decommissioning
-(documented in the C8 commit). Only worth addressing if the launcher is
-resurrected, in which case the broader blocking `WaitForExpRecord`
-helper the TODO proposes is the right fix.
-
 #### O12 — `locationConfig._checkDir` world-writable check
 
 **Where:** [`locationConfig.py`](../python/lsst/rubintv/production/locationConfig.py).
@@ -391,13 +382,6 @@ actually need 777 on RA-created dirs (the comment implies they do).
 in the current stack — if it does, drop the `butler.get("raw.metadata",
 ...)` query and the `ObservationInfo` overhead. Significant runtime
 saving on a hot path.
-
-#### O14 — DM-45436 split `pipetask run` command
-
-**Where:** [`aos.py`](../python/lsst/rubintv/production/aos.py).
-
-**Status:** deferred / likely moot. Same reason as O11 (DonutLauncher is
-dead). The TODO itself already says "may well be moot".
 
 #### O16 — `resources.py` `S3_ENDPOINT_URL` env var side effect
 

@@ -189,8 +189,7 @@ Post-processing and visualization:
    - 227 first (intra-focal, must arrive before 228)
    - Then 436 (bias), 226 (SFM), 228 (extra-focal)
    - 2 s delays between pushes
-4. Announces FAM pair via `LSSTCam-FROM-OCS_DONUTPAIR`
-5. Also tests LATISS:
+4. Also tests LATISS:
    - exposure 20240813/632 (on-sky science, exercises SFM)
    - exposures 20260625/12+13 (a CWFS intra/extra pair, pushed intra
      first; the extra-focal image landing triggers the `AOS_LATISS`
