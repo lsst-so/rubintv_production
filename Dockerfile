@@ -10,7 +10,7 @@ ENV UID=73006
 ENV GID=73006
 
 ARG drp_pipe_ref="tickets/DM-52067"
-ARG analysis_tools_ref="tickets/DM-52067"
+ARG analysis_tools_ref="f500d818bd69fa641698e2d97730ab906cfb5671"
 ARG summit_utils_ref="2c3f3d3e322cab460331f5e88f51996cfb582a42"
 ARG summit_extras_ref="w.2026.40"
 ARG ts_wep_ref="v17.14.0"
