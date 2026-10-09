@@ -30,6 +30,9 @@ from unittest.mock import patch
 
 import lsst.utils.tests
 from lsst.daf.butler import DimensionRecord
+from lsst.obs.lsst import Latiss, LsstCam
+from lsst.pipe.base import PipelineGraph
+from lsst.pipe.base.pipeline_graph import TaskNode
 from lsst.rubintv.production.formatters import (
     AOS_CCDS,
     AOS_WORKER_MAPPING,
@@ -43,8 +46,11 @@ from lsst.rubintv.production.predicates import (
     getDoRaise,
     hasRaDec,
     isCalibration,
+    isCpVerifyTask,
     isDayObsContiguous,
+    isScienceDetector,
     isWepImage,
+    needsOutputClobbering,
     raiseIf,
     runningCI,
     runningPyTest,
@@ -440,6 +446,91 @@ class RaiseIfTestCase(lsst.utils.tests.TestCase):
         with self.assertLogs(logger, level="ERROR") as cm:
             raiseIf(False, error, logger, msg="custom prefix")
         self.assertTrue(any("custom prefix" in line for line in cm.output))
+
+
+class NeedsOutputClobberingTestCase(lsst.utils.tests.TestCase):
+    """Tests for `needsOutputClobbering`.
+
+    The predicate only reads ``tasks[label].raw_dimensions`` off the graph,
+    so pipeline graphs are stood in for by namespaces rather than built for
+    real, which would need task classes and a dimension universe.
+    """
+
+    @staticmethod
+    def _makeFakeGraph(**taskDimensions: set[str]) -> PipelineGraph:
+        tasks = {
+            label: SimpleNamespace(raw_dimensions=frozenset(dims)) for label, dims in taskDimensions.items()
+        }
+        return cast(PipelineGraph, SimpleNamespace(tasks=tasks))
+
+    def test_perDetectorGraphDoesNotNeedClobbering(self) -> None:
+        # a calib step1a: everything is per exposure and detector
+        graph = self._makeFakeGraph(
+            verifyBiasIsr={"instrument", "exposure", "detector"},
+            verifyBiasDet={"instrument", "exposure", "detector"},
+        )
+        self.assertFalse(needsOutputClobbering(graph))
+
+    def test_visitAndGroupCountAsPerExposure(self) -> None:
+        # SFM step1b gathers per visit, AOS pair merging works per group
+        self.assertFalse(needsOutputClobbering(self._makeFakeGraph(consolidate={"instrument", "visit"})))
+        self.assertFalse(
+            needsOutputClobbering(self._makeFakeGraph(pairMerge={"instrument", "group", "detector"}))
+        )
+
+    def test_instrumentLevelTaskNeedsClobbering(self) -> None:
+        # a calib step1b: the run merge and the metrics task are instrument-
+        # only, so one such task in the graph is enough to require clobbering
+        graph = self._makeFakeGraph(
+            verifyBiasExp={"instrument", "exposure"},
+            verifyBias={"instrument"},
+            analyzeBiasCore={"instrument"},
+        )
+        self.assertTrue(needsOutputClobbering(graph))
+
+    def test_perFilterTaskNeedsClobbering(self) -> None:
+        # the flat run merge is per filter, which is still not per exposure
+        self.assertTrue(
+            needsOutputClobbering(self._makeFakeGraph(verifyFlat={"instrument", "physical_filter"}))
+        )
+
+    def test_emptyGraph(self) -> None:
+        self.assertFalse(needsOutputClobbering(self._makeFakeGraph()))
+
+
+class DetectorAndTaskPredicatesTestCase(lsst.utils.tests.TestCase):
+    """Tests for `isScienceDetector` and `isCpVerifyTask`."""
+
+    def test_isScienceDetectorLsstCam(self) -> None:
+        # the working rule is "detectors 189 and up are the guiders and
+        # wavefront sensors": pin that the camera-based check agrees with it
+        # for every detector in the real camera
+        camera = LsstCam.getCamera()
+        self.assertEqual(len(camera), 205)
+        for detector in camera:
+            detectorId = detector.getId()
+            self.assertEqual(isScienceDetector(camera, detectorId), detectorId < 189, f"{detectorId=}")
+
+    def test_isScienceDetectorLatiss(self) -> None:
+        self.assertTrue(isScienceDetector(Latiss.getCamera(), 0))
+
+    def test_isCpVerifyTask(self) -> None:
+        def makeFakeTask(taskClassName: str) -> TaskNode:
+            # the predicate only reads the class name off the node
+            return cast(TaskNode, SimpleNamespace(task_class_name=taskClassName))
+
+        for taskClassName in (
+            "lsst.cp.verify.verifyBias.CpVerifyBiasTask",
+            "lsst.cp.verify.verifyFlat.CpVerifyFlatTask",
+            "lsst.cp.verify.mergeResults.CpVerifyExpMergeTask",
+        ):
+            self.assertTrue(isCpVerifyTask(makeFakeTask(taskClassName)), taskClassName)
+        for taskClassName in (
+            "lsst.ip.isr.isrTaskLSST.IsrTaskLSST",  # the ISR in a cp_verify pipeline is not a cp_verify task
+            "lsst.analysis.tools.tasks.calibrationAnalysis.VerifyCalibAnalysisTask",
+            "lsst.pipe.tasks.calibrateImage.CalibrateImageTask",
+        ):
+            self.assertFalse(isCpVerifyTask(makeFakeTask(taskClassName)), taskClassName)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

@@ -25,12 +25,15 @@ import datetime
 import logging
 import os
 import time
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from functools import cached_property
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from astropy.time import Time
 
+from lsst.analysis.tools.interfaces.datastore import SasquatchDatastore
 from lsst.daf.butler import (
     Butler,
     DataCoordinate,
@@ -41,6 +44,7 @@ from lsst.daf.butler import (
     LimitedButler,
     Quantum,
 )
+from lsst.daf.butler.datastores.chainedDatastore import ChainedDatastore
 from lsst.pipe.base import ExecutionResources, PipelineGraph, TaskFactory
 from lsst.pipe.base.all_dimensions_quantum_graph_builder import AllDimensionsQuantumGraphBuilder
 from lsst.pipe.base.blocking_limited_butler import BlockingLimitedButler
@@ -64,7 +68,7 @@ from .consdbUtils import ConsDBPopulator
 from .payloads import Payload, pipelineGraphFromBytes
 from .plotting.mosaicing import writeBinnedImage
 from .podDefinition import PodFlavor
-from .predicates import raiseIf
+from .predicates import isCpVerifyTask, isScienceDetector, needsOutputClobbering, raiseIf
 from .processingControl import buildPipelines
 from .redisUtils import RedisHelper
 from .shardIo import getShardPath, writeMetadataShard
@@ -74,8 +78,11 @@ from .utils import getExpIdOrVisitId
 if TYPE_CHECKING:
     from lsst_efd_client import EfdClient
 
+    from lsst.afw.cameraGeom import Camera
     from lsst.afw.image import ExposureSummaryStats
-    from lsst.pipe.base.graph.quantumNode import QuantumNode
+    from lsst.daf.butler import DatasetProvenance
+    from lsst.daf.butler.datastore import Datastore
+    from lsst.pipe.base.pipeline_graph import TaskNode
     from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilder
 
     from .locationConfig import LocationConfig
@@ -108,6 +115,39 @@ PSF_GRADIENT_BAD = 0.85
 INTRA_IDS = (192, 196, 200, 204)
 EXTRA_IDS = (191, 195, 199, 203)
 
+# The storage class of analysis_tools metric bundles, which the butler's
+# Sasquatch datastore forwards to Chronograf on put.
+METRIC_BUNDLE_STORAGE_CLASS = "MetricMeasurementBundle"
+
+# Payload data id keys added to the Sasquatch records of its metric bundles.
+# analysis_tools already sends these (empty unless in the bundle's data id),
+# so the topics' schemas are unchanged.
+SASQUATCH_PAYLOAD_FIELDS = ("exposure", "day_obs")
+
+
+class MetricTolerantCachingLimitedButler(CachingLimitedButler):
+    """A `CachingLimitedButler` for which a failed put of a metric bundle is
+    not fatal.
+
+    The butler's Sasquatch datastore publishes metric bundles as they are
+    put. Publishing is best-effort, so any exception from such a put is
+    logged and swallowed, and the task carries on writing its remaining
+    outputs. All other puts raise as normal.
+    """
+
+    def put(self, obj: Any, ref: DatasetRef, /, *, provenance: DatasetProvenance | None = None) -> DatasetRef:
+        try:
+            return super().put(obj, ref, provenance=provenance)
+        except Exception:
+            if ref.datasetType.storageClass_name != METRIC_BUNDLE_STORAGE_CLASS:
+                raise
+            log = logging.getLogger(__name__)
+            log.exception(
+                f"Failed to put metric bundle {ref}, so it will not be published to Sasquatch."
+                " Continuing regardless, as publishing metrics is best-effort."
+            )
+            return ref
+
 
 def makeCachingLimitedButler(butler: Butler, pipelineGraphs: list[PipelineGraph]) -> CachingLimitedButler:
     cachedOnGet = set()
@@ -123,7 +163,95 @@ def makeCachingLimitedButler(butler: Butler, pipelineGraphs: list[PipelineGraph]
     noCopyOnCache = NO_COPY_ON_CACHE
     log = logging.getLogger("lsst.rubintv.production.pipelineRunning.makeCachingLimitedButler")
     log.info(f"Creating CachingLimitedButler with {cachedOnPut=}, {cachedOnGet=}, {noCopyOnCache=}")
-    return CachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
+    return MetricTolerantCachingLimitedButler(butler, cachedOnPut, cachedOnGet, noCopyOnCache)
+
+
+def getSasquatchDatastores(datastore: Datastore) -> list[SasquatchDatastore]:
+    """Get the Sasquatch datastores in a possibly chained datastore.
+
+    Parameters
+    ----------
+    datastore : `lsst.daf.butler.datastore.Datastore`
+        The datastore, e.g. a butler's.
+
+    Returns
+    -------
+    sasquatchDatastores : `list` [`SasquatchDatastore`]
+        The datastores that publish metric bundles to Sasquatch, empty if
+        there are none.
+    """
+    if isinstance(datastore, SasquatchDatastore):
+        return [datastore]
+    if isinstance(datastore, ChainedDatastore):
+        return [found for child in datastore.datastores for found in getSasquatchDatastores(child)]
+    return []
+
+
+def getSasquatchFields(dataId: DataCoordinate) -> dict[str, str]:
+    """Get the fields of a payload's data id to add to the Sasquatch records
+    of the metric bundles written while processing it.
+
+    Parameters
+    ----------
+    dataId : `lsst.daf.butler.DataCoordinate`
+        The payload's data id.
+
+    Returns
+    -------
+    fields : `dict` [`str`, `str`]
+        The ``SASQUATCH_PAYLOAD_FIELDS`` that the data id has. The values are
+        strings, like the values analysis_tools gives these fields.
+    """
+    mapping = dataId.mapping
+    return {key: str(mapping[key]) for key in SASQUATCH_PAYLOAD_FIELDS if key in mapping}
+
+
+@contextmanager
+def addSasquatchFields(datastores: Iterable[SasquatchDatastore], fields: Mapping[str, str]) -> Iterator[None]:
+    """Add fields to every record the datastores publish within the context.
+
+    Parameters
+    ----------
+    datastores : `~collections.abc.Iterable` [`SasquatchDatastore`]
+        The datastores.
+    fields : `~collections.abc.Mapping` [`str`, `str`]
+        The fields to add. These override any of the same name, whether from
+        the datastores' own extra fields or from the bundle's data id.
+    """
+    originals = [(datastore, datastore.extra_fields) for datastore in datastores]
+    for datastore, extraFields in originals:
+        datastore.extra_fields = {**(extraFields or {}), **fields}
+    try:
+        yield
+    finally:
+        for datastore, extraFields in originals:
+            datastore.extra_fields = extraFields
+
+
+def shouldSkipQuantum(camera: Camera, taskNode: TaskNode, dataCoord: DataCoordinate) -> bool:
+    """Decide whether a worker should skip a quantum rather than run it.
+
+    cp_verify's per-detector quanta are skipped on guiders and wavefront
+    sensors, whose statistics are not comparable with the science
+    detectors'. ISR still runs on them, for the post-ISR mosaics.
+
+    Parameters
+    ----------
+    camera : `lsst.afw.cameraGeom.Camera`
+        The camera, to classify the detector.
+    taskNode : `lsst.pipe.base.pipeline_graph.TaskNode`
+        The task the quantum belongs to.
+    dataCoord : `lsst.daf.butler.DataCoordinate`
+        The quantum's data ID.
+
+    Returns
+    -------
+    skip : `bool`
+        ``True`` if the quantum should be skipped.
+    """
+    if not isCpVerifyTask(taskNode) or "detector" not in dataCoord.dimensions.names:
+        return False
+    return not isScienceDetector(camera, int(dataCoord["detector"]))
 
 
 class SingleCorePipelineRunner(BaseButlerChannel):
@@ -175,6 +303,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         self.instrument = instrument
         self.butler = butler
         self.step = step
+        self.camera = getCameraFromInstrumentName(instrument)  # for shouldSkipQuantum
 
         allGraphs, pipelines = buildPipelines(
             instrument=instrument,
@@ -188,6 +317,7 @@ class SingleCorePipelineRunner(BaseButlerChannel):
 
         self.runCollection: str = "uninitialized!"
         self.cachingButler = makeCachingLimitedButler(butler, self.allGraphs)
+        self.sasquatchDatastores = getSasquatchDatastores(butler._datastore)
         self.log.info(f"Pipeline running configured to consume from {self.podDetails.queueName}")
 
         self.consdbClient = ConsDbClient("http://consdb-pq.consdb:8080/consdb")
@@ -227,17 +357,6 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         """
         # add any necessary data-driven logic here to choose if we process
         return True
-
-    def doDropQuantum(self, node: QuantumNode) -> bool:
-        taskName = node.task_node.label
-        dataCoord = node.quantum.dataId
-        assert dataCoord is not None, "dataCoord is None, this shouldn't be possible in RA"  # for mypy
-        if "calczernikes" in taskName.lower():
-            if "detector" in dataCoord and dataCoord["detector"] in INTRA_IDS:
-                # TODO: need to not drop this for unpaired runs
-                self.log.info(f"Dropping unpaired calcZernikes quantum for {dataCoord}")
-                return True
-        return False
 
     def finishAosQgBuilder(
         self,
@@ -629,15 +748,21 @@ class SingleCorePipelineRunner(BaseButlerChannel):
             nCpus = int(os.getenv("LIMITS_CPU", 1))
             self.log.info(f"Using {nCpus} CPUs for {self.instrument} {self.step} {who}")
 
+            # Instrument-level tasks rewrite the same datasets for every
+            # exposure, so let the executor find and prune the previous
+            # outputs. Elsewhere outputs are unique per exposure, so skip the
+            # existence check, which makes clobber_outputs mostly inoperative.
+            assumeNoExistingOutputs = not needsOutputClobbering(pipelineGraph)
             executor = SingleQuantumExecutor(
                 butler=butlerToUse,
                 task_factory=TaskFactory(),
                 clobber_outputs=True,
-                assume_no_existing_outputs=True,  # this makes *this* clobber (above) mostly inoperative
+                assume_no_existing_outputs=assumeNoExistingOutputs,
                 raise_on_partial_outputs=False,
                 resources=ExecutionResources(num_cores=nCpus),
             )
 
+            sasquatchFields = getSasquatchFields(dataId)
             quanta = qg.build_execution_quanta()
             for taskLabel, quantaForTask in qg.quanta_by_task.items():
                 postQuantum = None  # reset inside the loop so it can't be stale inside except block
@@ -649,11 +774,19 @@ class SingleCorePipelineRunner(BaseButlerChannel):
                         preQuantum.dataId
                     )  # pull this out before the try so you can use in except block
                     assert dataCoord is not None, "dataCoord is None, this shouldn't be possible in RA"
+                    taskNode = qg.pipeline_graph.tasks[taskLabel]
+                    if shouldSkipQuantum(self.camera, taskNode, dataCoord):
+                        self.log.info(
+                            f"Skipping {taskLabel} for {dataCoord}:"
+                            " cp_verify tasks only run on science detectors"
+                        )
+                        continue
                     self.log.debug(f"Executing {taskLabel} for {dataCoord}")
                     self.log.info(f"Starting to process {taskLabel}")
 
                     try:
-                        postQuantum, _ = executor.execute(qg.pipeline_graph.tasks[taskLabel], preQuantum)
+                        with addSasquatchFields(self.sasquatchDatastores, sasquatchFields):
+                            postQuantum, _ = executor.execute(taskNode, preQuantum)
                         self.postProcessQuantum(postQuantum)
                         self.redisHelper.reportTaskFinished(self.instrument, taskLabel, dataCoord)
 

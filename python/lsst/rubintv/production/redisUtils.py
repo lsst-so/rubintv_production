@@ -829,6 +829,32 @@ class RedisHelper:
         self.log.warning(f"No free workers available for {podFlavor=}, sending work to {busyWorker=}")
         return busyWorker
 
+    def getFixedWorker(self, instrument: str, podFlavor: PodFlavor) -> PodDetails | None:
+        """Pick the same worker of the given flavor every time, free or busy.
+
+        Payloads sent to one worker run one at a time, so this serialises
+        work that must not run concurrently. The choice only changes when the
+        set of workers does.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name.
+        podFlavor : `PodFlavor`
+            The flavor of pod to pick a worker from.
+
+        Returns
+        -------
+        worker : `PodDetails` or `None`
+            The selected worker, or ``None`` if no workers (free or busy)
+            exist for the given flavor.
+        """
+        workers = sorted(self.getAllWorkers(instrument=instrument, podFlavor=podFlavor))
+        if not workers:
+            self.log.error(f"No free or busy workers available for {podFlavor=}, cannot dispatch work.")
+            return None
+        return workers[0]
+
     def pushToButlerWatcherList(self, instrument: str, expRecord: DimensionRecord) -> None:
         """Keep a record of what's been found by the butler watcher for all
         time.

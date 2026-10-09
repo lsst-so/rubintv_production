@@ -34,7 +34,9 @@ INCOMING-{instrument}-raw
 ```
 - Direction: `lpush` by head node, `blpop` by worker (blocking, 5 s timeout)
 - Content: JSON-serialized `Payload` (dataId + base64 pipeline graph bytes)
-- The head node picks a free worker's queue for each payload
+- The head node picks a free worker's queue for each payload, except for
+  step1bs that rewrite instrument-level datasets, which all go to the
+  first `STEP1B_WORKER` queue (`getFixedWorker()`) so they run in turn
 
 **Butler watcher history:**
 ```

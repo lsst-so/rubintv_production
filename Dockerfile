@@ -1,5 +1,5 @@
 
-ARG STACK_TAG="w_2026_38"
+ARG STACK_TAG="w_2026_40"
 # For USDF, UID=17951
 # For summit, UID=GID=73006?
 
@@ -9,9 +9,10 @@ FROM ghcr.io/lsst/scipipe:al9-${STACK_TAG}
 ENV UID=73006
 ENV GID=73006
 
-ARG drp_pipe_ref="w.2026.38"
+ARG drp_pipe_ref="tickets/DM-52067"
+ARG analysis_tools_ref="f500d818bd69fa641698e2d97730ab906cfb5671"
 ARG summit_utils_ref="2c3f3d3e322cab460331f5e88f51996cfb582a42"
-ARG summit_extras_ref="w.2026.38"
+ARG summit_extras_ref="w.2026.40"
 ARG ts_wep_ref="v17.14.0"
 ARG donut_viz_ref="v4.11.0"
 ARG tarts_ref="v4.3"
@@ -122,7 +123,8 @@ RUN git clone https://github.com/lsst-so/summit_utils.git && \
     git clone https://github.com/lsst-ts/ts_config_mttcs.git && \
     git clone https://github.com/lsst-ts/donut_viz.git && \
     git clone https://github.com/PetchMa/TARTS.git && \
-    git clone https://github.com/lsst/drp_pipe.git
+    git clone https://github.com/lsst/drp_pipe.git && \
+    git clone https://github.com/lsst/analysis_tools.git
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     git lfs install && \
@@ -140,6 +142,14 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     /home/saluser/.checkout_repo.sh ${drp_pipe_ref} && \
     eups declare -r . drp_pipe -t saluser && \
     setup drp_pipe -t saluser && \
+    scons version
+
+WORKDIR /repos/analysis_tools
+
+RUN source ${WORKDIR}/loadLSST.bash && \
+    /home/saluser/.checkout_repo.sh ${analysis_tools_ref} && \
+    eups declare -r . analysis_tools -t saluser && \
+    setup analysis_tools -t saluser && \
     scons version
 
 WORKDIR /repos/summit_utils
@@ -269,6 +279,7 @@ RUN chown saluser:saluser /repos/.startup.sh && \
     chmod a+rwx /tmp
 
 RUN git config --system --add safe.directory /repos/drp_pipe && \
+    git config --system --add safe.directory /repos/analysis_tools && \
     git config --system --add safe.directory /repos/summit_utils && \
     git config --system --add safe.directory /repos/summit_extras && \
     git config --system --add safe.directory /repos/rubintv_production && \

@@ -64,7 +64,7 @@ from .packageVersions import (
 )
 from .payloads import Payload, pipelineGraphToBytes
 from .podDefinition import PodDetails, PodFlavor
-from .predicates import completesWepPair, isCalibration, isWepImage, runningCI
+from .predicates import completesWepPair, isCalibration, isWepImage, needsOutputClobbering, runningCI
 from .redisUtils import ExposureProcessingInfo, RedisHelper, decode_string
 from .shardIo import getShardPath, writeExpRecordMetadataShard, writeMetadataShard
 from .timing import BoxCarTimer
@@ -293,6 +293,35 @@ _SIMPLE_IMAGE_TYPE_DISPATCH: dict[str, tuple[str, str]] = {
 }
 
 
+# The calibration pipelines, keyed by pipeline name, mapping to the label
+# subsets of ``pipelines/<instrument>/verify<Type>.yaml`` run per detector
+# (step1a) and per exposure (step1b).
+CALIBRATION_PIPELINE_LABELS: dict[str, tuple[str, str]] = {
+    "BIAS": ("verifyBiasIsr,verifyBiasDet", "verifyBiasExp,verifyBias,analyzeBiasCore"),
+    "DARK": ("verifyDarkIsr,verifyDarkDet", "verifyDarkExp,verifyDark,analyzeDarkCore"),
+    "FLAT": ("verifyFlatIsr,verifyFlatDet", "verifyFlatExp,verifyFlat,analyzeFlatDetCore"),
+}
+
+
+def getIsrStep1bPipelineKey(observationType: str) -> str:
+    """Get the pipeline whose step1b runs once an ISR-only exposure's
+    detectors have all finished.
+
+    Parameters
+    ----------
+    observationType : `str`
+        The ``observation_type`` of the exposure record.
+
+    Returns
+    -------
+    pipelineKey : `str`
+        "BIAS", "DARK" or "FLAT", or "ISR", which has no step1b, for every
+        other image type.
+    """
+    pipelineKey, _ = _SIMPLE_IMAGE_TYPE_DISPATCH.get(observationType.lower(), ("ISR", "ISR"))
+    return pipelineKey if pipelineKey in CALIBRATION_PIPELINE_LABELS else "ISR"
+
+
 # Config flags on the ISR task that we surface on RubinTV. Dotted paths
 # reach into sub-configs (e.g. ``ampOffset.doApplyAmpOffset``). Order is
 # preserved in the emitted dict so the front end sees a stable column
@@ -469,20 +498,18 @@ def buildPipelines(
     aosWcsBin2DanishFile = locationConfig.aosLSSTCamWcsDanishBin2PipelineFile
     aosLatissFile = locationConfig.aosLATISSPipelineFile
 
-    drpPipeDir = getPackageDir("drp_pipe")
-    biasFile = (Path(drpPipeDir) / "pipelines" / instrument / "quickLookBias.yaml").as_posix()
-    darkFile = (Path(drpPipeDir) / "pipelines" / instrument / "quickLookDark.yaml").as_posix()
-    flatFile = (Path(drpPipeDir) / "pipelines" / instrument / "quickLookFlat.yaml").as_posix()
-
-    pipelines["BIAS"] = PipelineComponents(
-        butler.registry, biasFile, ["verifyBiasIsr"], ["step1a"], isCalibrationPipeline=True
-    )
-    pipelines["DARK"] = PipelineComponents(
-        butler.registry, darkFile, ["verifyDarkIsr"], ["step1a"], isCalibrationPipeline=True
-    )
-    pipelines["FLAT"] = PipelineComponents(
-        butler.registry, flatFile, ["verifyFlatIsr"], ["step1a"], isCalibrationPipeline=True
-    )
+    # These wrap drp_pipe's quickLook<Type>.yaml files and add the
+    # analysis_tools metrics; see CALIBRATION_PIPELINE_LABELS.
+    calibPipelineDir = Path(getPackageDir("rubintv_production")) / "pipelines" / instrument
+    for pipelineKey, (step1aLabels, step1bLabels) in CALIBRATION_PIPELINE_LABELS.items():
+        pipelineFile = (calibPipelineDir / f"verify{pipelineKey.capitalize()}.yaml").as_posix()
+        pipelines[pipelineKey] = PipelineComponents(
+            butler.registry,
+            pipelineFile,
+            [step1aLabels, step1bLabels],
+            ["step1a", "step1b"],
+            isCalibrationPipeline=True,
+        )
     pipelines["ISR"] = PipelineComponents(
         butler.registry, sfmPipelineFile, ["isr"], ["step1a"], isCalibrationPipeline=True
     )
@@ -1479,17 +1506,18 @@ class HeadProcessController:
         if not completeIds:
             return False
 
-        # let isr dispatch to the step1b workers anyway, they'll just drop
-        # everything due to a lack of quanta
+        # calibs (who="ISR") gather on the regular step1b workers too
         podFlavour = PodFlavor.STEP1B_AOS_WORKER if who == "AOS" else PodFlavor.STEP1B_WORKER
 
         self.log.debug(f"For {who}: Found {completeIds=} for step1a for {who}")
 
         for expId in completeIds:
             info = infoMap[expId]
-            dataCoord = DataCoordinate.standardize(
-                instrument=self.instrument, visit=expId, universe=self.butler.dimensions
-            )
+
+            expRecord: DimensionRecord | None = None
+            if who in ["SFM", "ISR"]:
+                # by exposure, as calibs and unknowns have no visit
+                (expRecord,) = self.butler.registry.queryDimensionRecords("exposure", exposure=expId)
 
             if who == "AOS":  # get the full AOS_XXX name for this exposure
                 # Note: does not break the paired-processing because we always
@@ -1500,27 +1528,48 @@ class HeadProcessController:
                 if whoToUse is None:
                     self.log.warning(f"Failed to dispatch {who} for {expId=}! This shouldn't happen")
                     continue
+            elif who == "ISR":
+                assert expRecord is not None  # for mypy, always set above for ISR
+                whoToUse = getIsrStep1bPipelineKey(expRecord.observation_type)
             else:
                 whoToUse = who
 
-            if self.pipelines[whoToUse].graphBytes.get("step1b") is not None:  # no step1b dispatch for ISR
-                visitRecord = None
-                try:  # not used, but checks whether this payload is even usable downstream
-                    (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", dataId=dataCoord)
-                except ValueError:
-                    # note: do not ``continue`` here, because there's other
-                    # bits that still need to run later on - this is why we use
-                    # a visitRecord=None sentinel instead
-                    self.log.info(f"Skipping doomed step1b dispatch for {expId=} due to lack of visit record")
+            # calibs have no visits, and cp_verify's merges are per exposure
+            isCalibStep1b = whoToUse in CALIBRATION_PIPELINE_LABELS
+            if isCalibStep1b:
+                dataCoord = DataCoordinate.standardize(
+                    instrument=self.instrument, exposure=expId, universe=self.butler.dimensions
+                )
+            else:
+                dataCoord = DataCoordinate.standardize(
+                    instrument=self.instrument, visit=expId, universe=self.butler.dimensions
+                )
 
-                if visitRecord is not None:
+            if self.pipelines[whoToUse].graphBytes.get("step1b") is not None:  # no step1b for plain ISR
+                visitRecord = None
+                dispatchable = isCalibStep1b  # calibs need no visit, so are always dispatchable
+                if not isCalibStep1b:
+                    try:  # not used, but checks whether this payload is even usable downstream
+                        (visitRecord,) = self.butler.registry.queryDimensionRecords("visit", dataId=dataCoord)
+                        dispatchable = True
+                    except ValueError:
+                        # don't ``continue``: the rest of the loop body must
+                        # still run, hence the dispatchable flag
+                        self.log.info(
+                            f"Skipping doomed step1b dispatch for {expId=} due to lack of visit record"
+                        )
+
+                if dispatchable:
                     payload = Payload(
                         dataId=dataCoord,
                         pipelineGraphBytes=self.pipelines[whoToUse].graphBytes["step1b"],
                         run=self.outputRun,
                         who=who,
                     )
-                    worker = self.redisHelper.getSingleWorker(self.instrument, podFlavour)
+                    if needsOutputClobbering(self.pipelines[whoToUse].graphs["step1b"]):
+                        worker = self.redisHelper.getFixedWorker(self.instrument, podFlavour)
+                    else:
+                        worker = self.redisHelper.getSingleWorker(self.instrument, podFlavour)
                     if not worker:
                         self.log.warning(f"No worker available for {who} step1b")
                         continue
@@ -1530,6 +1579,7 @@ class HeadProcessController:
                     self.redisHelper.enqueuePayload(payload, worker)
                     self.redisHelper.markStep1bDispatched(self.instrument, expId, who)
                     if who == "AOS":
+                        assert visitRecord is not None  # for mypy: AOS always takes the visit branch above
                         intraId = visitRecord.id  # got from dataCoords[0] above so is intra
                         numZernikesFinished = len(info.getFinishedDetectors(who))
                         self.redisHelper.sendZernikeCountToMTAOS(
@@ -1551,13 +1601,7 @@ class HeadProcessController:
             # detector having finished. It might have failed, but that's OK
             # because the one-off processor will time out quickly.
             if who in ["SFM", "ISR"]:
-                # use exposure=dataCoords[0]["visit"] because we still want
-                # to dispatch one-off post-isr processing for non-on-sky
-                # images, and if you used dataId=dataCoords[0] that will fail
-                # if the visit isn't defined.
-                (expRecord,) = self.butler.registry.queryDimensionRecords(
-                    "exposure", exposure=dataCoord["visit"]
-                )
+                assert expRecord is not None  # for mypy, always set above for SFM and ISR
                 self.dispatchOneOffProcessing(expRecord, PodFlavor.ONE_OFF_POSTISR_WORKER)
                 if self.instrument != "LATISS" and who != "ISR":
                     self.log.info(f"Dispatching the focal plane visit_image mosaic for {expRecord.id}")
