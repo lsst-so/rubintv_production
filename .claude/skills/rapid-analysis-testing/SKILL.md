@@ -59,6 +59,15 @@ After editing any Python under `python/lsst/rubintv/production/`,
 task done. Both need the LSST stack sourced — see the
 `rapid-analysis-lsst-stack` skill.
 
+If `mypy` is not found, pre-commit cannot find the `mypy-coverage`
+executable at commit time, or a test fails with `No module named
+'fakeredis'`, the stack's conda env has changed and lacks the dev tooling.
+Run the installer, then carry on:
+
+```bash
+source ~/stack.sh && . ~/setup_packages.sh && bash tests/ci/preinstall_ci_deps.sh
+```
+
 ### 1. Type check (always)
 
 ```bash
@@ -180,9 +189,10 @@ The integration suite requires per-user paths and a per-user redis
 port. Two scripts in `tests/ci/` handle setup (still named "ci" on
 disk pending the backlogged rename):
 
-1. **`tests/ci/preinstall_ci_deps.sh`** — once per user, installs deps
-   missing from rubinenv via `pip --user` and builds `redis-server`
-   from source into `${HOME}/local/bin`.
+1. **`tests/ci/preinstall_ci_deps.sh`** — once per user and after every
+   env change, installs deps missing from rubinenv (into the env if
+   writable, else `pip --user`) and builds `redis-server` from source
+   into `${HOME}/local/bin`.
 2. **`tests/ci/setup_ci_env.sh`** — every shell session, exports the
    `RA_CI_*` env vars and adds `${HOME}/local/bin` to `PATH`. Edit the
    values at the top for the running user (the file ships with

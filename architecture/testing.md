@@ -43,6 +43,12 @@ The stack must be sourced (see the `rapid-analysis-lsst-stack` skill) —
 without it, mypy cannot resolve sibling `lsst.*` imports and reports a flood
 of spurious missing-import errors.
 
+`mypy`, `mypy-coverage` (the pre-commit hook), `fakeredis` and the type
+stubs are not part of the stock stack. If `mypy` is not found or a test
+fails with `No module named 'fakeredis'`, the stack's conda env has changed
+under you: run `tests/ci/preinstall_ci_deps.sh` (see
+[Per-user setup](#per-user-setup-one-time)).
+
 If a new third-party package lands in `lsst.*` that mypy can't find stubs
 for, add an `[mypy-<package>]` block with `ignore_missing_imports = True` to
 `mypy.ini` rather than suppressing errors at call sites.
@@ -144,14 +150,19 @@ all work distribution, payload handling, and S3 uploads (mocked).
 The CI suite is designed to be runnable by anyone, not just the original
 author. Two scripts in `tests/ci/` handle the per-user setup:
 
-- **`tests/ci/preinstall_ci_deps.sh`** — installs CI dependencies that are
-  not in rubinenv (`sentry-sdk`, `redis` python client, `batoid`, `danish`,
-  `timm`, `peft`, `google-cloud-storage`, `lsst-efd-client`,
-  `pytorch_lightning`) via `pip install --user`, plus builds the
-  `redis-server` binary from source into `${HOME}/local/bin`. Run once per
-  user; idempotent on re-run. Mirrors the production Dockerfile's
-  conda+pip lists, minus `rubin-libradtran` (conda-only; only matters for
-  the LATISS spectral pipeline).
+- **`tests/ci/preinstall_ci_deps.sh`** — installs dependencies that are
+  not in rubinenv: the integration suite's runtime deps (`sentry-sdk`,
+  `redis` python client, `batoid`, `danish`, `timm`, `peft`,
+  `google-cloud-storage`, `lsst-efd-client`, `pytorch_lightning`) and the
+  unit-test tooling (`mypy`, `mypy-coverage`, `fakeredis`, the pytest
+  plugins, type stubs). It pip-installs into the active env when that is
+  writable, and with `--user` when it isn't (the shared rubinenv on dev
+  nodes). It first removes user-site copies that the env now ships at the
+  same or a newer version, since those shadow the env's own. It also builds
+  the `redis-server` binary from source into `${HOME}/local/bin`. Run once
+  per user and again after every env change; idempotent on re-run. Mirrors
+  the production Dockerfile's conda+pip lists, minus `rubin-libradtran`
+  (conda-only; only matters for the LATISS spectral pipeline).
 - **`tests/ci/setup_ci_env.sh`** — exports the per-user environment
   variables the suite needs and prepends `${HOME}/local/bin` to `PATH` so
   the source-built redis-server is found. Edit the values at the top of
