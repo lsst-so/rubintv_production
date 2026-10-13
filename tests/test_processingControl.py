@@ -536,6 +536,7 @@ class CalibrationPipelinesTestCase(lsst.utils.tests.TestCase):
             self.assertTrue(step1b[2].startswith("analyze"), step1b[2])
 
     def test_isrAppliesTheCalibBeingVerified(self) -> None:
+        # TODO: DM-56674
         # cp_verify's per-detector verify tasks read the distribution
         # statistics of the calib they verify, which ISR only copies for calibs
         # it applies (and the verification is meaningless without it anyway).

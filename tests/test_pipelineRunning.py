@@ -216,7 +216,7 @@ class SasquatchFieldsTestCase(lsst.utils.tests.TestCase):
         # analysis_tools already sends exposure and day_obs in every record,
         # as strings and empty for an instrument-level bundle. The added
         # fields must fill those, adding no columns and changing no types.
-        dispatcher = SasquatchDispatcher("https://sasquatch.invalid", "token", "lsst.dm")
+        dispatcher = SasquatchDispatcher("https://sasquatch.invalid", "token", "lsst.cp")
         bundle = MetricMeasurementBundle({"biasMeanPerAmp": [Measurement("calib.biasMean", 1.0 * adu)]})
 
         def prepareRecord(extraFields: dict[str, str] | None) -> dict:
