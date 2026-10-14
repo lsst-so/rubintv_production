@@ -1,5 +1,5 @@
 
-ARG STACK_TAG="w_2026_40"
+ARG STACK_TAG="w_2026_41"
 # For USDF, UID=17951
 # For summit, UID=GID=73006?
 
@@ -12,7 +12,7 @@ ENV GID=73006
 ARG drp_pipe_ref="tickets/DM-52067"
 ARG analysis_tools_ref="aae6a67b81e71678c7c508d412609d6e8f762e1a"
 ARG summit_utils_ref="2c3f3d3e322cab460331f5e88f51996cfb582a42"
-ARG summit_extras_ref="w.2026.40"
+ARG summit_extras_ref="w.2026.41"
 ARG ts_wep_ref="v17.14.0"
 ARG donut_viz_ref="v4.11.0"
 ARG tarts_ref="v4.3"
