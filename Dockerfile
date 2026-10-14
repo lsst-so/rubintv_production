@@ -57,6 +57,7 @@ USER lsst
 
 RUN source ${WORKDIR}/loadLSST.bash && \
     conda config --set solver libmamba && \
+    export CONDA_PKGS_DIRS=/tmp/conda-pkgs && \
     conda install -y \
     -c conda-forge \
     # lsstts channel required for ts-ofc
@@ -72,7 +73,8 @@ RUN source ${WORKDIR}/loadLSST.bash && \
     imagemagick \
     fakeredis \
     git-lfs \
-    && conda clean -afy
+    && conda clean -afy \
+    && rm -rf /tmp/conda-pkgs
 
 USER saluser
 
