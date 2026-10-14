@@ -191,8 +191,10 @@ plots exist, the Redis step1b counters match, no `FAILED` keys, and
 calibration exposure's pipeline in the CI output run (the dataset types are
 read off the pipeline graphs). It also fails outright if the fed exposures
 do not include a bias, a dark and a flat, so all three calibration
-pipelines are always exercised, and warns if a pipeline writes no
-`MetricMeasurementBundle` (currently true of flats, see DM-52068).
+pipelines are always exercised. Each step1b's metric bundles and plots
+are compared with the hand-kept `CALIB_STEP1B_ANALYSIS_OUTPUTS`: an
+expected one the pipeline doesn't write fails, and one that isn't
+listed warns. Flats write plots but no metric bundle until DM-52068.
 The dataset check exists because a step1b whose inputs never landed
 builds an empty quantum graph and "finishes" with nothing written, which
 no other check can see.

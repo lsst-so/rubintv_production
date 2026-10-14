@@ -75,6 +75,34 @@ from lsst.rubintv.production.resources import getBasePath, listDir, rmtree  # no
 from lsst.rubintv.production.uploaders import MultiUploader  # noqa: E402
 from lsst.summit.utils.packageVersions import UNKNOWN_VERSION, PackageVersions  # noqa: E402
 
+# The metric bundles and plots each calibration step1b is expected to write.
+# One that its pipeline graph lacks fails and one not listed here warns, so a
+# pipeline gaining or losing a metric or plot always has to be recorded here.
+# Flats make no metric until DM-52068.
+CALIB_STEP1B_ANALYSIS_OUTPUTS: dict[str, set[str]] = {
+    "BIAS": {
+        "cpBiasCore_metrics",
+        "cpBiasCore_biasCornerMeanPerAmp_FocalPlaneGeometryPlot",
+        "cpBiasCore_biasCrNoisePerAmp_FocalPlaneGeometryPlot",
+        "cpBiasCore_biasMeanPerAmp_FocalPlaneGeometryPlot",
+        "cpBiasCore_biasNoisePerAmp_FocalPlaneGeometryPlot",
+        "cpBiasCore_biasReadNoisePerAmp_FocalPlaneGeometryPlot",
+    },
+    "DARK": {
+        "cpDarkCore_metrics",
+        "cpDarkCore_dark95pPerAmp_FocalPlaneGeometryPlot",
+        "cpDarkCore_darkCrNoisePerAmp_FocalPlaneGeometryPlot",
+        "cpDarkCore_darkMeanPerAmp_FocalPlaneGeometryPlot",
+        "cpDarkCore_darkMedianPerAmp_FocalPlaneGeometryPlot",
+        "cpDarkCore_darkNoisePerAmp_FocalPlaneGeometryPlot",
+        "cpDarkCore_darkReadNoisePerAmp_FocalPlaneGeometryPlot",
+    },
+    "FLAT": {
+        "cpFlatDetCore_flatTestsByDate_GridPlot",
+    },
+}
+ANALYSIS_STORAGE_CLASSES = ("MetricMeasurementBundle", "Plot")
+
 
 # Add mock uploader class for testing
 class MockUploader:
@@ -1347,8 +1375,9 @@ class ResultCollector:
                 self.checks.append(Check(None, f"Found unchecked-for plot {plot}"))
 
     def check_calib_step1b_datasets(self) -> None:
-        """Check that each calibration exposure's step1b outputs, including
-        the metric bundle, are in the butler.
+        """Check that each calibration exposure's step1b outputs are in the
+        butler, and that its metric bundles and plots are the ones in
+        ``CALIB_STEP1B_ANALYSIS_OUTPUTS``.
 
         Clean exits and plots only show that step1a ran: a step1b whose
         inputs never landed builds an empty graph and "finishes" with nothing
@@ -1404,14 +1433,14 @@ class ResultCollector:
             pipelineKey = getIsrStep1bPipelineKey(record.observation_type)
             graph = pipelines[pipelineKey].graphs["step1b"]
             exposureLabel = f"{record.observation_type} {record.day_obs}/{record.seq_num}"
-            writesMetricBundle = False
+            analysisOutputs: set[str] = set()
             for taskNode in graph.tasks.values():
                 for edge in taskNode.outputs.values():
                     name = edge.parent_dataset_type_name
                     datasetTypeNode = graph.dataset_types[name]
                     assert datasetTypeNode is not None, "graphs from buildPipelines are resolved"
-                    if datasetTypeNode.storage_class_name == "MetricMeasurementBundle":
-                        writesMetricBundle = True
+                    if datasetTypeNode.storage_class_name in ANALYSIS_STORAGE_CLASSES:
+                        analysisOutputs.add(name)
                     # required only: exposure implies physical_filter etc.
                     dims = datasetTypeNode.dimensions.required
                     dataId: dict[str, Any] = {"instrument": instrument}
@@ -1429,15 +1458,21 @@ class ResultCollector:
                         self.checks.append(Check(True, f"Found {name} for {exposureLabel} in {outputRun}"))
                     else:
                         self.checks.append(Check(False, f"Missing {name} for {exposureLabel} in {outputRun}"))
-            # analysis_tools writes no metrics output when no tool makes a
-            # metric, as for flats (DM-52068), so warn rather than fail
-            if writesMetricBundle:
-                self.checks.append(Check(True, f"{pipelineKey} step1b writes a MetricMeasurementBundle"))
-            else:
+            expected = CALIB_STEP1B_ANALYSIS_OUTPUTS[pipelineKey]
+            for name in sorted(expected - analysisOutputs):
+                self.checks.append(
+                    Check(
+                        False,
+                        f"{pipelineKey} step1b does not write {name},"
+                        " which CALIB_STEP1B_ANALYSIS_OUTPUTS expects",
+                    )
+                )
+            for name in sorted(analysisOutputs - expected):
                 self.checks.append(
                     Check(
                         None,
-                        f"{pipelineKey} step1b writes no MetricMeasurementBundle, so nothing for Sasquatch",
+                        f"{pipelineKey} step1b writes {name},"
+                        " which CALIB_STEP1B_ANALYSIS_OUTPUTS does not expect",
                     )
                 )
 
