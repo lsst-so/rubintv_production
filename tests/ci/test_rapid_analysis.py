@@ -55,6 +55,7 @@ from lsst.daf.butler import Butler, MissingDatasetTypeError  # noqa: E402
 from lsst.rubintv.production.butlerQueries import getCurrentOutputRun  # noqa: E402
 from lsst.rubintv.production.locationConfig import LocationConfig, findMissingConfigKeys  # noqa: E402
 from lsst.rubintv.production.packageVersions import (  # noqa: E402
+    STACK_PRODUCT,
     TRACKED_INSTALLED_PACKAGES,
     TRACKED_PACKAGES,
     VersionComparison,
@@ -1560,7 +1561,7 @@ def gather_package_version_comparisons() -> tuple[PackageVersions, list[VersionC
     Returns
     -------
     versions : `PackageVersions`
-        The scraped git versions.
+        The scraped versions.
     comparisons : `list` [`VersionComparison`]
         One entry per tracked package.
     dockerfilePath : `str` or `None`
@@ -1596,7 +1597,7 @@ def print_loud_version_mismatch_warning(mismatches: list[VersionComparison]) -> 
     print(_colour("  head node refuses to start until the Dockerfile pins match:", _RED, _BOLD))
     print(_colour(bar, _RED, _BOLD))
     for comparison in mismatches:
-        line = f"    {comparison.package}:  git = {comparison.gitVersion}   Dockerfile = {comparison.dockerfileRef}"  # noqa: E501
+        line = f"    {comparison.package}:  running = {comparison.gitVersion}   Dockerfile = {comparison.dockerfileRef}"  # noqa: E501
         print(_colour(line, _RED, _BOLD))
     print(_colour(bar, _RED, _BOLD))
     print(_colour(bar, _RED, _BOLD))
@@ -1644,7 +1645,7 @@ def print_package_version_summary(
         elif comparison.dockerfileRef is None:
             status = _colour("- not pinned in the Dockerfile", _YELLOW)
         else:
-            status = _colour("- git version unknown", _YELLOW)
+            status = _colour("- version unknown", _YELLOW)
         print(f"  {comparison.package}: {comparison.gitVersion}  {status}")
 
     if versionHash is not None:
@@ -1743,7 +1744,9 @@ class TestRunner:
             stillUnknown = [
                 c
                 for c in comparisons
-                if c.gitVersion == UNKNOWN_VERSION and os.environ.get(envVarForPackage(c.package))
+                if c.package in TRACKED_PACKAGES
+                and c.gitVersion == UNKNOWN_VERSION
+                and os.environ.get(envVarForPackage(c.package))
             ]
             for comparison in stillUnknown:
                 envVar = envVarForPackage(comparison.package)
@@ -1767,6 +1770,18 @@ class TestRunner:
                             False,
                             f"Could not determine the version of {comparison.package}: the"
                             f" '{comparison.package}' distribution is not installed/importable",
+                        )
+                    )
+
+            # Without the stack's release tag, the check of STACK_TAG is
+            # vacuous, so this is a hard failure too.
+            for comparison in comparisons:
+                if comparison.package == STACK_PRODUCT and comparison.gitVersion == UNKNOWN_VERSION:
+                    self.result_collector.checks.append(
+                        Check(
+                            False,
+                            f"Could not determine the stack version: {STACK_PRODUCT} is not set up,"
+                            " or has no release tag to compare with the Dockerfile's STACK_TAG",
                         )
                     )
 

@@ -132,7 +132,11 @@ git tags/SHAs for the checkouts (`ts_wep`, `donut_viz`, `rubintv_production`,
 `tarts`, `summit_utils`, located via their `*_DIR` env var) and the installed
 distribution version for `danish` (conda-installed, no env var) — and
 cross-checks them against the refs pinned in the `Dockerfile` (`ARG
-<name>_ref` for the git packages, the `name=version` conda spec for `danish`):
+<name>_ref` for the git packages, the `name=version` conda spec for `danish`).
+The stack is scraped, recorded with each image's package versions and
+checked the same way: its version is the release tags (`w_*`, `d_*` or `v*`)
+of the set-up `lsst_distrib`, which must include the Dockerfile's
+`STACK_TAG`, the scipipe image the pods are built from.
 
 - A mismatch on a Dockerfile-pinned package prints a loud bold-red banner up
   front and is shown again, scarily, in a version summary printed beneath the
@@ -144,8 +148,9 @@ cross-checks them against the refs pinned in the `Dockerfile` (`ARG
   `rubintv_production` is excluded (it tracks a SHA under development and has
   no pin).
 - A package whose version can't be determined **is** a hard failure: a missing
-  `*_DIR` env var (a git package isn't set up) or an unimportable `danish`
-  means the running image is broken, so the run goes red.
+  `*_DIR` env var (a git package isn't set up), an unimportable `danish`, or an
+  `lsst_distrib` that isn't set up or has no release tag means the running
+  environment is broken, so the run goes red.
 
 To check just the package versions, without running the suite, use
 `python tests/ci/test_rapid_analysis.py -p`. It prints the same version

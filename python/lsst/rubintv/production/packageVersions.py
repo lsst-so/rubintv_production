@@ -25,7 +25,8 @@ For each image it dispatches, the head node records the exact version of the
 handful of packages that determine the AOS results. "Version" here means the
 annotated/lightweight tag if the package is checked out exactly on a tag (the
 normal case for a release), otherwise the bare commit SHA. ``rubintv_-
-production`` itself is usually a SHA rather than a tag.
+production`` itself is usually a SHA rather than a tag. The stack is recorded
+too, as the release tags of the set-up ``lsst_distrib``.
 
 These versions cannot change for the lifetime of a pod, so they are computed
 once and cached on the head node (see ``HeadProcessController``). If people are
@@ -40,10 +41,11 @@ users without access to this package can still read the recorded data back.
 
 The Dockerfile is the source of truth for what runs on BTS and the summit, so
 the versions git actually reports are cross-checked against the refs pinned
-there, and a mismatch raises `PackageVersionMismatchError` (or, in CI, logs a
-warning). A Dockerfile that can't be read or parsed only produces a warning.
-A unit test pins the Dockerfile format so that a drift which breaks the parser
-is caught in CI rather than silently turning the runtime check into a no-op.
+there, and the set-up stack against its ``STACK_TAG``. A mismatch raises
+`PackageVersionMismatchError` (or, in CI, logs a warning). A Dockerfile that
+can't be read or parsed only produces a warning. A unit test pins the
+Dockerfile format so that a drift which breaks the parser is caught in CI
+rather than silently turning the runtime check into a no-op.
 """
 
 from __future__ import annotations
@@ -61,6 +63,7 @@ from lsst.summit.utils.packageVersions import UNKNOWN_VERSION, PackageVersions
 __all__ = [
     "TRACKED_PACKAGES",
     "TRACKED_INSTALLED_PACKAGES",
+    "STACK_PRODUCT",
     "PACKAGE_VERSIONS_METADATA_KEY",
     "PackageVersionMismatchError",
     "VersionComparison",
@@ -69,6 +72,7 @@ __all__ = [
     "getPackageVersion",
     "getInstalledPackageVersion",
     "getCurrentPackageVersions",
+    "getStackVersion",
     "packageVersionsToDisplayDict",
     "packageVersionsFromDisplayDict",
     "findDockerfile",
@@ -94,6 +98,11 @@ TRACKED_PACKAGES = ["ts_wep", "donut_viz", "rubintv_production", "tarts", "summi
 # <name>_ref``.
 TRACKED_INSTALLED_PACKAGES = ["danish"]
 
+# The stack product, recorded with the tracked packages as its release tags
+# and checked against the Dockerfile's ``STACK_TAG``, the tag of the scipipe
+# image the pods are built from.
+STACK_PRODUCT = "lsst_distrib"
+
 # The key (i.e. the column name on RubinTV) the package versions are written
 # under in the AOS metadata. Shared by the writer (the head node) and the
 # reader (the ConsDB backfill).
@@ -108,8 +117,16 @@ _MIN_ABBREV_SHA_LEN = 7
 # Matches ``ARG <something>_ref="<ref>"`` (or single/no quotes) in the
 # Dockerfile, capturing the package name and the ref it is pinned to. e.g.
 # ``ARG ts_wep_ref="v17.6.1-alpha"`` -> ("ts_wep", "v17.6.1-alpha"). The
-# ``STACK_TAG`` arg doesn't end in ``_ref`` so it is correctly ignored.
+# ``STACK_TAG`` arg doesn't end in ``_ref`` so it is not matched here.
 _DOCKERFILE_REF_RE = re.compile(r"""^\s*ARG\s+([A-Za-z0-9_]+)_ref\s*=\s*["']?([^"'\s]+)["']?""")
+
+# Matches ``ARG STACK_TAG="w_2026_41"`` (or single/no quotes), capturing the
+# tag.
+_DOCKERFILE_STACK_TAG_RE = re.compile(r"""^\s*ARG\s+STACK_TAG\s*=\s*["']?([^"'\s]+)["']?""")
+
+# The eups tags that name one stack release: weekly, daily or numbered. Tags
+# such as ``current`` and ``w_latest`` move between releases.
+_STACK_RELEASE_TAG_RE = re.compile(r"^(w_\d{4}_\d{2}|d_\d{4}_\d{2}_\d{2}|v\d+(_\d+)*(_rc\d+)?)$")
 
 
 def envVarForPackage(packageName: str) -> str:
@@ -238,7 +255,8 @@ def getCurrentPackageVersions(
     packageNames: list[str] | None = None,
     installedPackageNames: list[str] | None = None,
 ) -> PackageVersions:
-    """Collect the versions of the tracked packages in this environment.
+    """Collect the versions of the tracked packages and the stack in this
+    environment.
 
     Parameters
     ----------
@@ -252,7 +270,8 @@ def getCurrentPackageVersions(
     Returns
     -------
     packageVersions : `lsst.summit.utils.packageVersions.PackageVersions`
-        The collected versions.
+        The collected versions, with the stack's (see `getStackVersion`)
+        under `STACK_PRODUCT`.
     """
     if packageNames is None:
         packageNames = TRACKED_PACKAGES
@@ -261,7 +280,38 @@ def getCurrentPackageVersions(
     versions = {name: getPackageVersion(name) for name in packageNames}
     for name in installedPackageNames:
         versions[name] = getInstalledPackageVersion(name)
+    versions[STACK_PRODUCT] = getStackVersion()
     return PackageVersions(versions=versions)
+
+
+def getStackVersion() -> str:
+    """Get the release tags of the set-up stack.
+
+    Never raises: returns `UNKNOWN_VERSION` and logs a warning if
+    `STACK_PRODUCT` isn't set up or has no release tag.
+
+    Returns
+    -------
+    version : `str`
+        The space-separated release tags of the set-up `STACK_PRODUCT`, e.g.
+        ``"w_2026_41"``. One build can carry several, e.g. a weekly and a
+        daily.
+    """
+    try:
+        import eups
+
+        product = eups.Eups().findSetupProduct(STACK_PRODUCT)
+    except Exception as e:  # noqa: BLE001 - version recording must never raise
+        _log.warning(f"Failed to look up the set-up {STACK_PRODUCT}: {e}")
+        return UNKNOWN_VERSION
+    if product is None:
+        _log.warning(f"{STACK_PRODUCT} is not set up; cannot determine the stack version")
+        return UNKNOWN_VERSION
+    tags = sorted(tag for tag in (product.tags or []) if _STACK_RELEASE_TAG_RE.match(tag))
+    if not tags:
+        _log.warning(f"{STACK_PRODUCT} {product.version} has no release tag, only {product.tags}")
+        return UNKNOWN_VERSION
+    return " ".join(tags)
 
 
 def packageVersionsToDisplayDict(packageVersions: PackageVersions) -> dict[str, str]:
@@ -347,9 +397,10 @@ def _findCondaPin(lines: list[str], packageName: str) -> str | None:
 def parseDockerfileRefs(dockerfilePath: str, condaPackages: list[str] | None = None) -> dict[str, str]:
     """Parse the package version pins out of the Dockerfile.
 
-    Picks up two pin styles: ``ARG <package>_ref=...`` (git checkouts) for any
-    package, and conda/pip ``<package>=<version>`` specs for the names given in
-    ``condaPackages`` (installed packages such as ``danish``).
+    Picks up ``ARG <package>_ref=...`` (git checkouts) for any package,
+    conda/pip ``<package>=<version>`` specs for the names given in
+    ``condaPackages`` (installed packages such as ``danish``), and ``ARG
+    STACK_TAG=...`` as the pin for `STACK_PRODUCT`.
 
     Parameters
     ----------
@@ -363,9 +414,10 @@ def parseDockerfileRefs(dockerfilePath: str, condaPackages: list[str] | None = N
     -------
     refs : `dict` [`str`, `str`]
         Mapping of package name to the ref/version it is pinned to, e.g.
-        ``{"ts_wep": "v17.6.1-alpha", "danish": "1.1.1", ...}``. Packages with
-        no recognised pin (e.g. ``rubintv_production``, which is COPYed in
-        rather than checked out) are simply absent.
+        ``{"ts_wep": "v17.6.1-alpha", "danish": "1.1.1", "lsst_distrib":
+        "w_2026_41", ...}``. Packages with no recognised pin (e.g.
+        ``rubintv_production``, which is COPYed in rather than checked out)
+        are simply absent.
     """
     refs: dict[str, str] = {}
     with open(dockerfilePath) as f:
@@ -374,6 +426,9 @@ def parseDockerfileRefs(dockerfilePath: str, condaPackages: list[str] | None = N
         match = _DOCKERFILE_REF_RE.match(line)
         if match:
             refs[match.group(1)] = match.group(2)
+        match = _DOCKERFILE_STACK_TAG_RE.match(line)
+        if match:
+            refs[STACK_PRODUCT] = match.group(1)
     for name in condaPackages or []:
         pin = _findCondaPin(lines, name)
         if pin is not None:
@@ -423,7 +478,8 @@ class VersionComparison:
     package : `str`
         The package name.
     gitVersion : `str`
-        The version git reported for the running checkout.
+        The running version: the git version of a checkout, the installed
+        version of a conda/pip package, or the release tags of the stack.
     dockerfileRef : `str` or `None`
         The ref the Dockerfile pins the package to, or `None` if there is no
         pin (e.g. ``rubintv_production``, which is COPYed in, not checked out).
@@ -445,6 +501,9 @@ def compareVersionsToDockerfile(
     log: logging.Logger | None = None,
 ) -> list[VersionComparison]:
     """Compare each recorded version to its Dockerfile pin.
+
+    The stack matches if ``STACK_TAG`` is any of its release tags, as one
+    build can carry several.
 
     Never raises: if the Dockerfile can't be read or parsed, a warning is
     logged and every package is reported as not-comparable (``matches=None``).
@@ -481,6 +540,8 @@ def compareVersionsToDockerfile(
         ref = refs.get(name)
         if ref is None or gitVersion == UNKNOWN_VERSION:
             matches = None  # no pin to compare against, or no git version to compare
+        elif name == STACK_PRODUCT:
+            matches = ref in gitVersion.split()
         else:
             matches = versionsMatch(gitVersion, ref)
         comparisons.append(
@@ -495,7 +556,7 @@ def checkVersionsAgainstDockerfile(
     log: logging.Logger | None = None,
     raiseOnMismatch: bool = True,
 ) -> None:
-    """Check the recorded git versions against the Dockerfile pins.
+    """Check the recorded versions against the Dockerfile pins.
 
     The Dockerfile is the source of truth for what runs on BTS and the summit,
     so any package whose version differs from its pin is an error there. A
