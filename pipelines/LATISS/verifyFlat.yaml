@@ -1,0 +1,14 @@
+description: |
+    Rapid analysis flat verification for LATISS.
+
+    drp_pipe's quickLook flat pipeline plus the analysis_tools task for its
+    merged results. analyzeFlatDetCore only makes plots, so flats write no
+    MetricMeasurementBundle (DM-52068). The head node runs the per-detector
+    labels as step1a and the rest as step1b
+    (processingControl.CALIBRATION_PIPELINE_LABELS).
+instrument: lsst.obs.lsst.Latiss
+imports:
+  - location: $DRP_PIPE_DIR/pipelines/LATISS/quickLookFlat.yaml
+  - location: $ANALYSIS_TOOLS_DIR/pipelines/cpCore.yaml
+    include:
+      - analyzeFlatDetCore

@@ -23,7 +23,8 @@
 
 Covers the git version helpers, the version scraping into the
 summit_utils-owned ``PackageVersions`` dataclass, its rendering for RubinTV,
-and the Dockerfile cross-check. The ``PackageVersions`` data model
+and the Dockerfile cross-check, including the set-up stack's eups tags against
+``STACK_TAG``. The ``PackageVersions`` data model
 itself - its JSON round-trip and content-hash identity - is tested in
 summit_utils alongside the code. The ``test_realDockerfileFormatIsParseable``
 test deliberately reads the actual ``Dockerfile`` so that any drift in the
@@ -36,9 +37,12 @@ import subprocess
 import tempfile
 import unittest
 import unittest.mock
+from types import SimpleNamespace
 
 import lsst.utils.tests
 from lsst.rubintv.production.packageVersions import (
+    _STACK_RELEASE_TAG_RE,
+    STACK_PRODUCT,
     TRACKED_INSTALLED_PACKAGES,
     TRACKED_PACKAGES,
     PackageVersionMismatchError,
@@ -50,6 +54,7 @@ from lsst.rubintv.production.packageVersions import (
     getGitVersion,
     getInstalledPackageVersion,
     getPackageVersion,
+    getStackVersion,
     packageVersionsFromDisplayDict,
     packageVersionsToDisplayDict,
     parseDockerfileRefs,
@@ -193,6 +198,52 @@ class InstalledPackageVersionTestCase(lsst.utils.tests.TestCase):
         )
 
 
+class StackVersionTestCase(lsst.utils.tests.TestCase):
+    """Tests for `getStackVersion`.
+
+    The stack version is the release tags of the set-up lsst_distrib, and
+    anything that doesn't name one release must come back as unknown, which
+    skips the STACK_TAG check, rather than as a version that can never match
+    it and so fails the head node at startup.
+    """
+
+    @staticmethod
+    def _makeEups(product: SimpleNamespace | None) -> unittest.mock.MagicMock:
+        eupsInstance = unittest.mock.MagicMock()
+        eupsInstance.findSetupProduct.return_value = product
+        return eupsInstance
+
+    def test_returnsOnlyReleaseTags(self) -> None:
+        # current, setup and w_latest move between releases, and one build
+        # can carry both a daily and a weekly tag
+        product = SimpleNamespace(
+            version="g00e868bf88+e0f0dea02a",
+            tags=["current", "w_2026_41", "w_latest", "d_2026_10_07", "setup"],
+        )
+        with unittest.mock.patch("eups.Eups", return_value=self._makeEups(product)):
+            self.assertEqual(getStackVersion(), "d_2026_10_07 w_2026_41")
+
+    def test_unknownWhenNotSetUp(self) -> None:
+        with unittest.mock.patch("eups.Eups", return_value=self._makeEups(None)):
+            with self.assertLogs(level="WARNING") as cm:
+                self.assertEqual(getStackVersion(), UNKNOWN_VERSION)
+        self.assertIn("not set up", cm.output[0])
+
+    def test_unknownWhenNoReleaseTag(self) -> None:
+        # eups distrib install can declare no tag at all if the server's tag
+        # list is stale, leaving only the floating ones
+        product = SimpleNamespace(version="g00e868bf88+e0f0dea02a", tags=["current", "w_latest"])
+        with unittest.mock.patch("eups.Eups", return_value=self._makeEups(product)):
+            with self.assertLogs(level="WARNING") as cm:
+                self.assertEqual(getStackVersion(), UNKNOWN_VERSION)
+        self.assertIn("no release tag", cm.output[0])
+
+    def test_neverRaisesWhenEupsFails(self) -> None:
+        with unittest.mock.patch("eups.Eups", side_effect=RuntimeError("no eups database")):
+            with self.assertLogs(level="WARNING"):
+                self.assertEqual(getStackVersion(), UNKNOWN_VERSION)
+
+
 class PackageVersionsTestCase(lsst.utils.tests.TestCase):
     def test_displayDictHasBookMarker(self) -> None:
         versions = {"ts_wep": "v1", "donut_viz": "v2", "rubintv_production": "abc123"}
@@ -241,7 +292,18 @@ class PackageVersionsTestCase(lsst.utils.tests.TestCase):
 
     def test_getCurrentPackageVersionsDefaultsToTrackedPackages(self) -> None:
         pv = getCurrentPackageVersions()
-        self.assertEqual(list(pv.versions.keys()), TRACKED_PACKAGES + TRACKED_INSTALLED_PACKAGES)
+        self.assertEqual(
+            list(pv.versions.keys()), TRACKED_PACKAGES + TRACKED_INSTALLED_PACKAGES + [STACK_PRODUCT]
+        )
+
+    def test_getCurrentPackageVersionsRecordsTheStack(self) -> None:
+        # the stack is part of the recorded version set, so it reaches ConsDB
+        # and changes the version hash like any tracked package
+        with unittest.mock.patch(
+            "lsst.rubintv.production.packageVersions.getStackVersion", return_value="w_2026_41"
+        ):
+            pv = getCurrentPackageVersions(packageNames=[], installedPackageNames=[])
+        self.assertEqual(pv.versions, {STACK_PRODUCT: "w_2026_41"})
 
 
 class VersionsMatchTestCase(lsst.utils.tests.TestCase):
@@ -281,7 +343,9 @@ class DockerfileParsingTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(refs["donut_viz"], "v4.4.0-alpha")
         self.assertEqual(refs["summit_utils"], "1485dcbc10ad7637a845ee7e9a5a29d0f1da7680")
         self.assertEqual(refs["drp_pipe"], "w.2026.22")
-        # STACK_TAG doesn't end in _ref, and the commented line is ignored
+        # STACK_TAG is parsed as the stack's pin, not as a package, and the
+        # commented line is ignored
+        self.assertEqual(refs[STACK_PRODUCT], "w_2026_22")
         self.assertNotIn("STACK_TAG", refs)
         self.assertNotIn("commented", refs)
 
@@ -322,6 +386,10 @@ class DockerfileParsingTestCase(lsst.utils.tests.TestCase):
             self.assertTrue(refs[package], f"{package} conda pin parsed as empty")
         # rubintv_production is COPYed in, not checked out via a _ref arg
         self.assertNotIn("rubintv_production", refs)
+        # STACK_TAG must be a tag that getStackVersion can report, or the
+        # stack check can never match and the head node always raises
+        self.assertIn(STACK_PRODUCT, refs, "STACK_TAG no longer parseable from the Dockerfile")
+        self.assertRegex(refs[STACK_PRODUCT], _STACK_RELEASE_TAG_RE)
 
 
 class FindDockerfileTestCase(lsst.utils.tests.TestCase):
@@ -406,6 +474,15 @@ class CheckVersionsAgainstDockerfileTestCase(lsst.utils.tests.TestCase):
             with self.assertNoLogs(level="WARNING"):
                 checkVersionsAgainstDockerfile(pv, path)
 
+    def test_raisesOnStackMismatch(self) -> None:
+        # Regression: an image built FROM w_2026_40 couldn't load pipelines
+        # that worked on w_2026_41, and nothing reported the stack drift
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._writeDockerfile(tmp, 'ARG STACK_TAG="w_2026_40"\nARG ts_wep_ref="v1.0.0"\n')
+            pv = PackageVersions(versions={"ts_wep": "v1.0.0", STACK_PRODUCT: "w_2026_41"})
+            with self.assertRaisesRegex(PackageVersionMismatchError, "lsst_distrib.*w_2026_41.*w_2026_40"):
+                checkVersionsAgainstDockerfile(pv, path)
+
     def test_neverRaisesOnMissingFile(self) -> None:
         pv = PackageVersions(versions={"ts_wep": "v1.0.0"})
         missing = os.path.join("/nonexistent", "Dockerfile")
@@ -450,6 +527,30 @@ class CompareVersionsToDockerfileTestCase(lsst.utils.tests.TestCase):
             comparisons = compareVersionsToDockerfile(pv, "/nonexistent/Dockerfile")
         self.assertEqual(len(comparisons), 2)
         self.assertTrue(all(c.matches is None for c in comparisons))
+
+    def test_stackMatchesWhenStackTagIsOneOfItsTags(self) -> None:
+        # a build tagged as both a daily and a weekly matches either, where
+        # a git version would need the whole string to match
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._writeDockerfile(tmp, 'ARG STACK_TAG="w_2026_41"\n')
+            pv = PackageVersions(versions={STACK_PRODUCT: "d_2026_10_07 w_2026_41"})
+            (stack,) = compareVersionsToDockerfile(pv, path)
+        self.assertEqual(stack.dockerfileRef, "w_2026_41")
+        self.assertTrue(stack.matches)
+
+    def test_stackMismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._writeDockerfile(tmp, 'ARG STACK_TAG="w_2026_40"\n')
+            pv = PackageVersions(versions={STACK_PRODUCT: "w_2026_41"})
+            (stack,) = compareVersionsToDockerfile(pv, path)
+        self.assertFalse(stack.matches)
+
+    def test_unknownStackNotComparable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._writeDockerfile(tmp, 'ARG STACK_TAG="w_2026_41"\n')
+            pv = PackageVersions(versions={STACK_PRODUCT: UNKNOWN_VERSION})
+            (stack,) = compareVersionsToDockerfile(pv, path)
+        self.assertIsNone(stack.matches)
 
     def test_crossChecksCondaPinnedInstalledPackage(self) -> None:
         # danish is pinned via a conda spec, not an ARG _ref, but is still
