@@ -1,5 +1,6 @@
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 t0 = time.time()
@@ -11,6 +12,7 @@ from fixtureExposures import (  # noqa: E402
     LATISS_CWFS_INTRA,
     LATISS_ON_SKY,
     LSSTCAM_BIAS,
+    LSSTCAM_BLITZ,
     LSSTCAM_DARK,
     LSSTCAM_EXPOSURES,
     LSSTCAM_FAM_EXTRA,
@@ -23,10 +25,37 @@ from lsst.daf.butler import Butler, DimensionRecord  # noqa: E402
 from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig  # noqa: E402
 from lsst.rubintv.production.payloads import Payload  # noqa: E402
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor  # noqa: E402
+from lsst.rubintv.production.predicates import isCalibration, isWepImage  # noqa: E402
+from lsst.rubintv.production.redisKeys import getNewDataQueueName  # noqa: E402
 from lsst.rubintv.production.redisUtils import RedisHelper  # noqa: E402
 
 print(f"Imports took {(time.time() - t0):.2f} seconds")
 t0 = time.time()
+
+
+def waitFor(condition: Callable[[], bool], description: str, timeout: float = 300) -> None:
+    """Wait for a condition to become true, raising if it never does.
+
+    Parameters
+    ----------
+    condition : `Callable` [[], `bool`]
+        The condition to wait for.
+    description : `str`
+        What is being waited for, for the logs and the error.
+    timeout : `float`, optional
+        How long to wait, in seconds.
+
+    Raises
+    ------
+    RuntimeError
+        Raised if the condition is not met within the timeout.
+    """
+    print(f"Waiting for {description}...")
+    start = time.time()
+    while not condition():
+        if time.time() - start > timeout:
+            raise RuntimeError(f"Timed out after {timeout}s waiting for {description}")
+        time.sleep(0.5)
 
 
 instrument = "LSSTCam"
@@ -123,6 +152,30 @@ for exposure in (
 
 t1 = time.time()
 print(f"Butler init and query took {(time.time() - t0):.2f} seconds")
+
+# Switch the AOS pipeline to blitz the way RubinTV does, and send the blitz
+# image through it. The head node applies controls at the top of its loop,
+# before popping the next image, so waiting for the queue to empty first
+# guarantees none of the images above are processed with blitz.
+blitzRecord = recordDict[LSSTCAM_BLITZ.id]
+assert not isCalibration(blitzRecord) and not isWepImage(blitzRecord), f"{LSSTCAM_BLITZ} must be on-sky"
+controlKey = "RUBINTV_CONTROL_AOS_PIPELINE"
+waitFor(
+    lambda: redisHelper.redis.llen(getNewDataQueueName(instrument)) == 0,
+    "the head node to pop all the other images",
+)
+waitFor(
+    lambda: len(redisHelper.getAllWorkers(instrument=instrument, podFlavor=PodFlavor.AOS_BLITZ_WORKER)) > 0,
+    "the blitz worker to come online",
+)
+redisHelper.redis.set(controlKey, "BLITZ_BIN_2")  # RubinTV sends the name without the AOS_ prefix
+waitFor(
+    lambda: redisHelper.getControlReadback(controlKey) == "AOS_BLITZ_BIN_2",
+    "the head node to switch to AOS_BLITZ_BIN_2",
+)
+redisHelper.pushNewExposureToHeadNode(blitzRecord)
+redisHelper.pushToButlerWatcherList(instrument, blitzRecord)
+redisHelper.enqueuePayload(Payload(blitzRecord.dataId, b"", "", who=""), performancePod)
 
 # do LATISS with the same drip-feeder
 instrument = "LATISS"

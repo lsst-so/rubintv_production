@@ -59,6 +59,7 @@ source ~/stack.sh && . ~/setup_packages.sh && pytest tests/ -q -n logical
 | `test_timedServices.py` | `deep_update` recursive dict merge | No |
 | `test_exposureProcessingInfo.py` | `ExposureProcessingInfo.fromRedisHash` parsing and predicates | No |
 | `test_redisUtils.py` | `RedisHelper` lifecycle / queueing / tracking, against `fakeredis` | No |
+| `test_pipelineRunning.py` | `SingleCorePipelineRunner` step1a completion reporting (per-detector vs visit-level), against `fakeredis` | No |
 
 ### Test Data
 
@@ -176,11 +177,14 @@ Full pipeline execution:
   plus the dedicated LATISS AOS worker (detector 0) for the WEP
   monolith pair processing
 - 18 SFM detectors for LSSTCam (90-98, 144-152)
+- One LSSTCam `AOS_BLITZ_WORKER`, run with `LIMITS_CPU=8` like the summit
+  pods (via the per-script `env` on `TestScript`)
 - Real Butler queries against test data
 - Test exposures, defined once in `tests/fixtureExposures.py` (shared with
   the unit tests) as full exposure ids, so nothing assumes they share a
   night: LSSTCam 2025111500226 (SFM), 2025111500227+228 (FAM CWFS pair),
-  2026070200203 (bias), 2026070200201 (dark), 2026070200192 (flat). The
+  2026070200203 (bias), 2026070200201 (dark), 2026070200192 (flat),
+  2025111500229 (SFM, with its AOS run through `AOS_BLITZ_BIN_2`). The
   calibs are deliberately from a much newer night than the on-sky images,
   because older raw headers lack information cp_verify needs
 - The butlers are the `+sasquatch_dev` ones, so metric bundles really are
@@ -220,7 +224,16 @@ Post-processing and visualization:
    - Then the bias, dark and flat, the in-focus SFM image, and the
      extra-focal FAM image
    - 2 s delays between pushes
-4. Also tests LATISS:
+4. Switches the AOS pipeline to blitz the way RubinTV does, then pushes the
+   blitz image (`LSSTCAM_BLITZ`): once the head node has popped every other
+   image and the blitz worker is up, sets `RUBINTV_CONTROL_AOS_PIPELINE` to
+   `BLITZ_BIN_2`, waits for the head node's readback to show
+   `AOS_BLITZ_BIN_2`, then pushes it. The final checks assert one
+   visit-level `step1a`/`AOS` finished, an MTAOS Zernike count of 4 for it,
+   and that `donutBlitzCornerResults`, `aggregateAOSVisitTable{Raw,Avg}` and
+   the four extra-focal `zernikes` landed in the current run, and that
+   blitz wrote results for no other visit
+5. Also tests LATISS:
    - its on-sky fixture exposure (2024081300632, exercises SFM)
    - its CWFS intra/extra pair (2026062500012+13, pushed intra first; the
      extra-focal image landing triggers the `AOS_LATISS` WEP monolith
@@ -254,9 +267,12 @@ Features:
 `tests/createUnitTestCollections.py` builds Butler collections for CI:
 - Sets `RAPID_ANALYSIS_LOCATION=usdf_testing`
 - Runs pipelines in parallel via `ThreadPoolExecutor`
-- Creates collections for: FAM, AOS, SFM, calibration pipelines (LSSTCam),
-  plus `AOS_LATISS` (the LATISS WEP monolith, run on the CWFS pair
-  2026062500012+13)
+- Creates collections for: FAM, AOS (including the two blitz pipelines),
+  SFM, calibration pipelines (LSSTCam), plus `AOS_LATISS` (the LATISS WEP
+  monolith, run on the CWFS pair 2026062500012+13)
+- Passes each pipeline's `PipelineComponents.overrides` to `pipetask` as
+  `-c` options, so the collections are made with the same configs the pods
+  build (e.g. the blitz binning)
 - The calibration pipelines are run with both their step1a labels (cp_verify
   ISR plus the per-detector verify task) so that the collections hold the
   inputs the calib step1b tests (`testCalibPipelinesStep1b`) build their

@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 import unittest
 from contextlib import contextmanager
-from typing import Iterator
+from typing import Any, Iterator
 from unittest.mock import patch
 
 from fixtureExposures import (
@@ -34,6 +34,7 @@ from fixtureExposures import (
     LATISS_CWFS_EXTRA,
     LATISS_CWFS_INTRA,
     LATISS_ON_SKY,
+    LSSTCAM_BLITZ,
     LSSTCAM_FAM_EXTRA,
     LSSTCAM_FAM_INTRA,
     LSSTCAM_IN_FOCUS,
@@ -103,14 +104,22 @@ EXPECTED_PIPELINES = [
     "AOS_FAM_TIE",
     "AOS_FAM_DANISH",
     "AOS_UNPAIRED_DANISH",
+    "AOS_BLITZ_BIN_1",
+    "AOS_BLITZ_BIN_2",
 ]
 
 EXPECTED_AOS_PIPELINES = [p for p in EXPECTED_PIPELINES if p.startswith("AOS")]
 EXPECTED_FAM_PIPEPLINES = [p for p in EXPECTED_AOS_PIPELINES if "FAM" in p]
 EXPECTED_UNPAIRED_PIPELINES = [p for p in EXPECTED_AOS_PIPELINES if "UNPAIRED" in p]
+# blitz runs all the corner chips in one visit-level quantum with no step1b,
+# so it is kept out of the per-detector lists and tested on its own below
+EXPECTED_BLITZ_PIPELINES = [p for p in EXPECTED_AOS_PIPELINES if "BLITZ" in p]
 EXPECTED_AOS_NON_FAM_PIPELINES = [
-    p for p in EXPECTED_AOS_PIPELINES if "FAM" not in p and "UNPAIRED" not in p and "AOS" in p
+    p
+    for p in EXPECTED_AOS_PIPELINES
+    if "FAM" not in p and "UNPAIRED" not in p and "BLITZ" not in p and "AOS" in p
 ]
+CORNER_DETECTORS = {191, 192, 195, 196, 199, 200, 203, 204}
 
 # TODO: still need to add step1b tests for all the other pipelines
 
@@ -188,6 +197,7 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
             "inFocus": LSSTCAM_IN_FOCUS.id,
             "intra": LSSTCAM_FAM_INTRA.id,
             "extra": LSSTCAM_FAM_EXTRA.id,
+            "blitz": LSSTCAM_BLITZ.id,  # the in-focus image the CI sends through blitz
         }
         calibIds = {pipelineName.lower(): exposure.id for pipelineName, exposure in CALIB_EXPOSURES.items()}
         fixtureIds = sorted(set(onSkyIds.values()) | set(calibIds.values()))
@@ -197,8 +207,9 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
             fixtureIds
         ), f"Expected {len(fixtureIds)} fixture records, got {len(records)}"
         rd = {r.id: r for r in records}
-        # keyed by what the record is used as: "inFocus", "intra", "extra"
-        # and the calib pipeline each calib fixture belongs to ("bias" etc.)
+        # keyed by what the record is used as: "inFocus", "intra", "extra",
+        # "blitz", and the calib pipeline each calib fixture belongs to
+        # ("bias" etc.)
         cls.records = {imageType: rd[expId] for imageType, expId in (onSkyIds | calibIds).items()}
         cls.intraDetector = 192
         cls.extraDetector = 191
@@ -468,6 +479,136 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
             " runs both step1a labels for the calibration pipelines).",
         )
 
+    def testAosBlitzPipelines(self) -> None:
+        # A blitz payload carries no detector, and must build exactly one
+        # quantum for the corner set plus the reformatting quantum. More than
+        # one corner quantum means the graph was built per-detector, or per
+        # visit the exposure belongs to (see the test below).
+        taskExpectations: dict[str, int] = {"donutBlitzCornerTask": 1, "formatBlitzTask": 1}
+        for imageType in ("inFocus", "blitz"):
+            self.runTest(
+                step="step1a",
+                imageType=imageType,
+                pipelinesToRun=EXPECTED_BLITZ_PIPELINES,
+                taskExpectations=taskExpectations,
+            )
+
+    def testAosBlitzQuantumIsForTheExposuresOwnVisit(self) -> None:
+        # The blitz quantum is visit-level, but an exposure in a multi-exposure
+        # sequence belongs to two visits: its own (keyed on the exposure ID, as
+        # used everywhere else in rapid analysis) and the sequence's, keyed on
+        # the sequence's first exposure. Constraining only the exposure built
+        # a quantum for each, and the second wrote 229's Zernikes and plots
+        # under visit 226, clobbering 226's own. The quantum must also get all
+        # eight corner raws, and only them and only from this exposure, as
+        # DonutBlitzCornerTask raises on a non-corner raw.
+        for imageType in ("inFocus", "blitz"):
+            expId = self.records[imageType].id
+            for pipelineName in EXPECTED_BLITZ_PIPELINES:
+                with self.subTest(imageType=imageType, pipeline=pipelineName):
+                    qg = self.buildQuantumGraph(pipelineName, "step1a", imageType, detector=None)
+                    blitzQuanta = [
+                        q
+                        for q in qg.build_execution_quanta().values()
+                        if q.taskName is not None and "donutblitzcornertask" in q.taskName.lower()
+                    ]
+                    self.assertEqual(len(blitzQuanta), 1, f"Got quanta for {[q.dataId for q in blitzQuanta]}")
+                    (quantum,) = blitzQuanta
+                    assert quantum.dataId is not None
+                    self.assertEqual(quantum.dataId["visit"], expId)
+
+                    raws = quantum.inputs["raw"]
+                    self.assertEqual({int(ref.dataId["detector"]) for ref in raws}, CORNER_DETECTORS)
+                    self.assertEqual({ref.dataId["exposure"] for ref in raws}, {expId})
+
+    def testAosBlitzBinning(self) -> None:
+        # The binning is applied as a config override keyed on the task label,
+        # and PipelineComponents silently skips overrides whose label isn't in
+        # the pipeline. If donut_viz renamed the task, BIN_1 would quietly run
+        # binned, so pin the binning that actually reaches each graph.
+        for pipelineName, expectedBinning in (("AOS_BLITZ_BIN_1", 1), ("AOS_BLITZ_BIN_2", 2)):
+            with self.subTest(pipeline=pipelineName):
+                graph = self.pipelines[pipelineName].graphs["step1a"]
+                config: Any = graph.tasks["donutBlitzCornerTask"].config
+                self.assertEqual(config.wavefrontFit.binning, expectedBinning)
+
+    def testRaisingBlitz(self) -> None:
+        # FAM images go to the science sensors, never to blitz, so a blitz
+        # payload for one means the head node's routing is broken.
+        for pipeline in EXPECTED_BLITZ_PIPELINES:
+            for imageType in ["intra", "extra"]:
+                failingToFailMsg = f"Failed to raise for {pipeline=}, {imageType=}"
+                with self.assertRaises(ValueError, msg=failingToFailMsg):
+                    self.runTest(
+                        step="step1a",
+                        imageType=imageType,
+                        pipelinesToRun=[pipeline],
+                        taskExpectations={},
+                    )
+
+    def buildQuantumGraph(
+        self,
+        pipelineName: str,
+        step: str,
+        imageType: str,
+        detector: int | None,
+        step1bDataIdKey: str = "visit",
+    ) -> PredictedQuantumGraph:
+        """Build the quantum graph a worker would build for a payload.
+
+        Parameters
+        ----------
+        pipelineName : `str`
+            The pipeline to build the graph for, e.g. ``"AOS_DANISH"``.
+        step : `str`
+            The step to build, either ``"step1a"`` or ``"step1b"``.
+        imageType : `str`
+            The key of the fixture exposure in ``self.records``.
+        detector : `int`, optional
+            The detector for a step1a payload. ``None`` makes an
+            exposure-level payload, as sent for the blitz pipelines.
+        step1bDataIdKey : `str`, optional
+            The dimension the step1b dataId is keyed by.
+
+        Returns
+        -------
+        qg : `lsst.pipe.base.quantum_graph.PredictedQuantumGraph`
+            The quantum graph.
+        """
+        if step == "step1a":
+            dataId: dict[str, int | str] = {
+                "instrument": self.instrument,
+                "exposure": self.records[imageType].id,
+            }
+            if detector is not None:
+                dataId["detector"] = detector
+            dataCoord = self.minimalButler.registry.expandDataId(dataId)
+        elif step == "step1b":
+            dataCoord = self.minimalButler.registry.expandDataId(
+                instrument=self.instrument,
+                **{step1bDataIdKey: self.records[imageType].id},
+            )
+        else:
+            raise ValueError(f"Unknown step {step}")
+
+        graph = self.pipelines[pipelineName].graphs[step]
+        runCollection = getUserRunCollectionName(pipelineName)
+        runner = self.step1aRunner if step == "step1a" else self.step1bRunner
+        butler = self._makeButler(pipelineName)
+        runner.butler = butler  # patch this in now, it's much quicker having runners premade
+        runner.runCollection = runCollection
+        # The runner's inputs start with the CI's output chain, where a
+        # step1b test could pass on step1a outputs the CI left behind,
+        # so pin them to this pipeline's own test collection.
+        collections = [runCollection, f"{self.instrument}/defaults"]
+        if step == "step1b":
+            self.assertStep1aOutputsPresent(pipelineName, dataCoord, butler, runCollection)
+        payload = Payload(dataCoord, b"", "does not matter here", who="AOS")
+        payload = Payload.from_json(payload.to_json(), self.minimalButler)  # fully formed
+        with patch.object(runner, "getCollections", return_value=collections):
+            qgb, _, _, _ = runner.getQuantumGraphBuilder(payload, graph)
+        return qgb.finish().assemble()
+
     def runTest(
         self,
         *,
@@ -488,46 +629,17 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         """
         taskExpectations = taskExpectations or {}
         quantaExpectations = quantaExpectations or taskExpectations
-        if step == "step1a":
-            dataCoord = self.minimalButler.registry.expandDataId(
-                exposure=self.records[imageType].id,
-                detector=detector,
-                instrument=self.instrument,
-            )
-        elif step == "step1b":
-            dataCoord = self.minimalButler.registry.expandDataId(
-                instrument=self.instrument,
-                **{step1bDataIdKey: self.records[imageType].id},
-            )
-        else:
-            raise ValueError(f"Unknown step {step}")
 
         with swallowLogs():
             for pipelineName in pipelinesToRun:
                 runCollection = getUserRunCollectionName(pipelineName)
                 extraInfo = (
-                    f"{imageType=} in {step} with {dataCoord=} using {runCollection=} running {pipelineName}"
+                    f"{imageType=} {detector=} in {step} using {runCollection=} running {pipelineName}"
                 )
-                print(f"Checking {pipelineName}:{step} with {dataCoord}, expecting {taskExpectations}")
+                print(f"Checking {pipelineName}:{step} for {extraInfo}, expecting {taskExpectations}")
                 self.assertIn(pipelineName, self.pipelines, f"Pipeline {pipelineName} not found")
 
-                graph = self.pipelines[pipelineName].graphs[step]
-
-                runner = self.step1aRunner if step == "step1a" else self.step1bRunner
-                butler = self._makeButler(pipelineName)
-                runner.butler = butler  # patch this in now, it's much quicker having runners premade
-                runner.runCollection = runCollection
-                # The runner's inputs start with the CI's output chain, where a
-                # step1b test could pass on step1a outputs the CI left behind,
-                # so pin them to this pipeline's own test collection.
-                collections = [runCollection, f"{self.instrument}/defaults"]
-                if step == "step1b":
-                    self.assertStep1aOutputsPresent(pipelineName, dataCoord, butler, runCollection)
-                payload = Payload(dataCoord, b"", "does not matter here", who="AOS")
-                payload = Payload.from_json(payload.to_json(), self.minimalButler)  # fully formed
-                with patch.object(runner, "getCollections", return_value=collections):
-                    qgb, _, _, _ = runner.getQuantumGraphBuilder(payload, graph)
-                qg = qgb.finish().assemble()
+                qg = self.buildQuantumGraph(pipelineName, step, imageType, detector, step1bDataIdKey)
                 self.assertIsInstance(qg, PredictedQuantumGraph)
 
                 taskNames = list(qg.quanta_by_task.keys())

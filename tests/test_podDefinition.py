@@ -141,6 +141,15 @@ class PodDefinitionTestCase(lsst.utils.tests.TestCase):
         newPod = PodDetails.fromQueueName(pod.queueName)
         self.assertEqual(pod, newPod)
 
+        # the blitz worker is the one AOS flavor without detector affinity, so
+        # pin that its queue name carries a depth but no detector
+        pod = PodDetails(
+            instrument="LSSTCam", podFlavor=PodFlavor.AOS_BLITZ_WORKER, detectorNumber=None, depth=1
+        )
+        self.assertEqual(pod.queueName, "AOS_BLITZ_WORKER-LSSTCam-001")
+        newPod = PodDetails.fromQueueName(pod.queueName)
+        self.assertEqual(pod, newPod)
+
     def test_fromQueueName_failing(self) -> None:
         pod = PodDetails(instrument="LSSTCam", podFlavor=PodFlavor.HEAD_NODE, detectorNumber=None, depth=None)
         queueName = pod.queueName
@@ -181,6 +190,7 @@ class PodFlavorToPodTypeTestCase(lsst.utils.tests.TestCase):
         PodFlavor.HEAD_NODE: PodType.PER_INSTRUMENT_SINGLETON,
         PodFlavor.SFM_WORKER: PodType.PER_DETECTOR,
         PodFlavor.AOS_WORKER: PodType.PER_DETECTOR,
+        PodFlavor.AOS_BLITZ_WORKER: PodType.PER_INSTRUMENT,
         PodFlavor.PSF_PLOTTER: PodType.PER_INSTRUMENT,
         PodFlavor.FWHM_PLOTTER: PodType.PER_INSTRUMENT,
         PodFlavor.ZERNIKE_PREDICTED_FWHM_PLOTTER: PodType.PER_INSTRUMENT,
