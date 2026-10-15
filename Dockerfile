@@ -9,9 +9,9 @@ FROM ghcr.io/lsst/scipipe:al9-${STACK_TAG}
 ENV UID=73006
 ENV GID=73006
 
-ARG drp_pipe_ref="tickets/DM-52067"
+ARG drp_pipe_ref="5ddbe8d90cd2b6878e2e8a7a70b920bb8786338e"
 ARG analysis_tools_ref="aae6a67b81e71678c7c508d412609d6e8f762e1a"
-ARG summit_utils_ref="2c3f3d3e322cab460331f5e88f51996cfb582a42"
+ARG summit_utils_ref="w.2026.41"
 ARG summit_extras_ref="w.2026.41"
 ARG ts_wep_ref="v17.14.0"
 ARG donut_viz_ref="v4.11.0"
