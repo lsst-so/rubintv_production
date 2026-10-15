@@ -25,6 +25,7 @@ import tempfile
 import threading
 import uuid
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
 
@@ -88,9 +89,16 @@ def createLocalS3UploaderForSite(proxyUrl=""):
             raise ValueError(f"Unknown site: {site}")
 
 
-def createRemoteS3UploaderForSite():
+def createRemoteS3UploaderForSite(maxPoolConnections: int | None = None):
     """Create the S3Uploader with the correct config
        for the site automatically.
+
+    Parameters
+    ----------
+    maxPoolConnections : `int` or `None`, optional
+        Override botocore's default connection pool size (10). Useful when
+        many files are transferred concurrently, so warm connections are
+        retained and reused rather than discarded.
 
     Returns
     -------
@@ -107,6 +115,7 @@ def createRemoteS3UploaderForSite():
                 retries=0,
                 connectTimeout=10,
                 readTimeout=10,
+                maxPoolConnections=maxPoolConnections,
             )
         case "summit":
             return S3Uploader.from_information(
@@ -116,6 +125,7 @@ def createRemoteS3UploaderForSite():
                 retries=0,
                 connectTimeout=10,
                 readTimeout=10,
+                maxPoolConnections=maxPoolConnections,
             )
         case "usdf":
             _LOG.info("No remote uploader is necessary for USDF")
@@ -127,6 +137,7 @@ def createRemoteS3UploaderForSite():
                 retries=0,
                 connectTimeout=10,
                 readTimeout=10,
+                maxPoolConnections=maxPoolConnections,
             )
         case _:
             raise ValueError(f"Unknown site: {site}")
@@ -269,7 +280,7 @@ class IUploader(ABC):
 
 
 class MultiUploader(IUploader):
-    def __init__(self, allowNoRemote: bool = False) -> None:
+    def __init__(self, allowNoRemote: bool = False, maxPoolConnections: int | None = None) -> None:
         self.log = _LOG.getChild("MultiUploader")
 
         self.localUploader = createLocalS3UploaderForSite()
@@ -278,7 +289,7 @@ class MultiUploader(IUploader):
             raise RuntimeError("Failed to connect to local S3 bucket")
 
         try:
-            self.remoteUploader = createRemoteS3UploaderForSite()
+            self.remoteUploader = createRemoteS3UploaderForSite(maxPoolConnections=maxPoolConnections)
         except Exception:
             self.remoteUploader = None
 
@@ -419,6 +430,7 @@ class S3Uploader(IUploader):
         retries: int = None,
         connectTimeout: int = None,
         readTimeout: int = None,
+        maxPoolConnections: int | None = None,
     ):
         """S3 Uploader initialization from bucket information.
 
@@ -456,6 +468,7 @@ class S3Uploader(IUploader):
             retries=retries,
             connectTimeout=connectTimeout,
             readTimeout=readTimeout,
+            maxPoolConnections=maxPoolConnections,
         )
         return cls(bucket)
 
@@ -467,6 +480,7 @@ class S3Uploader(IUploader):
         retries: int = None,
         connectTimeout: int = None,
         readTimeout: int = None,
+        maxPoolConnections: int | None = None,
     ) -> ServiceResource:
         """Create bucket connection used to upload files.
 
@@ -507,6 +521,8 @@ class S3Uploader(IUploader):
                 config_params["connect_timeout"] = connectTimeout
             if readTimeout is not None:
                 config_params["read_timeout"] = readTimeout
+            if maxPoolConnections is not None:
+                config_params["max_pool_connections"] = maxPoolConnections
 
             config = Config(**config_params)
 
@@ -705,7 +721,7 @@ class S3Uploader(IUploader):
         return destName
 
     @override
-    def upload(self, destinationFilename: str, sourceFilename: str) -> str:
+    def upload(self, destinationFilename: str, sourceFilename: str, transferConfig=None) -> str:
         """Upload a file to a storage bucket.
 
         Parameters
@@ -714,6 +730,9 @@ class S3Uploader(IUploader):
             The destination filename including channel location.
         sourceFilename : `str`
             The full path and filename of the file to upload.
+        transferConfig : `boto3.s3.transfer.TransferConfig`, optional
+            Transfer tuning (e.g. multipart threshold and chunk size) passed to
+            ``upload_file``. `None` uses boto3's defaults.
 
         Raises
         ------
@@ -721,13 +740,43 @@ class S3Uploader(IUploader):
             Raised if uploading the file to the Bucket was not possible
         """
         try:
-            self._s3Bucket.upload_file(Filename=sourceFilename, Key=destinationFilename)
+            self._s3Bucket.upload_file(
+                Filename=sourceFilename, Key=destinationFilename, Config=transferConfig
+            )
         except Exception as e:
             log = logging.getLogger(__name__)
             # Log the exception but don't raise it to avoid blocking on timeout
             # errors
             log.exception(f"Failed uploading file {sourceFilename} as Key: {destinationFilename} \n {e}")
         return destinationFilename
+
+    def listFiles(self, prefix: str) -> set[str]:
+        """List the object keys under a prefix in the bucket.
+
+        Parameters
+        ----------
+        prefix : `str`
+            The key prefix to list under.
+
+        Returns
+        -------
+        keys : `set` [`str`]
+            The set of object keys whose names start with ``prefix``.
+        """
+        return {obj.key for obj in self._s3Bucket.objects.filter(Prefix=prefix)}
+
+    def deleteFiles(self, keys: Iterable[str]) -> None:
+        """Delete the given object keys from the bucket, in batches.
+
+        Parameters
+        ----------
+        keys : `~collections.abc.Iterable` [`str`]
+            The object keys to delete.
+        """
+        keyList = list(keys)
+        for start in range(0, len(keyList), 1000):  # delete_objects takes at most 1000 keys
+            batch = keyList[start : start + 1000]
+            self._s3Bucket.delete_objects(Delete={"Objects": [{"Key": key} for key in batch]})
 
     def uploadMovie(
         self,
