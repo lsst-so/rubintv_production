@@ -312,15 +312,28 @@ Post-processing and visualization:
 
 ### Data Feeding
 
-`drip_feed_data.py` pre-loads test exposures into Redis:
+The input exposures are defined once, with their kinds (science, FAM
+intra/extra, bias, dark, flat, LATISS CWFS pair intra/extra), in
+`tests/fixtureExposures.py`, shared with the unit tests.
+`tests/ci/ci_dataset.py` sets the order the LSSTCam ones are dispatched in
+and derives from them every end-of-run expectation: the plots checked for on
+disk (as `PlotSpec`s keyed by exposure kind, sharing the on-disk layout with
+production code via `formatters.getPlotRelativePath`) and the Redis data
+products (step1b completion counts, MTAOS Zernike counts). Changing the
+inputs or expected outputs means editing those two files only; the feeding
+and checking ends cannot drift apart. The `PlotSpec` grouping is also the
+intended hook for making the expected plot set depend on which pipeline file
+the suite runs.
+
+`drip_feed_data.py` is the delivery mechanism, pre-loading those exposures
+into Redis:
 1. Initializes Butler and RedisHelper
 2. Waits for SFM workers and head node to come online
-3. Pushes exposures to Redis with specific ordering and delays:
+3. Pushes the exposures in `LSSTCAM_DISPATCH_ORDER` with 2 s delays:
    - The intra-focal FAM image first (it must arrive before the extra-focal)
    - Then the bias, dark and flat, the in-focus SFM image, and the
      extra-focal FAM image
-   - 2 s delays between pushes
-4. Also tests LATISS:
+4. Pushes the exposures in `LATISS_EXPOSURES`, again with 2 s delays:
    - its on-sky fixture exposure (2024081300632, exercises SFM)
    - its CWFS intra/extra pair (2026062500012+13, pushed intra first; the
      extra-focal image landing triggers the `AOS_LATISS` WEP monolith
