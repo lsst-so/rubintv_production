@@ -30,8 +30,12 @@ hard-code a dayObs or seqNum.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum, auto
+
+from lsst.rubintv.production.formatters import getPlotRelativePath
 
 __all__ = [
+    "ExposureKind",
     "FixtureExposure",
     "LSSTCAM_IN_FOCUS",
     "LSSTCAM_FAM_INTRA",
@@ -44,7 +48,21 @@ __all__ = [
     "LATISS_CWFS_EXTRA",
     "CALIB_EXPOSURES",
     "LSSTCAM_EXPOSURES",
+    "LATISS_EXPOSURES",
 ]
+
+
+class ExposureKind(Enum):
+    """What processing an exposure gets, and so what outputs to expect."""
+
+    SCIENCE = auto()  # in-focus, on-sky: gets SFM and corner-sensor (CWFS) AOS processing
+    FAM_INTRA = auto()  # intra-focal image of a full-array-mode CWFS pair
+    FAM_EXTRA = auto()  # extra-focal image of a full-array-mode CWFS pair
+    BIAS = auto()
+    DARK = auto()
+    FLAT = auto()
+    CWFS_PAIR_INTRA = auto()  # intra-focal image of a LATISS CWFS pair: gets ISR only
+    CWFS_PAIR_EXTRA = auto()  # extra-focal image of a LATISS CWFS pair: gets ISR, and completes the pair
 
 
 @dataclass(frozen=True)
@@ -61,11 +79,19 @@ class FixtureExposure:
         single-snap visits, so their visit id is this number too.
     role : `str`
         What the exposure is used for, for log and check messages.
+    kind : `ExposureKind`
+        What processing the exposure gets.
     """
 
     instrument: str
     id: int
     role: str
+    kind: ExposureKind
+
+    @property
+    def isFam(self) -> bool:
+        """Whether this is one of the images of a full-array-mode pair."""
+        return self.kind in (ExposureKind.FAM_INTRA, ExposureKind.FAM_EXTRA)
 
     @property
     def dayObs(self) -> int:
@@ -81,9 +107,6 @@ class FixtureExposure:
         """Get the path, relative to the plot root, of one of this exposure's
         plots.
 
-        Mirrors ``formatters.makePlotFile``; ``test_fixtureExposures.py`` pins
-        the two together.
-
         Parameters
         ----------
         plotType : `str`
@@ -96,22 +119,31 @@ class FixtureExposure:
         path : `str`
             The path relative to ``locationConfig.plotPath``.
         """
-        filename = f"{self.instrument}_{plotType}_dayObs_{self.dayObs}_seqNum_{self.seqNum:06}.{suffix}"
-        return f"{self.instrument}/{self.dayObs}/{filename}"
+        return getPlotRelativePath(self.instrument, self.dayObs, self.seqNum, plotType, suffix)
 
     def __str__(self) -> str:
         return f"{self.instrument} {self.dayObs}/{self.seqNum} ({self.role})"
 
 
-LSSTCAM_IN_FOCUS = FixtureExposure("LSSTCam", 2025111500226, "in-focus on-sky image, goes to SFM")
-LSSTCAM_FAM_INTRA = FixtureExposure("LSSTCam", 2025111500227, "intra-focal FAM CWFS image")
-LSSTCAM_FAM_EXTRA = FixtureExposure("LSSTCam", 2025111500228, "extra-focal FAM CWFS image")
-LSSTCAM_BIAS = FixtureExposure("LSSTCam", 2026070200203, "bias")
-LSSTCAM_DARK = FixtureExposure("LSSTCam", 2026070200201, "dark")
-LSSTCAM_FLAT = FixtureExposure("LSSTCam", 2026070200192, "flat")
-LATISS_ON_SKY = FixtureExposure("LATISS", 2024081300632, "on-sky image")
-LATISS_CWFS_INTRA = FixtureExposure("LATISS", 2026062500012, "intra-focal CWFS image")
-LATISS_CWFS_EXTRA = FixtureExposure("LATISS", 2026062500013, "extra-focal CWFS image, completes the pair")
+LSSTCAM_IN_FOCUS = FixtureExposure(
+    "LSSTCam", 2025111500226, "in-focus on-sky image, goes to SFM", ExposureKind.SCIENCE
+)
+LSSTCAM_FAM_INTRA = FixtureExposure(
+    "LSSTCam", 2025111500227, "intra-focal FAM CWFS image", ExposureKind.FAM_INTRA
+)
+LSSTCAM_FAM_EXTRA = FixtureExposure(
+    "LSSTCam", 2025111500228, "extra-focal FAM CWFS image", ExposureKind.FAM_EXTRA
+)
+LSSTCAM_BIAS = FixtureExposure("LSSTCam", 2026070200203, "bias", ExposureKind.BIAS)
+LSSTCAM_DARK = FixtureExposure("LSSTCam", 2026070200201, "dark", ExposureKind.DARK)
+LSSTCAM_FLAT = FixtureExposure("LSSTCam", 2026070200192, "flat", ExposureKind.FLAT)
+LATISS_ON_SKY = FixtureExposure("LATISS", 2024081300632, "on-sky image", ExposureKind.SCIENCE)
+LATISS_CWFS_INTRA = FixtureExposure(
+    "LATISS", 2026062500012, "intra-focal CWFS image", ExposureKind.CWFS_PAIR_INTRA
+)
+LATISS_CWFS_EXTRA = FixtureExposure(
+    "LATISS", 2026062500013, "extra-focal CWFS image, completes the pair", ExposureKind.CWFS_PAIR_EXTRA
+)
 
 CALIB_EXPOSURES: dict[str, FixtureExposure] = {
     "BIAS": LSSTCAM_BIAS,
@@ -130,3 +162,13 @@ LSSTCAM_EXPOSURES: tuple[FixtureExposure, ...] = (
     LSSTCAM_FLAT,
 )
 """All the LSSTCam exposures the CI feeds."""
+
+LATISS_EXPOSURES: tuple[FixtureExposure, ...] = (
+    LATISS_ON_SKY,
+    LATISS_CWFS_INTRA,
+    LATISS_CWFS_EXTRA,
+)
+"""All the LATISS exposures the CI feeds, in the order it feeds them: the
+intra-focal image of the CWFS pair must land before the extra-focal one, as it
+does on the mountain, since it is the extra-focal image completing the pair
+that triggers the AOS_LATISS processing."""

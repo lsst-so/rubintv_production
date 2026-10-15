@@ -35,6 +35,7 @@ from fixtureExposures import (
     LSSTCAM_BIAS,
     LSSTCAM_EXPOSURES,
     LSSTCAM_IN_FOCUS,
+    ExposureKind,
     FixtureExposure,
 )
 
@@ -60,7 +61,7 @@ class FixtureExposureTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(LATISS_ON_SKY.dayObs, 20240813)
         self.assertEqual(LATISS_ON_SKY.seqNum, 632)
         # seqNums below 100000 are the whole encoding, so a small one works too
-        self.assertEqual(FixtureExposure("LSSTCam", 2025010100001, "test").seqNum, 1)
+        self.assertEqual(FixtureExposure("LSSTCam", 2025010100001, "test", ExposureKind.BIAS).seqNum, 1)
 
     def test_plotPathMatchesFormatter(self) -> None:
         # rapid analysis writes plots with makePlotFile, so the fixtures'
