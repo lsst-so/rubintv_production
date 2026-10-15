@@ -22,7 +22,9 @@ import logging
 import math
 import os
 import subprocess
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
 
 from fixtureExposures import (
     CALIB_EXPOSURES,
@@ -35,6 +37,7 @@ from fixtureExposures import (
 from utils import getUserRunCollectionName, removeUserRunCollection
 
 import lsst.summit.utils.butlerUtils as butlerUtils
+from lsst.pipe.base import Pipeline
 from lsst.rubintv.production.locationConfig import getAutomaticLocationConfig
 from lsst.rubintv.production.processingControl import (
     CALIBRATION_PIPELINE_LABELS,
@@ -86,6 +89,57 @@ PER_PIPELINE_EXTRAS: dict[str, list[str]] = {
         "reassignCwfsCutoutsPairTask:customQG=False",
     ],
 }
+
+
+def findConfigFieldPaths(config: Mapping[str, Any], fieldName: str, prefix: str = "") -> list[str]:
+    """Find every field with a given name in a (nested) task config.
+
+    Parameters
+    ----------
+    config : `Mapping` [`str`, `Any`]
+        The task config, as returned by ``Config.toDict()``.
+    fieldName : `str`
+        The field name to look for, e.g. "doRubinTVUpload".
+    prefix : `str`, optional
+        The dotted path of ``config`` within the top-level config.
+
+    Returns
+    -------
+    paths : `list` [`str`]
+        The dotted path of each matching field, e.g. "plot.doRubinTVUpload".
+    """
+    paths = []
+    for name, value in config.items():
+        if name == fieldName:
+            paths.append(f"{prefix}{name}")
+        elif isinstance(value, Mapping):
+            paths.extend(findConfigFieldPaths(value, fieldName, f"{prefix}{name}."))
+    return paths
+
+
+def getUploadDisablingOptions(pipelineUri: str) -> list[str]:
+    """Get the ``-c`` options turning off every RubinTV upload in a pipeline.
+
+    The tasks which upload also write the plot under the location's plot
+    path, and both are gated on ``doRubinTVUpload``, so turning it off stops
+    the collections' pipetask runs writing into the CI's plot directory and
+    publishing plots of the fixture exposures.
+
+    Parameters
+    ----------
+    pipelineUri : `str`
+        The pipeline file, including any ``#`` subset, as passed to ``-p``.
+
+    Returns
+    -------
+    options : `list` [`str`]
+        The config options, each as ``label:field=False``.
+    """
+    options = []
+    for label, taskNode in Pipeline.fromFile(pipelineUri).to_graph().tasks.items():
+        for path in findConfigFieldPaths(taskNode.config.toDict(), "doRubinTVUpload"):
+            options.append(f"{label}:{path}=False")
+    return options
 
 
 def runCommand(cmd: list[str]) -> subprocess.CompletedProcess[str]:
@@ -225,14 +279,8 @@ def main() -> None:
             substep = f"#{step1aLabels}"
             assert pipelineName in CALIB_EXPOSURES, f"No fixture exposure defined for {pipelineName}"
 
-        commands.extend(
-            [
-                "--output-run",
-                f"{runCollection}",
-                "-p",
-                f"{pipeline.pipelineFile}{substep}",  # contains full path using e.g. $DONUT_VIZ_DIR/...
-            ]
-        )
+        pipelineUri = f"{pipeline.pipelineFile}{substep}"  # contains full path using e.g. $DONUT_VIZ_DIR/...
+        commands.extend(["--output-run", f"{runCollection}", "-p", pipelineUri])
         dataQuery, nCores = getDataQueryForPipeline(pipeline, pipelineName)
         nCores = math.ceil(nCores / 2)  # each quantum processes 2 detectors
         commands.extend(["-d", dataQuery, "-j", str(nCores)])
@@ -246,6 +294,9 @@ def main() -> None:
             for configOption in configOptions:
                 commands.extend(["-c", configOption])
 
+        for configOption in getUploadDisablingOptions(pipelineUri):
+            commands.extend(["-c", configOption])
+
         pipelineCommands[pipelineName] = commands
 
     # AOS_LATISS needs a LATISS butler, and its one quantum spans both raws
@@ -255,6 +306,7 @@ def main() -> None:
     _, latissPipelines = buildPipelines("LATISS", locationConfig, latissButler)
     latissRunCollection = getUserRunCollectionName("AOS_LATISS")
     removeUserRunCollection(latissButler, "AOS_LATISS")
+    latissPipelineUri = f"{latissPipelines['AOS_LATISS'].pipelineFile}#step1a"
     pipelineCommands["AOS_LATISS"] = [
         "pipetask",
         "run",
@@ -266,12 +318,14 @@ def main() -> None:
         "--output-run",
         f"{latissRunCollection}",
         "-p",
-        f"{latissPipelines['AOS_LATISS'].pipelineFile}#step1a",
+        latissPipelineUri,
         "-d",
         f"{LATISS_AOS_EXPOSURE_QUERY} AND detector=0 AND instrument='LATISS'",
         "-j",
         "1",
     ]
+    for configOption in getUploadDisablingOptions(latissPipelineUri):
+        pipelineCommands["AOS_LATISS"].extend(["-c", configOption])
     totalCores += 1
 
     _LOG.info(f"Running all pipelines using a total of {totalCores} cores 😅")
