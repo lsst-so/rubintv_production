@@ -37,18 +37,13 @@ from ciutils import Check, TestScript, conditional_redirect  # type: ignore # no
 
 # for fixtureExposures, shared with the unit tests; exec'd scripts inherit it
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from fixtureExposures import (  # noqa: E402
-    LATISS_CWFS_EXTRA,
-    LATISS_CWFS_INTRA,
-    LATISS_ON_SKY,
-    LSSTCAM_BIAS,
-    LSSTCAM_DARK,
-    LSSTCAM_EXPOSURES,
-    LSSTCAM_FAM_EXTRA,
-    LSSTCAM_FAM_INTRA,
-    LSSTCAM_FLAT,
-    LSSTCAM_IN_FOCUS,
+from ci_dataset import (  # type: ignore # noqa: E402
+    getAosVisits,
+    getExpectedPlots,
+    getExpectedZernikeCounts,
+    getSfmVisits,
 )
+from fixtureExposures import LATISS_CWFS_EXTRA, LSSTCAM_EXPOSURES  # noqa: E402
 
 # Only import from lsst packages after logging is configured
 from lsst.daf.butler import Butler, MissingDatasetTypeError  # noqa: E402
@@ -655,10 +650,8 @@ class RedisManager:
         """Check LSSTCam data in Redis."""
         inst = "LSSTCam"
 
-        # single-snap visits, so the visit ids are the exposure ids
-        visits_sfm: list[int] = [LSSTCAM_IN_FOCUS.id]
-        visits_aos: list[int] = [LSSTCAM_IN_FOCUS.id, LSSTCAM_FAM_INTRA.id, LSSTCAM_FAM_EXTRA.id]
-        visits_fam: list[int] = [LSSTCAM_FAM_INTRA.id, LSSTCAM_FAM_EXTRA.id]
+        visits_sfm = getSfmVisits(inst)
+        visits_aos = getAosVisits(inst)
 
         n_visits_sfm = len(visits_sfm)
         n_visits_aos = len(visits_aos)
@@ -684,34 +677,20 @@ class RedisManager:
         else:
             checks.append(Check(True, f"{n_visits_aos}x AOS step1b finished"))
 
-        # check zernike announcement for MTAOS
-        # TODO: will need to double this for unpaired pipelines
-        expectedNonFam = 8
-        nonFamVisit = LSSTCAM_IN_FOCUS.id
-        gotNonFam = redisHelper.getMTAOSZernikeCount(inst, nonFamVisit)
-        if gotNonFam == expectedNonFam:
-            checks.append(
-                Check(True, f"MTAOS Zernike count for non-FAM image {nonFamVisit} is {expectedNonFam}")
-            )
-        else:
-            checks.append(
-                Check(
-                    False,
-                    f"MTAOS Zernike count for non-FAM image {nonFamVisit}: expected {expectedNonFam}, "
-                    f"got {gotNonFam}",
+        # check zernike announcements for MTAOS
+        for exposure, expectedCount in getExpectedZernikeCounts().items():
+            label = "FAM" if exposure.isFam else "non-FAM"
+            got = redisHelper.getMTAOSZernikeCount(inst, exposure.expId)
+            if got == expectedCount:
+                checks.append(
+                    Check(True, f"MTAOS Zernike count for {label} image {exposure.expId} is {expectedCount}")
                 )
-            )
-
-        expectedFam = 18
-        for visit in visits_fam:
-            gotFam = redisHelper.getMTAOSZernikeCount(inst, visit)
-            if gotFam == expectedFam:
-                checks.append(Check(True, f"MTAOS Zernike count for FAM image {visit} is {expectedFam}"))
             else:
                 checks.append(
                     Check(
                         False,
-                        f"MTAOS Zernike count for FAM image {visit}: expected {expectedFam}, got {gotFam}",
+                        f"MTAOS Zernike count for {label} image {exposure.id}: "
+                        f"expected {expectedCount}, got {got}",
                     )
                 )
 
@@ -719,7 +698,7 @@ class RedisManager:
         """Check LATISS data in Redis."""
         inst = "LATISS"
 
-        visits_sfm = [LATISS_ON_SKY.id]  # a single-snap visit, so the visit id is the exposure id
+        visits_sfm = getSfmVisits(inst)
         n_visits_sfm = len(visits_sfm)
 
         n_step1b_sfm = redisHelper.getNumVisitLevelFinished(inst, "step1b", "SFM")
@@ -1302,62 +1281,10 @@ class ResultCollector:
         """Check that expected plots were generated."""
         locationConfig = LocationConfig("usdf_testing")
 
-        # (path relative to locationConfig.plotPath, minimum size in bytes)
-        inFocus, intra, extra = LSSTCAM_IN_FOCUS, LSSTCAM_FAM_INTRA, LSSTCAM_FAM_EXTRA
-        onSky = (inFocus, intra, extra)
-        calibs = (LSSTCAM_BIAS, LSSTCAM_DARK, LSSTCAM_FLAT)
-        plotSize = 5000
-        expected: list[tuple[str, int]] = []
-
-        # Regular LSSTCam plots -------
-        for exposure in (*onSky, *calibs):  # every image gets these
-            expected.append((exposure.getPlotPath("event_timeline", "png"), plotSize))
-            expected.append((exposure.getPlotPath("focal_plane_mosaic", "jpg"), plotSize))  # post ISR mosaic
-            expected.append((exposure.getPlotPath("timing_diagram", "jpg"), plotSize))  # performance analysis
-        for exposure in (inFocus, *calibs):  # witness detector images for all with postISR that aren't CWFS
-            expected.append((exposure.getPlotPath("witness_detector", "jpg"), plotSize))
-        for exposure in onSky:  # mount plots, donut galleries and guider movies for the on-sky images
-            expected.append((exposure.getPlotPath("mount", "png"), plotSize))
-            expected.append((exposure.getPlotPath("fp_donut_gallery", "png"), plotSize))
-            expected.append((exposure.getPlotPath("full_movie", "mp4"), 200_000))
-            expected.append((exposure.getPlotPath("star_movie", "mp4"), 100_000))
-        # plots only the in-focus image gets. TODO: DM-51391 add psfAzEl plot
-        for plotName, extension in (
-            ("calexp_mosaic", "jpg"),
-            ("fwhm_focal_plane", "png"),
-            ("imexam", "png"),
-            ("psf_shape_azel", "png"),
-            ("fp_pairing_plot", "png"),
-            ("donut_fits", "png"),
-            ("zernike_predicted_fwhm", "png"),
-            ("dof_predicted_fwhm", "png"),
-            ("centroid_alt_az", "jpg"),
-            ("flux_trend", "jpg"),
-            ("psf_trend", "jpg"),
-        ):
-            expected.append((inFocus.getPlotPath(plotName, extension), plotSize))
-
-        # AOS plots -------
-        # these land on the FAM pair's extra-focal id and on the in-focus image
-        for exposure in (extra, inFocus):
-            expected.append((exposure.getPlotPath("zk_measurement_pyramid", "png"), plotSize))
-            expected.append((exposure.getPlotPath("zk_residual_pyramid", "png"), plotSize))
-            expected.append((exposure.getPlotPath("psf_zk_panel", "png"), plotSize))
-            expected.append((exposure.getPlotPath("aos_timing", "jpg"), plotSize))
-
-        # LATISS plots -------
-        for plotName, extension in (
-            ("mount", "png"),
-            ("monitor", "jpg"),
-            ("imexam", "png"),
-            ("specexam", "png"),
-        ):
-            expected.append((LATISS_ON_SKY.getPlotPath(plotName, extension), plotSize))
-        # the CWFS pair gets per-exposure ISR, so monitor/imexam/mount plots
-        # for both images, but no specexam as they're not spectra
-        for exposure in (LATISS_CWFS_INTRA, LATISS_CWFS_EXTRA):
-            for plotName, extension in (("mount", "png"), ("monitor", "jpg"), ("imexam", "png")):
-                expected.append((exposure.getPlotPath(plotName, extension), plotSize))
+        # (path, size) tuples where path is relative to
+        # locationConfig.plotPath, derived from the exposures the
+        # drip-feeder dispatched and the plots each kind of image produces
+        expected = getExpectedPlots()
 
         # Create a set of the expected plot paths for comparison
         expectedPlotPaths = {file for file, _ in expected}
