@@ -102,6 +102,12 @@ while headNodeOffline:
     if headNodeOffline:
         print("Waiting for head node to come online...")
         time.sleep(1)
+# the in-focus image also goes to the blitz worker, for the shadow pipeline,
+# and the head node drops a blitz payload if no blitz worker exists yet
+waitFor(
+    lambda: len(redisHelper.getAllWorkers(instrument=instrument, podFlavor=PodFlavor.AOS_BLITZ_WORKER)) > 0,
+    "the blitz worker to come online",
+)
 time.sleep(3)  # make sure it's fully online
 
 # this relies on the drip-feeder putting the items in the queue *before* the
@@ -163,10 +169,6 @@ controlKey = "RUBINTV_CONTROL_AOS_PIPELINE"
 waitFor(
     lambda: redisHelper.redis.llen(getNewDataQueueName(instrument)) == 0,
     "the head node to pop all the other images",
-)
-waitFor(
-    lambda: len(redisHelper.getAllWorkers(instrument=instrument, podFlavor=PodFlavor.AOS_BLITZ_WORKER)) > 0,
-    "the blitz worker to come online",
 )
 redisHelper.redis.set(controlKey, "BLITZ_BIN_2")  # RubinTV sends the name without the AOS_ prefix
 waitFor(
