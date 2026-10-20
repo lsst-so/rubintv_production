@@ -184,7 +184,8 @@ Full pipeline execution:
   the unit tests) as full exposure ids, so nothing assumes they share a
   night: LSSTCam 2025111500226 (SFM), 2025111500227+228 (FAM CWFS pair),
   2026070200203 (bias), 2026070200201 (dark), 2026070200192 (flat),
-  2025111500229 (SFM, with its AOS run through `AOS_BLITZ_BIN_2`). The
+  2025111500229 (SFM, with its AOS run through `AOS_BLITZ_BIN_2`); 226's
+  AOS also runs `AOS_BLITZ_SHADOW_BIN_2`, the CI site's shadow. The
   calibs are deliberately from a much newer night than the on-sky images,
   because older raw headers lack information cp_verify needs
 - The butlers are the `+sasquatch_dev` ones, so metric bundles really are
@@ -218,7 +219,9 @@ Post-processing and visualization:
 
 `drip_feed_data.py` pre-loads test exposures into Redis:
 1. Initializes Butler and RedisHelper
-2. Waits for SFM workers and head node to come online
+2. Waits for SFM workers, the head node and the blitz worker to come
+   online (the in-focus image's shadow payload is dropped if there is no
+   blitz worker)
 3. Pushes exposures to Redis with specific ordering and delays:
    - The intra-focal FAM image first (it must arrive before the extra-focal)
    - Then the bias, dark and flat, the in-focus SFM image, and the
@@ -226,17 +229,20 @@ Post-processing and visualization:
    - 2 s delays between pushes
 4. Switches the AOS pipeline to blitz the way RubinTV does, then pushes the
    blitz image (`LSSTCAM_BLITZ`): once the head node has popped every other
-   image and the blitz worker is up, sets `RUBINTV_CONTROL_AOS_PIPELINE` to
-   `BLITZ_BIN_2`, waits for the head node's readback to show
-   `AOS_BLITZ_BIN_2`, then pushes it. The final checks assert one
-   visit-level `step1a`/`AOS` finished; that `donutBlitzCornerResults`,
-   `aggregateAOSVisitTable{Raw,Avg}` and the three blitz plot datasets
-   landed in the current run; that `donutBlitzCornerResults` holds a
-   successful fit with finite Zernikes on every corner; and that blitz
-   wrote results for no other visit. `BLITZ_WRITES_ZERNIKES` in
-   `test_rapid_analysis.py` follows the blitz pipeline's
-   `doZernikesOutput`: on, it also expects the four extra-focal `zernikes`
-   and an MTAOS Zernike count of 4; off, it expects neither
+   image, sets `RUBINTV_CONTROL_AOS_PIPELINE` to `BLITZ_BIN_2`, waits for
+   the head node's readback to show `AOS_BLITZ_BIN_2`, then pushes it. The
+   final checks, all against the current run only, assert two visit-level
+   `step1a`/`AOS` finished (226's shadow and 229); that both visits'
+   `donutBlitzCornerResults` hold a successful fit with finite Zernikes on
+   every corner; that both have the three blitz plots, read back as PNG
+   artifacts through `butler.getURI` (the `Plot` storage class can't be
+   read with `butler.get`); that 229 has `aggregateAOSVisitTable{Raw,Avg}`;
+   and that blitz wrote results for no other visit. `BLITZ_WRITES_ZERNIKES`
+   in `test_rapid_analysis.py` follows the blitz pipeline's
+   `doZernikesOutput`: on, it also expects 229's four extra-focal
+   `zernikes` and an MTAOS Zernike count of 4; off, it expects neither.
+   The shadow's writing nothing the selected pipeline writes is checked
+   on its graph, in `test_pipelines.py`
 5. Also tests LATISS:
    - its on-sky fixture exposure (2024081300632, exercises SFM)
    - its CWFS intra/extra pair (2026062500012+13, pushed intra first; the

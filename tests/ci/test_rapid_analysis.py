@@ -707,24 +707,29 @@ class RedisManager:
         self._check_lsstcam_blitz(redisHelper, checks)
 
     def _check_lsstcam_blitz(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
-        """Check the blitz processing of the one image sent through it.
+        """Check the blitz processing of the in-focus images.
 
-        Blitz does all its outputs from a single visit-level quantum, so it
-        reports as a visit-level step1a. Its per-donut
-        ``donutBlitzCornerResults`` catalog must hold fitted Zernikes for
-        every corner. Only with ``BLITZ_WRITES_ZERNIKES`` does it write one
-        ``zernikes`` table per corner, keyed on its extra-focal detector, and
-        announce them to MTAOS.
+        The in-focus image runs the shadow blitz pipeline alongside the
+        selected AOS pipeline, and the blitz image runs a blitz pipeline
+        selected in its place. Each does all its outputs from one visit-level
+        quantum, so reports as a visit-level step1a, and must write a
+        ``donutBlitzCornerResults`` catalog with fitted Zernikes for every
+        corner, and the three blitz plots. Only the selected blitz pipeline
+        writes the ``aggregateAOSVisitTable`` tables, and only with
+        ``BLITZ_WRITES_ZERNIKES`` does it write one ``zernikes`` table per
+        corner, keyed on its extra-focal detector, and announce them to MTAOS.
+        The shadow's MTAOS count is the selected pipeline's, checked above.
         """
         inst = "LSSTCam"
+        shadowVisit = LSSTCAM_IN_FOCUS.id
         blitzVisit = LSSTCAM_BLITZ.id
 
         n_step1a_aos = redisHelper.getNumVisitLevelFinished(inst, "step1a", "AOS")
-        if n_step1a_aos == 1:
-            checks.append(Check(True, "1x AOS blitz visit-level step1a finished"))
+        if n_step1a_aos == 2:
+            checks.append(Check(True, "2x AOS blitz visit-level step1a finished, shadow and selected"))
         else:
             checks.append(
-                Check(False, f"Expected 1 AOS blitz visit-level step1a to finish, got {n_step1a_aos}")
+                Check(False, f"Expected 2 AOS blitz visit-level step1a to finish, got {n_step1a_aos}")
             )
 
         gotBlitz = redisHelper.getMTAOSZernikeCount(inst, blitzVisit)
@@ -741,22 +746,18 @@ class RedisManager:
             )
 
         # only look in this run's collection, as earlier CI runs further down
-        # the chain will also hold outputs for this visit
+        # the chain will also hold outputs for these visits
         locationConfig = LocationConfig("usdf_testing")
         butler = Butler.from_config(locationConfig.lsstCamButlerPath, instrument=inst)
         thisRun = getCurrentOutputRun(butler, locationConfig, inst)
         assert thisRun is not None, "Only None under scons, which never runs the CI suite"
-        # (dataset type, dataId, whether blitz should have written it)
+        # (dataset type, dataId, whether blitz should have written it). The
+        # selected AOS pipeline also writes the in-focus image's aggregate
+        # tables and zernikes, so the shadow's absence of them can't be seen
+        # here; test_pipelines checks the shadow graph writes none.
         lookups: list[tuple[str, dict[str, Any], bool]] = [
             (datasetType, {"visit": blitzVisit}, True)
-            for datasetType in (
-                "donutBlitzCornerResults",
-                "aggregateAOSVisitTableRaw",
-                "aggregateAOSVisitTableAvg",
-                "donutBlitzCornerDonutPlot",
-                "donutBlitzCornerWfPlot",
-                "donutBlitzCornerSelectionPlot",
-            )
+            for datasetType in ("aggregateAOSVisitTableRaw", "aggregateAOSVisitTableAvg")
         ]
         lookups += [
             ("zernikes", {"visit": blitzVisit, "detector": det}, BLITZ_WRITES_ZERNIKES) for det in EXTRA_IDS
@@ -782,9 +783,11 @@ class RedisManager:
                     )
                 )
 
-        self._check_blitz_corner_zernikes(butler, thisRun, blitzVisit, checks)
+        for visit in (shadowVisit, blitzVisit):
+            self._check_blitz_corner_zernikes(butler, thisRun, visit, checks)
+            self._check_blitz_plots(butler, thisRun, visit, checks)
 
-        # an extra quantum for another visit containing the exposure would
+        # an extra quantum for another visit containing an exposure would
         # write its results under that visit, clobbering that image's own
         try:
             refs = butler.query_datasets("donutBlitzCornerResults", collections=[thisRun], explain=False)
@@ -792,13 +795,47 @@ class RedisManager:
         except Exception as e:
             checks.append(Check(False, f"Error querying blitz results in {thisRun}: {e}"))
             return
-        if blitzVisits == [blitzVisit]:
-            checks.append(Check(True, f"Blitz only wrote results for {blitzVisit}"))
+        expectedVisits = sorted((shadowVisit, blitzVisit))
+        if blitzVisits == expectedVisits:
+            checks.append(Check(True, f"Blitz only wrote results for {expectedVisits}"))
         else:
-            checks.append(Check(False, f"Expected blitz results only for {blitzVisit}, got {blitzVisits}"))
+            checks.append(
+                Check(False, f"Expected blitz results only for {expectedVisits}, got {blitzVisits}")
+            )
+
+    def _check_blitz_plots(self, butler: Butler, thisRun: str, visit: int, checks: list[Check]) -> None:
+        """Check that blitz wrote its three plots for a visit, as PNGs.
+
+        The ``Plot`` storage class is write-only, so the artifacts are read
+        through their URIs rather than with ``butler.get``. The shadow
+        uploads nothing to RubinTV, so this is the only check of its plots.
+        """
+        minSize = 5000  # as for the RubinTV plots in check_plots
+        for datasetType in (
+            "donutBlitzCornerDonutPlot",
+            "donutBlitzCornerWfPlot",
+            "donutBlitzCornerSelectionPlot",
+        ):
+            try:
+                ref = butler.find_dataset(datasetType, {"visit": visit}, collections=[thisRun])
+                if ref is None:
+                    checks.append(Check(False, f"Did not find blitz plot {datasetType} for {visit}"))
+                    continue
+                uri = butler.getURI(ref)
+                size = uri.size()
+                isPng = uri.read(size=8) == b"\x89PNG\r\n\x1a\n"
+            except Exception as e:
+                checks.append(Check(False, f"Error reading blitz plot {datasetType} for {visit}: {e}"))
+                continue
+            if isPng and size >= minSize:
+                checks.append(Check(True, f"Found blitz plot {datasetType} for {visit} ({size} bytes)"))
+            else:
+                checks.append(
+                    Check(False, f"Blitz plot {datasetType} for {visit} is not a PNG of >= {minSize} bytes")
+                )
 
     def _check_blitz_corner_zernikes(
-        self, butler: Butler, thisRun: str, blitzVisit: int, checks: list[Check]
+        self, butler: Butler, thisRun: str, visit: int, checks: list[Check]
     ) -> None:
         """Check that blitz fitted Zernikes on every corner.
 
@@ -812,13 +849,13 @@ class RedisManager:
             # get strips
             results = butler.get(
                 "donutBlitzCornerResults",
-                visit=blitzVisit,
+                visit=visit,
                 collections=[thisRun],
                 parameters={"strip_astropy_meta_yaml": False},
             )
             nollIndices = list(results.meta["noll_indices"])
         except Exception as e:
-            checks.append(Check(False, f"Error reading blitz donutBlitzCornerResults for {blitzVisit}: {e}"))
+            checks.append(Check(False, f"Error reading blitz donutBlitzCornerResults for {visit}: {e}"))
             return
 
         # the deviation columns are dense over Noll index, NaN at any index
@@ -829,10 +866,12 @@ class RedisManager:
         for extraId, intraId in zip(EXTRA_IDS, INTRA_IDS):
             nFitted = int(np.count_nonzero(fitted & np.isin(detectors, (extraId, intraId))))
             if nFitted > 0:
-                checks.append(Check(True, f"Blitz fitted Zernikes for {nFitted} donuts on corner {extraId}"))
+                checks.append(
+                    Check(True, f"Blitz fitted Zernikes for {nFitted} donuts on corner {extraId} for {visit}")
+                )
             else:
                 checks.append(
-                    Check(False, f"Blitz fitted no Zernikes on corner {extraId}/{intraId} for {blitzVisit}")
+                    Check(False, f"Blitz fitted no Zernikes on corner {extraId}/{intraId} for {visit}")
                 )
 
     def _check_latiss_data(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
@@ -1460,7 +1499,9 @@ class ResultCollector:
             for exposure in (inFocus, blitz):
                 expected.append((exposure.getPlotPath(plotName, extension), plotSize))
         # blitz draws its own selection plot and has no step1b, so no pairing
-        # or predicted FWHM plots, nor any of the AOS plots below
+        # or predicted FWHM plots, nor any of the AOS plots below. The
+        # in-focus image's shadow blitz uploads nothing, so a selection plot
+        # for it means the shadow is racing the selected pipeline's uploads.
         for plotName in ("fp_pairing_plot", "zernike_predicted_fwhm", "dof_predicted_fwhm"):
             expected.append((inFocus.getPlotPath(plotName, "png"), plotSize))
         expected.append((blitz.getPlotPath("fp_selection_plot", "png"), plotSize))
