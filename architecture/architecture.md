@@ -154,9 +154,12 @@ Each detector is processed independently on its own worker pod.
   `wavefrontFit.binning` overridden) run ts_wep's `DonutBlitzCornerTask`:
   ISR, donut selection, cutouts and Zernike fitting for all the corner
   sensors in one visit-level quantum, forking across the pod's cores and
-  writing no intermediates. It writes the per-corner `zernikes` tables MTAOS
-  reads, keyed on the extra-focal detector, plus the
-  `aggregateAOSVisitTable*` tables, and uploads its own diagnostic plots.
+  writing no intermediates. It writes a per-donut `donutBlitzCornerResults`
+  catalog, the `aggregateAOSVisitTable*` tables and its own diagnostic
+  plots, which it also uploads. With `doZernikesOutput` on it also writes
+  the per-corner `zernikes` tables MTAOS reads, keyed on the extra-focal
+  detector. The donut_viz pipeline turns it off so that blitz can run
+  alongside the regular AOS pipelines, which write `zernikes` too.
   There is no step1b, and no post-ISR images for the corner sensors. The
   worker builds an `AllDimensionsQuantumGraphBuilder` graph constrained to
   the exposure's corner detectors and to `visit` = the exposure ID, after

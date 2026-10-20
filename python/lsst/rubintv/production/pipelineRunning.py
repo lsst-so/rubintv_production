@@ -1271,11 +1271,18 @@ class SingleCorePipelineRunner(BaseButlerChannel):
         Unlike `postProcessCalcZernikes`, nothing is sent to ConsDB: the
         blitz tables carry only the deviation Zernikes, not the total OPD
         that ConsDB holds for the other pipelines.
+
+        Nothing is announced when the pipeline is configured not to write
+        ``zernikes`` at all, as a count for the visit then belongs to
+        whichever AOS pipeline did write them.
         """
-        zernikeRefs = list(quantum.outputs.get("zernikes", ()))
-        written = [ref for ref, exists in self.cachingButler.stored_many(zernikeRefs).items() if exists]
         assert quantum.dataId is not None, "dataId is None, this shouldn't be possible in RA"
         visitId = int(quantum.dataId["visit"])
+        zernikeRefs = list(quantum.outputs.get("zernikes", ()))
+        if not zernikeRefs:
+            self.log.info(f"Blitz is configured to write no zernikes, so none announced for {visitId}")
+            return
+        written = [ref for ref, exists in self.cachingButler.stored_many(zernikeRefs).items() if exists]
         self.log.info(f"Blitz wrote {len(written)} of {len(zernikeRefs)} possible zernikes for {visitId}")
         self.redisHelper.sendZernikeCountToMTAOS(self.instrument, visitId, len(written))
 
