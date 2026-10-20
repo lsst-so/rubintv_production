@@ -160,6 +160,13 @@ Each detector is processed independently on its own worker pod.
   the per-corner `zernikes` tables MTAOS reads, keyed on the extra-focal
   detector. The donut_viz pipeline turns it off so that blitz can run
   alongside the regular AOS pipelines, which write `zernikes` too.
+  The `AOS_BLITZ_SHADOW_BIN_1`/`_2` pipelines are what runs alongside them:
+  donut_viz's `lsstCamRapidAnalysisPipeline_blitz_shadow_Bin{1,2}x.yaml`,
+  which import the blitz pipeline without `formatBlitzTask` and with
+  `doZernikesOutput` and `plot.doRubinTVUpload` off, so a shadow writes only
+  blitz-named datasets (its catalog and plots, seen only in the butler),
+  uploads nothing and announces nothing to MTAOS. `aosLSSTCamShadowPipeline`
+  in the site config names the shadow to run, or `null` for none.
   There is no step1b, and no post-ISR images for the corner sensors. The
   worker builds an `AllDimensionsQuantumGraphBuilder` graph constrained to
   the exposure's corner detectors and to `visit` = the exposure ID, after
@@ -411,7 +418,10 @@ When a new exposure arrives, `doDetectorFanout()` in the head node:
    fires, and the post-ISR mosaic doesn't wait for corner images that blitz
    never writes. The worker reports a visit-level step1a for "AOS" and the
    Zernike count for MTAOS itself (see
-   [redis-coordination.md](redis-coordination.md)).
+   [redis-coordination.md](redis-coordination.md)). When a non-blitz
+   pipeline is selected and the site configures a shadow, non-calibration
+   images also get a `dispatchAosBlitz()` for the shadow, after the
+   per-detector payloads.
 
 2. **Imaging detectors**: gets the enabled detector list from
    `CameraControlConfig`, creates a `Payload` per detector, and writes

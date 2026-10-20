@@ -281,9 +281,12 @@ wavefront sensors (AOS), each dispatched to a dedicated worker pod.
 single exposure-level payload replaces the 8 per-detector ones, and no
 `AOS:expected` field is written. Blitz writes no binned post-ISR images, so
 expected CWFS detectors would block the post-ISR mosaic, and there is no
-step1b to gather for.
+step1b to gather for. The same dispatch sends the site's shadow pipeline
+(`AOS_BLITZ_SHADOW_BIN_*`) alongside a selected non-blitz pipeline, after
+its per-detector fanout, but skips step 1: `pipeline_config` stays the
+selected pipeline's, which the AOS step1b dispatch reads to pick its graph.
 ```
-1. Record which AOS pipeline is active:
+1. Record which AOS pipeline is active (not for a shadow):
      HSET LSSTCam-TRACKING-{expId} pipeline_config "AOS_BLITZ_BIN_2"
 2. Pick the blitz queue via getSingleWorker. Every replica shares depth 0,
    so this is the one queue, and the first free replica pops the payload:

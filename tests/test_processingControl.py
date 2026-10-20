@@ -37,7 +37,7 @@ import lsst.utils.tests
 from lsst.daf.butler import Butler, DimensionUniverse
 from lsst.pipe.base import Pipeline
 from lsst.rubintv.production import redisUtils as redisUtilsModule
-from lsst.rubintv.production.locationConfig import LocationConfig
+from lsst.rubintv.production.locationConfig import LocationConfig, _loadConfigFile
 from lsst.rubintv.production.podDefinition import PodDetails, PodFlavor
 from lsst.rubintv.production.processingControl import (
     CALIBRATION_PIPELINE_LABELS,
@@ -275,6 +275,17 @@ class PipelineNamesTestCase(lsst.utils.tests.TestCase):
         self.assertNotIn("AOS_BLITZ_BIN_1", LATISS_PIPELINE_NAMES)
         self.assertNotIn("AOS_BLITZ_BIN_2", LATISS_PIPELINE_NAMES)
 
+    def test_siteShadowPipelinesAreShadows(self) -> None:
+        # The head node refuses to start if a site's aosLSSTCamShadowPipeline
+        # isn't a shadow pipeline, so a typo or a renamed pipeline must fail
+        # here rather than at deploy time.
+        for site in ("summit", "bts", "tts", "usdf", "usdf_testing"):
+            with self.subTest(site=site):
+                shadow = _loadConfigFile(site)["aosLSSTCamShadowPipeline"]
+                if shadow is not None:
+                    self.assertIn(shadow, PIPELINE_NAMES)
+                    self.assertIn("SHADOW", shadow)
+
     def test_latissAosPresent(self) -> None:
         # "AOS_LATISS" is dispatched by name in doLatissAosFanout and in the
         # worker's QG-builder selection, so guard it explicitly. It must not
@@ -474,11 +485,13 @@ class DispatchAosBlitzTestCase(lsst.utils.tests.TestCase):
     per-detector payloads, which the visit-level blitz quantum can't use, (2)
     the corner chips being registered as expected detectors, which would hold
     the post-ISR mosaic and the exposure open forever, as blitz writes no
-    binned post-ISR images, and (3) a missing blitz worker raising in the head
-    node's main loop rather than just dropping the work.
+    binned post-ISR images, (3) a missing blitz worker raising in the head
+    node's main loop rather than just dropping the work, and (4) a shadow
+    pipeline overwriting the selected pipeline's name in the tracking hash.
     """
 
     PIPELINE = "AOS_BLITZ_BIN_2"
+    SHADOW = "AOS_BLITZ_SHADOW_BIN_2"
 
     def setUp(self) -> None:
         self._patcher = patch.object(redisUtilsModule.redis, "Redis", side_effect=_makeFakeRedis)
@@ -493,17 +506,21 @@ class DispatchAosBlitzTestCase(lsst.utils.tests.TestCase):
     def tearDown(self) -> None:
         self._patcher.stop()
 
-    def _dispatch(self) -> None:
+    def _dispatch(self, pipelineName: str = PIPELINE) -> None:
         controller = SimpleNamespace(
             instrument="LSSTCam",
             redisHelper=self.helper,
             log=logging.getLogger("test.dispatchAosBlitz"),
-            pipelines={self.PIPELINE: SimpleNamespace(graphBytes={"step1a": b"blitz graph"})},
-            currentAosPipeline=self.PIPELINE,
+            pipelines={
+                self.PIPELINE: SimpleNamespace(graphBytes={"step1a": b"blitz graph"}, isShadow=False),
+                self.SHADOW: SimpleNamespace(graphBytes={"step1a": b"shadow graph"}, isShadow=True),
+            },
             outputRun="LSSTCam/runs/test/1",
             timeAlive=3600.0,  # long-lived, so a missing worker doesn't wait 30s for one
         )
-        HeadProcessController.dispatchAosBlitz(cast(HeadProcessController, controller), self.record)
+        HeadProcessController.dispatchAosBlitz(
+            cast(HeadProcessController, controller), self.record, pipelineName
+        )
 
     def _registerBlitzWorker(self, depth: int) -> PodDetails:
         pod = PodDetails("LSSTCam", PodFlavor.AOS_BLITZ_WORKER, detectorNumber=None, depth=depth)
@@ -540,6 +557,22 @@ class DispatchAosBlitzTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(info.pipelineConfig, self.PIPELINE)
         self.assertEqual(info.getAllExpectedDetectors(), set())
         self.assertTrue(info.allGathersDispatched())
+
+    def test_shadowLeavesThePipelineRecordAlone(self) -> None:
+        # A shadow runs alongside the selected AOS pipeline, which records its
+        # own name for the exposure; the step1b dispatch reads that back to
+        # pick the graph, so the shadow must not overwrite it.
+        pod = self._registerBlitzWorker(depth=0)
+        self.helper.initExposureTracking("LSSTCam", self.record.id)
+        self.helper.setAosPipelineConfig("LSSTCam", self.record.id, "AOS_DANISH")
+        self._dispatch(self.SHADOW)
+
+        queued = [json.loads(item) for item in decode_list(self.helper.redis.lrange(pod.queueName, 0, -1))]
+        self.assertEqual(len(queued), 1)
+        self.assertEqual(base64.b64decode(queued[0]["pipelineGraphBytes"]), b"shadow graph")
+        info = self.helper.getExposureProcessingInfo("LSSTCam", self.record.id)
+        assert info is not None
+        self.assertEqual(info.pipelineConfig, "AOS_DANISH")
 
     def test_noBlitzWorkerDoesNotRaise(self) -> None:
         # e.g. BLITZ selected at a site with no blitz pods: log and drop, as

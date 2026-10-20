@@ -106,6 +106,8 @@ EXPECTED_PIPELINES = [
     "AOS_UNPAIRED_DANISH",
     "AOS_BLITZ_BIN_1",
     "AOS_BLITZ_BIN_2",
+    "AOS_BLITZ_SHADOW_BIN_1",
+    "AOS_BLITZ_SHADOW_BIN_2",
 ]
 
 EXPECTED_AOS_PIPELINES = [p for p in EXPECTED_PIPELINES if p.startswith("AOS")]
@@ -114,6 +116,8 @@ EXPECTED_UNPAIRED_PIPELINES = [p for p in EXPECTED_AOS_PIPELINES if "UNPAIRED" i
 # blitz runs all the corner chips in one visit-level quantum with no step1b,
 # so it is kept out of the per-detector lists and tested on its own below
 EXPECTED_BLITZ_PIPELINES = [p for p in EXPECTED_AOS_PIPELINES if "BLITZ" in p]
+EXPECTED_BLITZ_SHADOW_PIPELINES = [p for p in EXPECTED_BLITZ_PIPELINES if "SHADOW" in p]
+EXPECTED_BLITZ_PRIMARY_PIPELINES = [p for p in EXPECTED_BLITZ_PIPELINES if "SHADOW" not in p]
 EXPECTED_AOS_NON_FAM_PIPELINES = [
     p
     for p in EXPECTED_AOS_PIPELINES
@@ -483,15 +487,49 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         # A blitz payload carries no detector, and must build exactly one
         # quantum for the corner set plus the reformatting quantum. More than
         # one corner quantum means the graph was built per-detector, or per
-        # visit the exposure belongs to (see the test below).
-        taskExpectations: dict[str, int] = {"donutBlitzCornerTask": 1, "formatBlitzTask": 1}
-        for imageType in ("inFocus", "blitz"):
-            self.runTest(
-                step="step1a",
-                imageType=imageType,
-                pipelinesToRun=EXPECTED_BLITZ_PIPELINES,
-                taskExpectations=taskExpectations,
-            )
+        # visit the exposure belongs to (see the test below). The shadows run
+        # no formatBlitzTask, see testAosBlitzShadowsShareNoOutputs.
+        for pipelines, taskExpectations in (
+            (EXPECTED_BLITZ_PRIMARY_PIPELINES, {"donutBlitzCornerTask": 1, "formatBlitzTask": 1}),
+            (EXPECTED_BLITZ_SHADOW_PIPELINES, {"donutBlitzCornerTask": 1}),
+        ):
+            for imageType in ("inFocus", "blitz"):
+                self.runTest(
+                    step="step1a",
+                    imageType=imageType,
+                    pipelinesToRun=pipelines,
+                    taskExpectations=taskExpectations,
+                )
+
+    def testAosBlitzShadowsShareNoOutputs(self) -> None:
+        # A shadow runs on the same visits as the selected AOS pipeline and
+        # writes to the same output run, so any dataset type both write
+        # collides in the butler (formatBlitzTask's aggregateAOSVisitTable*,
+        # and zernikes). An upload would race the selected pipeline's
+        # identically named RubinTV plots, as blitz uploads under the
+        # non-blitz names. Its plots must still be made, as the butler is the
+        # only place they can be seen, and the CI checks them there.
+        def getOutputs(graph: PipelineGraph) -> set[str]:
+            return {
+                name
+                for name in graph.dataset_types
+                if graph.producer_of(name) is not None and not name.endswith(("_config", "_log", "_metadata"))
+            }
+
+        nonBlitzOutputs: set[str] = set()
+        for pipelineName in EXPECTED_AOS_PIPELINES:
+            if pipelineName not in EXPECTED_BLITZ_PIPELINES:
+                for graph in self.pipelines[pipelineName].graphs.values():
+                    nonBlitzOutputs |= getOutputs(graph)
+
+        for pipelineName in EXPECTED_BLITZ_SHADOW_PIPELINES:
+            with self.subTest(pipeline=pipelineName):
+                self.assertTrue(self.pipelines[pipelineName].isShadow)
+                graph = self.pipelines[pipelineName].graphs["step1a"]
+                self.assertEqual(getOutputs(graph) & nonBlitzOutputs, set())
+                config: Any = graph.tasks["donutBlitzCornerTask"].config
+                self.assertFalse(config.plot.doRubinTVUpload)
+                self.assertTrue(config.savePlots)
 
     def testAosBlitzQuantumIsForTheExposuresOwnVisit(self) -> None:
         # The blitz quantum is visit-level, but an exposure in a multi-exposure
@@ -525,8 +563,14 @@ class TestPipelineGeneration(lsst.utils.tests.TestCase):
         # The binning is applied as a config override keyed on the task label,
         # and PipelineComponents silently skips overrides whose label isn't in
         # the pipeline. If donut_viz renamed the task, BIN_1 would quietly run
-        # binned, so pin the binning that actually reaches each graph.
-        for pipelineName, expectedBinning in (("AOS_BLITZ_BIN_1", 1), ("AOS_BLITZ_BIN_2", 2)):
+        # binned, so pin the binning that actually reaches each graph. The
+        # shadows' binnings come from their own files, which could be swapped.
+        for pipelineName, expectedBinning in (
+            ("AOS_BLITZ_BIN_1", 1),
+            ("AOS_BLITZ_BIN_2", 2),
+            ("AOS_BLITZ_SHADOW_BIN_1", 1),
+            ("AOS_BLITZ_SHADOW_BIN_2", 2),
+        ):
             with self.subTest(pipeline=pipelineName):
                 graph = self.pipelines[pipelineName].graphs["step1a"]
                 config: Any = graph.tasks["donutBlitzCornerTask"].config
