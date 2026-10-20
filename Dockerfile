@@ -18,7 +18,7 @@ ARG donut_viz_ref="v4.11.0"
 ARG tarts_ref="v4.3"
 ARG ts_ofc_ref="5245ded9c985c7707232f53f130a8cb6a402f7e1"
 ARG ts_config_mttcs_ref="ad3ef1b625f0ab5f276193987e4251db95161227"
-ARG ts_aos_ai_ref="v0.2.0"
+ARG ts_aos_ai_ref="v0.3.0"
 
 ARG USER=saluser
 ENV USER=${USER}
