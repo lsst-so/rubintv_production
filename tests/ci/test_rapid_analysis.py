@@ -17,6 +17,8 @@ from queue import Empty
 from typing import Any
 from unittest.mock import patch
 
+import numpy as np
+
 
 # Disable logging.basicConfig to avoid interference with log capture
 def do_nothing(*args: object, **kwargs: object) -> None:
@@ -65,6 +67,7 @@ from lsst.rubintv.production.packageVersions import (  # noqa: E402
     findDockerfile,
     getCurrentPackageVersions,
 )
+from lsst.rubintv.production.pipelineRunning import EXTRA_IDS, INTRA_IDS  # noqa: E402
 from lsst.rubintv.production.predicates import getDoRaise, isCalibration, runningCI  # noqa: E402
 from lsst.rubintv.production.processingControl import buildPipelines, getIsrStep1bPipelineKey  # noqa: E402
 from lsst.rubintv.production.redisUtils import (  # noqa: E402
@@ -104,6 +107,12 @@ CALIB_STEP1B_ANALYSIS_OUTPUTS: dict[str, set[str]] = {
     },
 }
 ANALYSIS_STORAGE_CLASSES = ("MetricMeasurementBundle", "Plot")
+
+# Whether the blitz pipeline writes the per-corner ``zernikes`` tables (its
+# doZernikesOutput) and so announces them to MTAOS. Off while blitz runs
+# alongside the regular AOS pipeline on the summit, which writes ``zernikes``
+# for the same visits. When off, the CI checks that blitz wrote none.
+BLITZ_WRITES_ZERNIKES = False
 
 
 # Add mock uploader class for testing
@@ -700,13 +709,15 @@ class RedisManager:
     def _check_lsstcam_blitz(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
         """Check the blitz processing of the one image sent through it.
 
-        Blitz writes one ``zernikes`` table per corner, keyed on its
-        extra-focal detector, and does all its outputs from a single
-        visit-level quantum, so it reports as a visit-level step1a.
+        Blitz does all its outputs from a single visit-level quantum, so it
+        reports as a visit-level step1a. Its per-donut
+        ``donutBlitzCornerResults`` catalog must hold fitted Zernikes for
+        every corner. Only with ``BLITZ_WRITES_ZERNIKES`` does it write one
+        ``zernikes`` table per corner, keyed on its extra-focal detector, and
+        announce them to MTAOS.
         """
         inst = "LSSTCam"
         blitzVisit = LSSTCAM_BLITZ.id
-        extraFocalIds = (191, 195, 199, 203)
 
         n_step1a_aos = redisHelper.getNumVisitLevelFinished(inst, "step1a", "AOS")
         if n_step1a_aos == 1:
@@ -717,14 +728,15 @@ class RedisManager:
             )
 
         gotBlitz = redisHelper.getMTAOSZernikeCount(inst, blitzVisit)
-        if gotBlitz == len(extraFocalIds):
+        expectedBlitz = len(EXTRA_IDS) if BLITZ_WRITES_ZERNIKES else None
+        if gotBlitz == expectedBlitz:
             checks.append(Check(True, f"MTAOS Zernike count for blitz image {blitzVisit} is {gotBlitz}"))
         else:
             checks.append(
                 Check(
                     False,
-                    f"MTAOS Zernike count for blitz image {blitzVisit}: expected {len(extraFocalIds)},"
-                    f" got {gotBlitz}",
+                    f"MTAOS Zernike count for blitz image {blitzVisit}: expected {expectedBlitz},"
+                    f" got {gotBlitz} ({BLITZ_WRITES_ZERNIKES=})",
                 )
             )
 
@@ -734,22 +746,43 @@ class RedisManager:
         butler = Butler.from_config(locationConfig.lsstCamButlerPath, instrument=inst)
         thisRun = getCurrentOutputRun(butler, locationConfig, inst)
         assert thisRun is not None, "Only None under scons, which never runs the CI suite"
-        lookups: list[tuple[str, dict[str, Any]]] = [
-            ("donutBlitzCornerResults", {"visit": blitzVisit}),
-            ("aggregateAOSVisitTableRaw", {"visit": blitzVisit}),
-            ("aggregateAOSVisitTableAvg", {"visit": blitzVisit}),
+        # (dataset type, dataId, whether blitz should have written it)
+        lookups: list[tuple[str, dict[str, Any], bool]] = [
+            (datasetType, {"visit": blitzVisit}, True)
+            for datasetType in (
+                "donutBlitzCornerResults",
+                "aggregateAOSVisitTableRaw",
+                "aggregateAOSVisitTableAvg",
+                "donutBlitzCornerDonutPlot",
+                "donutBlitzCornerWfPlot",
+                "donutBlitzCornerSelectionPlot",
+            )
         ]
-        lookups += [("zernikes", {"visit": blitzVisit, "detector": det}) for det in extraFocalIds]
-        for datasetType, dataId in lookups:
+        lookups += [
+            ("zernikes", {"visit": blitzVisit, "detector": det}, BLITZ_WRITES_ZERNIKES) for det in EXTRA_IDS
+        ]
+        for datasetType, dataId, shouldExist in lookups:
             try:
                 ref = butler.find_dataset(datasetType, dataId, collections=[thisRun])
             except Exception as e:
                 checks.append(Check(False, f"Error looking up blitz {datasetType} for {dataId}: {e}"))
                 continue
-            if ref is not None:
+            if ref is not None and shouldExist:
                 checks.append(Check(True, f"Found blitz output {datasetType} for {dataId}"))
-            else:
+            elif ref is None and shouldExist:
                 checks.append(Check(False, f"Did not find blitz output {datasetType} for {dataId}"))
+            elif ref is None:
+                checks.append(Check(True, f"Blitz wrote no {datasetType} for {dataId}, as expected"))
+            else:
+                checks.append(
+                    Check(
+                        False,
+                        f"Found blitz output {datasetType} for {dataId}, which it should not write"
+                        f" with {BLITZ_WRITES_ZERNIKES=}",
+                    )
+                )
+
+        self._check_blitz_corner_zernikes(butler, thisRun, blitzVisit, checks)
 
         # an extra quantum for another visit containing the exposure would
         # write its results under that visit, clobbering that image's own
@@ -763,6 +796,44 @@ class RedisManager:
             checks.append(Check(True, f"Blitz only wrote results for {blitzVisit}"))
         else:
             checks.append(Check(False, f"Expected blitz results only for {blitzVisit}, got {blitzVisits}"))
+
+    def _check_blitz_corner_zernikes(
+        self, butler: Butler, thisRun: str, blitzVisit: int, checks: list[Check]
+    ) -> None:
+        """Check that blitz fitted Zernikes on every corner.
+
+        A corner counts as fitted if any donut on either of its sensors has a
+        successful fit with finite deviation Zernikes at every fitted Noll
+        index. Paired mode replicates each joint fit onto the donuts of both
+        sensors, so the corner is the unit, not the sensor.
+        """
+        try:
+            # the fitted Noll indices are in the table's meta, which a plain
+            # get strips
+            results = butler.get(
+                "donutBlitzCornerResults",
+                visit=blitzVisit,
+                collections=[thisRun],
+                parameters={"strip_astropy_meta_yaml": False},
+            )
+            nollIndices = list(results.meta["noll_indices"])
+        except Exception as e:
+            checks.append(Check(False, f"Error reading blitz donutBlitzCornerResults for {blitzVisit}: {e}"))
+            return
+
+        # the deviation columns are dense over Noll index, NaN at any index
+        # not fitted (20 and 21 by default)
+        finiteZernikes = np.all(np.isfinite(np.asarray(results["zk_deviation_ccs"])[:, nollIndices]), axis=1)
+        fitted = (np.asarray(results["group_fit_outcome"]) == "ok") & finiteZernikes
+        detectors = np.asarray(results["det_id"])
+        for extraId, intraId in zip(EXTRA_IDS, INTRA_IDS):
+            nFitted = int(np.count_nonzero(fitted & np.isin(detectors, (extraId, intraId))))
+            if nFitted > 0:
+                checks.append(Check(True, f"Blitz fitted Zernikes for {nFitted} donuts on corner {extraId}"))
+            else:
+                checks.append(
+                    Check(False, f"Blitz fitted no Zernikes on corner {extraId}/{intraId} for {blitzVisit}")
+                )
 
     def _check_latiss_data(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
         """Check LATISS data in Redis."""

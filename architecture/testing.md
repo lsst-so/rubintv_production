@@ -229,10 +229,14 @@ Post-processing and visualization:
    image and the blitz worker is up, sets `RUBINTV_CONTROL_AOS_PIPELINE` to
    `BLITZ_BIN_2`, waits for the head node's readback to show
    `AOS_BLITZ_BIN_2`, then pushes it. The final checks assert one
-   visit-level `step1a`/`AOS` finished, an MTAOS Zernike count of 4 for it,
-   and that `donutBlitzCornerResults`, `aggregateAOSVisitTable{Raw,Avg}` and
-   the four extra-focal `zernikes` landed in the current run, and that
-   blitz wrote results for no other visit
+   visit-level `step1a`/`AOS` finished; that `donutBlitzCornerResults`,
+   `aggregateAOSVisitTable{Raw,Avg}` and the three blitz plot datasets
+   landed in the current run; that `donutBlitzCornerResults` holds a
+   successful fit with finite Zernikes on every corner; and that blitz
+   wrote results for no other visit. `BLITZ_WRITES_ZERNIKES` in
+   `test_rapid_analysis.py` follows the blitz pipeline's
+   `doZernikesOutput`: on, it also expects the four extra-focal `zernikes`
+   and an MTAOS Zernike count of 4; off, it expects neither
 5. Also tests LATISS:
    - its on-sky fixture exposure (2024081300632, exercises SFM)
    - its CWFS intra/extra pair (2026062500012+13, pushed intra first; the
