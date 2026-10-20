@@ -186,7 +186,8 @@ per-exposure tracking hash instead (see "PostISR Mosaic" below).
 - Written by the head node when it dispatches an AOS step1b (the count is
   the number of finished CWFS detectors), and by the blitz worker once its
   quantum completes (the count is the number of `zernikes` tables written,
-  one per corner with any fits)
+  one per corner with any fits). A blitz pipeline configured not to write
+  `zernikes` (`doZernikesOutput` off) announces nothing
 
 ### 9. ConsDB Announcements (HASH with TTL)
 
