@@ -15,6 +15,9 @@ auxTelMetadataShardPath: /sdf/home/m/mfl/u/rubintv/sidecar_metadata/shards
 allSkyRootDataPath: /sdf/home/m/mfl/u/rubintv/allsky/raw
 allSkyOutputPath: /sdf/home/m/mfl/u/rubintv/allsky
 
+# DREAM cloud camera
+dreamOutputPath: /sdf/home/m/mfl/u/rubintv/dream
+
 # animation
 moviePngPath: /sdf/home/m/mfl/u/rubintv/auxTel_animation
 

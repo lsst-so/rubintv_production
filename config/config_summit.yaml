@@ -15,6 +15,9 @@ auxTelMetadataShardPath: /project/rubintv/sidecar_metadata/shards
 allSkyRootDataPath: /project/rubintv/allsky/raw
 allSkyOutputPath: /project/rubintv/allsky
 
+# DREAM cloud camera
+dreamOutputPath: /project/rubintv/dream
+
 # animation
 moviePngPath: /project/rubintv/auxTel_animation
 
