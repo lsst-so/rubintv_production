@@ -183,6 +183,7 @@ class PodFlavorToPodTypeTestCase(lsst.utils.tests.TestCase):
         PodFlavor.AOS_WORKER: PodType.PER_DETECTOR,
         PodFlavor.PSF_PLOTTER: PodType.PER_INSTRUMENT,
         PodFlavor.FWHM_PLOTTER: PodType.PER_INSTRUMENT,
+        PodFlavor.FOURPANELFOCALPLANE_PLOTTER: PodType.PER_INSTRUMENT,
         PodFlavor.ZERNIKE_PREDICTED_FWHM_PLOTTER: PodType.PER_INSTRUMENT,
         PodFlavor.RADIAL_PLOTTER: PodType.PER_INSTRUMENT,
         PodFlavor.NIGHTLYROLLUP_WORKER: PodType.PER_INSTRUMENT,
