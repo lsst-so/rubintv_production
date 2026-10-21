@@ -96,6 +96,7 @@ _CREATED_DIR_KEYS = (
     "starTrackerOutputPath",
     "moviePngPath",
     "allSkyOutputPath",
+    "dreamOutputPath",
     "nightReportPath",
     "comCamMetadataPath",
     "comCamMetadataShardPath",

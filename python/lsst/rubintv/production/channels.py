@@ -54,6 +54,7 @@ KNOWN_INSTRUMENTS = (
     "startracker_wide",
     "startracker_fast",
     "allsky",
+    "dream",
     "comcam",
     "comcam_sim",
     "comcam_sim_prep",

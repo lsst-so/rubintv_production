@@ -262,6 +262,13 @@ class LocationConfig:
         self._checkDir(directory)
         return directory
 
+    # DREAM cloud camera paths
+    @cached_property
+    def dreamOutputPath(self) -> str:
+        directory = self._config["dreamOutputPath"]
+        self._checkDir(directory)
+        return directory
+
     @cached_property
     def nightReportPath(self) -> str:
         directory = self._config["nightReportPath"]
