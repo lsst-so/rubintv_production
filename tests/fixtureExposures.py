@@ -34,6 +34,7 @@ from dataclasses import dataclass
 __all__ = [
     "FixtureExposure",
     "LSSTCAM_IN_FOCUS",
+    "LSSTCAM_BLITZ",
     "LSSTCAM_FAM_INTRA",
     "LSSTCAM_FAM_EXTRA",
     "LSSTCAM_BIAS",
@@ -104,6 +105,9 @@ class FixtureExposure:
 
 
 LSSTCAM_IN_FOCUS = FixtureExposure("LSSTCam", 2025111500226, "in-focus on-sky image, goes to SFM")
+LSSTCAM_BLITZ = FixtureExposure(
+    "LSSTCam", 2025111500229, "in-focus on-sky image, its AOS goes through a blitz pipeline"
+)
 LSSTCAM_FAM_INTRA = FixtureExposure("LSSTCam", 2025111500227, "intra-focal FAM CWFS image")
 LSSTCAM_FAM_EXTRA = FixtureExposure("LSSTCam", 2025111500228, "extra-focal FAM CWFS image")
 LSSTCAM_BIAS = FixtureExposure("LSSTCam", 2026070200203, "bias")
@@ -123,6 +127,7 @@ pipeline name the head node uses."""
 
 LSSTCAM_EXPOSURES: tuple[FixtureExposure, ...] = (
     LSSTCAM_IN_FOCUS,
+    LSSTCAM_BLITZ,
     LSSTCAM_FAM_INTRA,
     LSSTCAM_FAM_EXTRA,
     LSSTCAM_BIAS,

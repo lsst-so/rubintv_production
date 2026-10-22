@@ -19,32 +19,54 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Test cases for the parts of pipelineRunning that need no Butler."""
+"""Tests for the parts of pipelineRunning that need no Butler.
 
+The step1a completion report tests catch it going to the wrong place:
+per-detector payloads must land in the exposure's tracking hash for the
+head node's gather, while the detector-less payloads of the blitz pipelines
+must be counted as a visit-level step1a. Before blitz, every step1a payload
+was assumed to carry a detector, so a detector-less one raised KeyError in
+both the success and the failure path.
+
+The blitz MTAOS announcement tests catch blitz announcing a Zernike count
+of zero when it is configured not to write ``zernikes``. The count shares
+its Redis field with the regular AOS pipeline's for the same visit, so with
+the two pipelines running side by side it would clobber a real count.
+"""
+
+import logging
 import unittest
 from types import SimpleNamespace
-from typing import cast
-from unittest.mock import MagicMock
+from typing import Any, cast
+from unittest.mock import MagicMock, patch
 
+import fakeredis
 from astropy.units import adu
-from fixtureExposures import LSSTCAM_BIAS, LSSTCAM_IN_FOCUS
+from fixtureExposures import LSSTCAM_BIAS, LSSTCAM_BLITZ, LSSTCAM_IN_FOCUS
+from utils import getSampleExpRecord
 
 import lsst.utils.tests
 from lsst.analysis.tools.interfaces import MetricMeasurementBundle
 from lsst.analysis.tools.interfaces.datastore import SasquatchDatastore, SasquatchDispatcher
-from lsst.daf.butler import DataCoordinate, DatasetRef, DatasetType, DimensionUniverse, LimitedButler
+from lsst.daf.butler import Butler, DataCoordinate, DatasetRef, DatasetType, DimensionUniverse, LimitedButler
 from lsst.daf.butler.datastore import Datastore
 from lsst.daf.butler.datastores.chainedDatastore import ChainedDatastore
 from lsst.obs.lsst import LsstCam
 from lsst.pipe.base.pipeline_graph import TaskNode
+from lsst.rubintv.production import redisUtils as redisUtilsModule
+from lsst.rubintv.production.locationConfig import LocationConfig
+from lsst.rubintv.production.payloads import Payload
 from lsst.rubintv.production.pipelineRunning import (
     METRIC_BUNDLE_STORAGE_CLASS,
     MetricTolerantCachingLimitedButler,
+    SingleCorePipelineRunner,
     addSasquatchFields,
     getSasquatchDatastores,
     getSasquatchFields,
     shouldSkipQuantum,
 )
+from lsst.rubintv.production.redisKeys import getVisitFailedCounterKey
+from lsst.rubintv.production.redisUtils import RedisHelper
 from lsst.verify import Measurement
 
 
@@ -237,6 +259,116 @@ class SasquatchFieldsTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(withFields["exposure"], self.fields["exposure"])
         self.assertEqual(withFields["day_obs"], self.fields["day_obs"])
         self.assertEqual(withFields.keys(), plain.keys())
+
+
+def _makeFakeRedis(*args: object, **kwargs: object) -> fakeredis.FakeStrictRedis:
+    """Drop-in for `redis.Redis(...)` returning a fresh in-process client."""
+    return fakeredis.FakeStrictRedis()
+
+
+class ReportStep1aFinishedTestCase(lsst.utils.tests.TestCase):
+    """`SingleCorePipelineRunner.reportStep1aFinished`, invoked unbound
+    against a duck-typed ``self`` backed by a real `RedisHelper` over
+    fakeredis, as constructing a runner needs a Butler.
+    """
+
+    def setUp(self) -> None:
+        self._patcher = patch.object(redisUtilsModule.redis, "Redis", side_effect=_makeFakeRedis)
+        self._patcher.start()
+        self.helper = RedisHelper(butler=cast(Butler, None), locationConfig=cast(LocationConfig, None))
+        self.record = getSampleExpRecord()
+        self.runner = SimpleNamespace(
+            instrument="LSSTCam",
+            redisHelper=self.helper,
+            log=logging.getLogger("test.reportStep1aFinished"),
+        )
+
+    def tearDown(self) -> None:
+        self._patcher.stop()
+
+    def _report(self, dataId: DataCoordinate, failed: bool = False) -> None:
+        payload = Payload(dataId=dataId, pipelineGraphBytes=b"", run="test-run", who="AOS")
+        SingleCorePipelineRunner.reportStep1aFinished(
+            cast(SingleCorePipelineRunner, self.runner), payload, failed=failed
+        )
+
+    def test_perDetectorPayloadReportsDetector(self) -> None:
+        # the existing behaviour, which the head node's AOS gather counts
+        # against the expected detectors
+        self._report(DataCoordinate.standardize(self.record.dataId, detector=191))
+
+        info = self.helper.getExposureProcessingInfo("LSSTCam", self.record.id)
+        assert info is not None
+        self.assertEqual(info.getFinishedDetectors("AOS"), {191})
+        self.assertEqual(info.getFailedDetectors("AOS"), set())
+        self.assertEqual(self.helper.getNumVisitLevelFinished("LSSTCam", "step1a", "AOS"), 0)
+
+    def test_exposureLevelPayloadReportsVisitLevel(self) -> None:
+        # a blitz payload has no detector, so it must neither raise nor write
+        # a per-detector field, which the head node would never be expecting
+        self._report(self.record.dataId)
+
+        self.assertEqual(self.helper.getNumVisitLevelFinished("LSSTCam", "step1a", "AOS"), 1)
+        self.assertIsNone(self.helper.getExposureProcessingInfo("LSSTCam", self.record.id))
+        self.assertIsNone(self.helper.redis.get(getVisitFailedCounterKey("LSSTCam", "step1a", "AOS")))
+
+    def test_failedExposureLevelPayloadCountsFailure(self) -> None:
+        # the failure path is the one that used to KeyError, masking the
+        # original exception; a failure must count as both finished and
+        # failed, matching the per-detector and step1b conventions
+        self._report(self.record.dataId, failed=True)
+
+        self.assertEqual(self.helper.getNumVisitLevelFinished("LSSTCam", "step1a", "AOS"), 1)
+        failedCount = self.helper.redis.get(getVisitFailedCounterKey("LSSTCam", "step1a", "AOS"))
+        self.assertEqual(int(failedCount or 0), 1)
+
+
+class PostProcessDonutBlitzCornerTestCase(lsst.utils.tests.TestCase):
+    """`SingleCorePipelineRunner.postProcessDonutBlitzCorner` announces the
+    number of ``zernikes`` tables actually written, and announces nothing at
+    all when the quantum has no ``zernikes`` outputs. Invoked unbound against
+    a duck-typed ``self``, as in `ReportStep1aFinishedTestCase`.
+    """
+
+    def setUp(self) -> None:
+        self._patcher = patch.object(redisUtilsModule.redis, "Redis", side_effect=_makeFakeRedis)
+        self._patcher.start()
+        self.helper = RedisHelper(butler=cast(Butler, None), locationConfig=cast(LocationConfig, None))
+        self.visitId = LSSTCAM_BLITZ.id
+        self.cachingButler = MagicMock()
+        self.runner = SimpleNamespace(
+            instrument="LSSTCam",
+            redisHelper=self.helper,
+            cachingButler=self.cachingButler,
+            log=logging.getLogger("test.postProcessDonutBlitzCorner"),
+        )
+
+    def tearDown(self) -> None:
+        self._patcher.stop()
+
+    def _postProcess(self, outputs: dict[str, list[str]]) -> None:
+        quantum = SimpleNamespace(outputs=outputs, dataId={"visit": self.visitId})
+        SingleCorePipelineRunner.postProcessDonutBlitzCorner(
+            cast(SingleCorePipelineRunner, self.runner), cast(Any, quantum)
+        )
+
+    def test_announcesTheNumberWritten(self) -> None:
+        # a corner with no fits writes no table, so the count is what landed,
+        # not what the graph predicted
+        refs = ["z191", "z195", "z199", "z203"]
+        self.cachingButler.stored_many.return_value = {ref: ref != "z203" for ref in refs}
+        self._postProcess({"zernikes": refs})
+
+        self.assertEqual(self.helper.getMTAOSZernikeCount("LSSTCam", self.visitId), 3)
+
+    def test_noZernikesOutputAnnouncesNothing(self) -> None:
+        # doZernikesOutput off deletes the connection, so the quantum has no
+        # zernikes outputs; announcing 0 would overwrite the regular AOS
+        # pipeline's count for the same visit when both process it
+        self._postProcess({})
+
+        self.assertIsNone(self.helper.getMTAOSZernikeCount("LSSTCam", self.visitId))
+        self.cachingButler.stored_many.assert_not_called()
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

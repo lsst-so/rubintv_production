@@ -24,7 +24,9 @@
 Covers the git version helpers, the version scraping into the
 summit_utils-owned ``PackageVersions`` dataclass, its rendering for RubinTV,
 and the Dockerfile cross-check, including the set-up stack's eups tags against
-``STACK_TAG``. The ``PackageVersions`` data model
+``STACK_TAG``. Git pins are compared by commit, so the cross-check must not
+fail when a new weekly tag lands on a pinned, unchanged commit and ``git
+describe`` starts reporting it instead. The ``PackageVersions`` data model
 itself - its JSON round-trip and content-hash identity - is tested in
 summit_utils alongside the code. The ``test_realDockerfileFormatIsParseable``
 test deliberately reads the actual ``Dockerfile`` so that any drift in the
@@ -84,8 +86,42 @@ def makeGitRepo(path: str, tag: str | None = None) -> str:
         The full commit SHA of the single commit.
     """
     subprocess.run(["git", "-C", path, "init", "-q"], check=True)
+    sha = addCommit(path, "hello\n")
+    if tag is not None:
+        tagHead(path, tag)
+    return sha
+
+
+def tagHead(path: str, tag: str) -> None:
+    """Tag ``HEAD`` of the git repo at ``path``.
+
+    Parameters
+    ----------
+    path : `str`
+        The repo to tag.
+    tag : `str`
+        The name of the tag to create.
+    """
+    subprocess.run(["git", "-C", path, "tag", tag], check=True)
+
+
+def addCommit(path: str, contents: str) -> str:
+    """Commit a new README to the git repo at ``path``.
+
+    Parameters
+    ----------
+    path : `str`
+        The repo to commit to.
+    contents : `str`
+        The README contents, which must differ from the current ones.
+
+    Returns
+    -------
+    sha : `str`
+        The full commit SHA of the new commit.
+    """
     with open(os.path.join(path, "README"), "w") as f:
-        f.write("hello\n")
+        f.write(contents)
     subprocess.run(["git", "-C", path, "add", "-A"], check=True)
     subprocess.run(
         [
@@ -99,12 +135,10 @@ def makeGitRepo(path: str, tag: str | None = None) -> str:
             "commit",
             "-q",
             "-m",
-            "initial",
+            "commit",
         ],
         check=True,
     )
-    if tag is not None:
-        subprocess.run(["git", "-C", path, "tag", tag], check=True)
     return subprocess.run(
         ["git", "-C", path, "rev-parse", "HEAD"], check=True, capture_output=True, text=True
     ).stdout.strip()
@@ -127,28 +161,7 @@ class GitVersionTestCase(lsst.utils.tests.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             makeGitRepo(tmp, tag="v1.0.0")
             # advance HEAD past the tag with a second, untagged commit
-            with open(os.path.join(tmp, "README"), "w") as f:
-                f.write("more\n")
-            subprocess.run(["git", "-C", tmp, "add", "-A"], check=True)
-            subprocess.run(
-                [
-                    "git",
-                    "-C",
-                    tmp,
-                    "-c",
-                    "user.name=test",
-                    "-c",
-                    "user.email=test@example.com",
-                    "commit",
-                    "-q",
-                    "-m",
-                    "second",
-                ],
-                check=True,
-            )
-            sha = subprocess.run(
-                ["git", "-C", tmp, "rev-parse", "HEAD"], check=True, capture_output=True, text=True
-            ).stdout.strip()
+            sha = addCommit(tmp, "more\n")
             self.assertEqual(getGitVersion(tmp), sha)
 
     def test_raisesOnNonGitDir(self) -> None:
@@ -323,6 +336,43 @@ class VersionsMatchTestCase(lsst.utils.tests.TestCase):
         # prefix must not count as a match
         self.assertFalse(versionsMatch("v1abcdef", "v1"))
 
+    def test_tagsOnTheSameCommitMatch(self) -> None:
+        # Regression: the BTS head node refused to start with summit_utils
+        # "at 'w.2026.42' but pinned to 'w.2026.41'". summit_utils hadn't
+        # changed, so both weeklies tagged the same commit and git describe
+        # reported the newer one: every unchanged package pinned to a weekly
+        # tag mismatched as soon as the next weekly was cut.
+        with tempfile.TemporaryDirectory() as tmp:
+            makeGitRepo(tmp, tag="w.2026.41")
+            tagHead(tmp, "w.2026.42")
+            self.assertTrue(versionsMatch("w.2026.42", "w.2026.41", packageDir=tmp))
+
+    def test_tagsOnDifferentCommitsDoNotMatch(self) -> None:
+        # resolving refs in the checkout must still catch a real change
+        with tempfile.TemporaryDirectory() as tmp:
+            makeGitRepo(tmp, tag="w.2026.41")
+            addCommit(tmp, "changed\n")
+            tagHead(tmp, "w.2026.42")
+            self.assertFalse(versionsMatch("w.2026.42", "w.2026.41", packageDir=tmp))
+
+    def test_shaPinMatchesTagOnThatCommit(self) -> None:
+        # A SHA pin whose commit also carries a tag is recorded as the tag,
+        # so a string comparison can never match it. Covers the full SHA and
+        # an abbreviation too short for the prefix-match fallback.
+        with tempfile.TemporaryDirectory() as tmp:
+            sha = makeGitRepo(tmp, tag="v1.0.0")
+            self.assertTrue(versionsMatch("v1.0.0", sha, packageDir=tmp))
+            self.assertTrue(versionsMatch("v1.0.0", sha[:5], packageDir=tmp))
+
+    def test_unresolvableRefFallsBackToStringComparison(self) -> None:
+        # a ref the checkout doesn't know is compared as a string, so an
+        # abbreviated SHA still prefix-matches and different names don't
+        with tempfile.TemporaryDirectory() as tmp:
+            makeGitRepo(tmp)
+            fullSha = "1485dcbc10ad7637a845ee7e9a5a29d0f1da7680"
+            self.assertTrue(versionsMatch(fullSha, fullSha[:12], packageDir=tmp))
+            self.assertFalse(versionsMatch("v1.0.0", "v2.0.0", packageDir=tmp))
+
 
 class DockerfileParsingTestCase(lsst.utils.tests.TestCase):
     def test_parsesVariousQuotingStyles(self) -> None:
@@ -417,13 +467,30 @@ class FindDockerfileTestCase(lsst.utils.tests.TestCase):
         self.assertIn("No Dockerfile found", cm.output[0])
 
 
-class CheckVersionsAgainstDockerfileTestCase(lsst.utils.tests.TestCase):
+class DockerfileComparisonTestCase(lsst.utils.tests.TestCase):
+    """Base class for comparing versions to a temporary Dockerfile.
+
+    Git packages are compared in the checkout their ``*_DIR`` env var points
+    at, so the tracked packages' env vars are cleared: made-up versions must
+    not be resolved in whatever real checkouts the stack has set up. A test
+    that needs a checkout points the env var at a temporary repo.
+    """
+
+    def setUp(self) -> None:
+        patcher = unittest.mock.patch.dict(os.environ)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        for name in TRACKED_PACKAGES:
+            os.environ.pop(envVarForPackage(name), None)
+
     def _writeDockerfile(self, tmp: str, body: str) -> str:
         path = os.path.join(tmp, "Dockerfile")
         with open(path, "w") as f:
             f.write(body)
         return path
 
+
+class CheckVersionsAgainstDockerfileTestCase(DockerfileComparisonTestCase):
     def test_raisesOnMismatch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = self._writeDockerfile(tmp, 'ARG ts_wep_ref="v2.0.0"\n')
@@ -489,14 +556,22 @@ class CheckVersionsAgainstDockerfileTestCase(lsst.utils.tests.TestCase):
         with self.assertLogs(level="WARNING"):
             checkVersionsAgainstDockerfile(pv, missing)  # must not raise
 
+    def test_newTagOnPinnedCommitDoesNotRaise(self) -> None:
+        # Regression, end to end: the BTS head node raised with summit_utils
+        # pinned to w.2026.41 but recorded as w.2026.42, the next weekly's tag
+        # on the same unchanged commit. The checkout is found via
+        # SUMMIT_UTILS_DIR, as on the pods.
+        with tempfile.TemporaryDirectory() as repo, tempfile.TemporaryDirectory() as tmp:
+            makeGitRepo(repo, tag="w.2026.41")
+            tagHead(repo, "w.2026.42")
+            path = self._writeDockerfile(tmp, 'ARG summit_utils_ref="w.2026.41"\n')
+            pv = PackageVersions(versions={"summit_utils": "w.2026.42"})
+            with unittest.mock.patch.dict(os.environ, {envVarForPackage("summit_utils"): repo}):
+                with self.assertNoLogs(level="WARNING"):
+                    checkVersionsAgainstDockerfile(pv, path)
 
-class CompareVersionsToDockerfileTestCase(lsst.utils.tests.TestCase):
-    def _writeDockerfile(self, tmp: str, body: str) -> str:
-        path = os.path.join(tmp, "Dockerfile")
-        with open(path, "w") as f:
-            f.write(body)
-        return path
 
+class CompareVersionsToDockerfileTestCase(DockerfileComparisonTestCase):
     def test_classifiesMatchMismatchAndUnpinned(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = self._writeDockerfile(tmp, 'ARG ts_wep_ref="v1.0.0"\nARG donut_viz_ref="v2.0.0"\n')

@@ -59,6 +59,7 @@ source ~/stack.sh && . ~/setup_packages.sh && pytest tests/ -q -n logical
 | `test_timedServices.py` | `deep_update` recursive dict merge | No |
 | `test_exposureProcessingInfo.py` | `ExposureProcessingInfo.fromRedisHash` parsing and predicates | No |
 | `test_redisUtils.py` | `RedisHelper` lifecycle / queueing / tracking, against `fakeredis` | No |
+| `test_pipelineRunning.py` | `SingleCorePipelineRunner` step1a completion reporting (per-detector vs visit-level), against `fakeredis` | No |
 
 ### Test Data
 
@@ -125,6 +126,11 @@ The CI suite has its own mini-framework:
 - **`ProcessManager`** - launches test scripts as `multiprocessing.Process`
 - **`ResultCollector`** - aggregates pass/fail results
 
+The scripts are forked from the suite's own process after it calls
+`disable_implicit_threading()`, so, like the pods (whose Dockerfile sets
+the thread variables), they run numpy's BLAS and OpenMP single-threaded
+rather than each sizing its thread pools to the whole node.
+
 ### Package Version Validation
 
 At startup the suite scrapes the versions of the tracked science packages —
@@ -133,6 +139,9 @@ git tags/SHAs for the checkouts (`ts_wep`, `donut_viz`, `rubintv_production`,
 distribution version for `danish` (conda-installed, no env var) — and
 cross-checks them against the refs pinned in the `Dockerfile` (`ARG
 <name>_ref` for the git packages, the `name=version` conda spec for `danish`).
+A git package matches its pin if both name the same commit in its checkout,
+so a new weekly tag on an unchanged commit (which `git describe` then
+reports) is not a mismatch.
 The stack is scraped, recorded with each image's package versions and
 checked the same way: its version is the release tags (`w_*`, `d_*` or `v*`)
 of the set-up `lsst_distrib`, which must include the Dockerfile's
@@ -176,11 +185,15 @@ Full pipeline execution:
   plus the dedicated LATISS AOS worker (detector 0) for the WEP
   monolith pair processing
 - 18 SFM detectors for LSSTCam (90-98, 144-152)
+- One LSSTCam `AOS_BLITZ_WORKER`, run with `LIMITS_CPU=8` like the summit
+  pods (via the per-script `env` on `TestScript`)
 - Real Butler queries against test data
 - Test exposures, defined once in `tests/fixtureExposures.py` (shared with
   the unit tests) as full exposure ids, so nothing assumes they share a
   night: LSSTCam 2025111500226 (SFM), 2025111500227+228 (FAM CWFS pair),
-  2026070200203 (bias), 2026070200201 (dark), 2026070200192 (flat). The
+  2026070200203 (bias), 2026070200201 (dark), 2026070200192 (flat),
+  2025111500229 (SFM, with its AOS run through `AOS_BLITZ_BIN_2`); 226's
+  AOS also runs `AOS_BLITZ_SHADOW_BIN_2`, the CI site's shadow. The
   calibs are deliberately from a much newer night than the on-sky images,
   because older raw headers lack information cp_verify needs
 - The butlers are the `+sasquatch_dev` ones, so metric bundles really are
@@ -214,13 +227,35 @@ Post-processing and visualization:
 
 `drip_feed_data.py` pre-loads test exposures into Redis:
 1. Initializes Butler and RedisHelper
-2. Waits for SFM workers and head node to come online
+2. Waits for SFM workers, the head node and the blitz worker to come
+   online (the in-focus image's shadow payload is dropped if there is no
+   blitz worker)
 3. Pushes exposures to Redis with specific ordering and delays:
    - The intra-focal FAM image first (it must arrive before the extra-focal)
    - Then the bias, dark and flat, the in-focus SFM image, and the
      extra-focal FAM image
    - 2 s delays between pushes
-4. Also tests LATISS:
+4. Switches the AOS pipeline to blitz the way RubinTV does, then pushes the
+   blitz image (`LSSTCAM_BLITZ`): once the head node has popped every other
+   image, sets `RUBINTV_CONTROL_AOS_PIPELINE` to `BLITZ_BIN_2`, waits for
+   the head node's readback to show `AOS_BLITZ_BIN_2`, then pushes it. The
+   final checks, all against the current run only, assert two visit-level
+   `step1a`/`AOS` finished (226's shadow and 229); that both visits'
+   `donutBlitzCornerResults` hold a successful fit with finite Zernikes on
+   every corner (a corner without one names its sensors' errors, such as a
+   cutout worker killed at its unit timeout, and a cutout slower than
+   ts_wep's default `unitTimeout` warns; each visit's per-sensor cutout
+   timings, from the table's meta, print beneath the test results); that
+   both have the three blitz plots, read back as PNG
+   artifacts through `butler.getURI` (the `Plot` storage class can't be
+   read with `butler.get`); that 229 has `aggregateAOSVisitTable{Raw,Avg}`;
+   and that blitz wrote results for no other visit. `BLITZ_WRITES_ZERNIKES`
+   in `test_rapid_analysis.py` follows the blitz pipeline's
+   `doZernikesOutput`: on, it also expects 229's four extra-focal
+   `zernikes` and an MTAOS Zernike count of 4; off, it expects neither.
+   The shadow's writing nothing the selected pipeline writes is checked
+   on its graph, in `test_pipelines.py`
+5. Also tests LATISS:
    - its on-sky fixture exposure (2024081300632, exercises SFM)
    - its CWFS intra/extra pair (2026062500012+13, pushed intra first; the
      extra-focal image landing triggers the `AOS_LATISS` WEP monolith
@@ -254,9 +289,12 @@ Features:
 `tests/createUnitTestCollections.py` builds Butler collections for CI:
 - Sets `RAPID_ANALYSIS_LOCATION=usdf_testing`
 - Runs pipelines in parallel via `ThreadPoolExecutor`
-- Creates collections for: FAM, AOS, SFM, calibration pipelines (LSSTCam),
-  plus `AOS_LATISS` (the LATISS WEP monolith, run on the CWFS pair
-  2026062500012+13)
+- Creates collections for: FAM, AOS (including the blitz pipelines and
+  their shadows), SFM, calibration pipelines (LSSTCam), plus `AOS_LATISS`
+  (the LATISS WEP monolith, run on the CWFS pair 2026062500012+13)
+- Passes each pipeline's `PipelineComponents.overrides` to `pipetask` as
+  `-c` options, so the collections are made with the same configs the pods
+  build (e.g. the blitz binning)
 - The calibration pipelines are run with both their step1a labels (cp_verify
   ISR plus the per-detector verify task) so that the collections hold the
   inputs the calib step1b tests (`testCalibPipelinesStep1b`) build their

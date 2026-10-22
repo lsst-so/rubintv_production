@@ -10,12 +10,16 @@ import subprocess
 import sys
 import time
 import traceback
+from dataclasses import dataclass
 from datetime import datetime
 from multiprocessing import Manager, Process
 from pathlib import Path
 from queue import Empty
-from typing import Any
+from typing import Any, Self
 from unittest.mock import patch
+
+import astropy.units as u  # type: ignore[import-untyped]
+import numpy as np
 
 
 # Disable logging.basicConfig to avoid interference with log capture
@@ -42,6 +46,7 @@ from fixtureExposures import (  # noqa: E402
     LATISS_CWFS_INTRA,
     LATISS_ON_SKY,
     LSSTCAM_BIAS,
+    LSSTCAM_BLITZ,
     LSSTCAM_DARK,
     LSSTCAM_EXPOSURES,
     LSSTCAM_FAM_EXTRA,
@@ -52,6 +57,7 @@ from fixtureExposures import (  # noqa: E402
 
 # Only import from lsst packages after logging is configured
 from lsst.daf.butler import Butler, MissingDatasetTypeError  # noqa: E402
+from lsst.obs.lsst import LsstCam  # noqa: E402
 from lsst.rubintv.production.butlerQueries import getCurrentOutputRun  # noqa: E402
 from lsst.rubintv.production.locationConfig import LocationConfig, findMissingConfigKeys  # noqa: E402
 from lsst.rubintv.production.packageVersions import (  # noqa: E402
@@ -64,6 +70,7 @@ from lsst.rubintv.production.packageVersions import (  # noqa: E402
     findDockerfile,
     getCurrentPackageVersions,
 )
+from lsst.rubintv.production.pipelineRunning import EXTRA_IDS, INTRA_IDS  # noqa: E402
 from lsst.rubintv.production.predicates import getDoRaise, isCalibration, runningCI  # noqa: E402
 from lsst.rubintv.production.processingControl import buildPipelines, getIsrStep1bPipelineKey  # noqa: E402
 from lsst.rubintv.production.redisUtils import (  # noqa: E402
@@ -75,6 +82,9 @@ from lsst.rubintv.production.redisUtils import (  # noqa: E402
 from lsst.rubintv.production.resources import getBasePath, listDir, rmtree  # noqa: E402
 from lsst.rubintv.production.uploaders import MultiUploader  # noqa: E402
 from lsst.summit.utils.packageVersions import UNKNOWN_VERSION, PackageVersions  # noqa: E402
+from lsst.ts.wep.blitz.donutBlitzCorner import DonutBlitzCornerConfig  # noqa: E402
+from lsst.ts.wep.blitz.utils import _CUTOUT_STAGE_KEYS  # noqa: E402
+from lsst.utils.threads import disable_implicit_threading  # noqa: E402
 
 # The metric bundles and plots each calibration step1b is expected to write.
 # One that its pipeline graph lacks fails and one not listed here warns, so a
@@ -103,6 +113,17 @@ CALIB_STEP1B_ANALYSIS_OUTPUTS: dict[str, set[str]] = {
     },
 }
 ANALYSIS_STORAGE_CLASSES = ("MetricMeasurementBundle", "Plot")
+
+# Whether the blitz pipeline writes the per-corner ``zernikes`` tables (its
+# doZernikesOutput) and so announces them to MTAOS. Off while blitz runs
+# alongside the regular AOS pipeline on the summit, which writes ``zernikes``
+# for the same visits. When off, the CI checks that blitz wrote none.
+BLITZ_WRITES_ZERNIKES = False
+
+# ts_wep's default limit on one corner detector's cutout before its worker is
+# killed, losing the detector and so its corner. A slower cutout warns, so a
+# slow run shows even when nothing was lost.
+BLITZ_UNIT_TIMEOUT: float = DonutBlitzCornerConfig.unitTimeout.default
 
 
 # Add mock uploader class for testing
@@ -386,6 +407,17 @@ class TestConfig:
         aos_workers.extend(
             [TestScript("scripts/LSSTCam/runAosWorker.py", ["usdf_testing", str(i)]) for i in range(1, 8)]
         )
+        # a single blitz worker, with the summit pod's core count, for the one
+        # image the drip-feeder sends through a blitz pipeline
+        aos_workers.append(
+            TestScript(
+                "scripts/LSSTCam/runAosBlitzWorker.py",
+                ["usdf_testing"],
+                display_on_pass=True,
+                tee_output=True,
+                env={"LIMITS_CPU": "8"},
+            )
+        )
 
         # Additional LSSTCam scripts
         # runStep1baAosWorker deals with the outputs from the regular CWFS and
@@ -521,6 +553,7 @@ class RedisManager:
     def __init__(self, config: TestConfig) -> None:
         self.config = config
         self.redis_process = None
+        self.blitz_timings: list[BlitzTimings] = []
 
     def is_redis_running(self) -> bool:
         """Check if redis-server is already running."""
@@ -623,7 +656,8 @@ class RedisManager:
         inst = "LSSTCam"
 
         # single-snap visits, so the visit ids are the exposure ids
-        visits_sfm: list[int] = [LSSTCAM_IN_FOCUS.id]
+        visits_sfm: list[int] = [LSSTCAM_IN_FOCUS.id, LSSTCAM_BLITZ.id]
+        # the blitz image goes through a blitz pipeline, which has no step1b
         visits_aos: list[int] = [LSSTCAM_IN_FOCUS.id, LSSTCAM_FAM_INTRA.id, LSSTCAM_FAM_EXTRA.id]
         visits_fam: list[int] = [LSSTCAM_FAM_INTRA.id, LSSTCAM_FAM_EXTRA.id]
 
@@ -679,6 +713,204 @@ class RedisManager:
                     Check(
                         False,
                         f"MTAOS Zernike count for FAM image {visit}: expected {expectedFam}, got {gotFam}",
+                    )
+                )
+
+        self._check_lsstcam_blitz(redisHelper, checks)
+
+    def _check_lsstcam_blitz(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
+        """Check the blitz processing of the in-focus images.
+
+        The in-focus image runs the shadow blitz pipeline alongside the
+        selected AOS pipeline, and the blitz image runs a blitz pipeline
+        selected in its place. Each does all its outputs from one visit-level
+        quantum, so reports as a visit-level step1a, and must write a
+        ``donutBlitzCornerResults`` catalog with fitted Zernikes for every
+        corner, and the three blitz plots. Only the selected blitz pipeline
+        writes the ``aggregateAOSVisitTable`` tables, and only with
+        ``BLITZ_WRITES_ZERNIKES`` does it write one ``zernikes`` table per
+        corner, keyed on its extra-focal detector, and announce them to MTAOS.
+        The shadow's MTAOS count is the selected pipeline's, checked above.
+        """
+        inst = "LSSTCam"
+        shadowVisit = LSSTCAM_IN_FOCUS.id
+        blitzVisit = LSSTCAM_BLITZ.id
+
+        n_step1a_aos = redisHelper.getNumVisitLevelFinished(inst, "step1a", "AOS")
+        if n_step1a_aos == 2:
+            checks.append(Check(True, "2x AOS blitz visit-level step1a finished, shadow and selected"))
+        else:
+            checks.append(
+                Check(False, f"Expected 2 AOS blitz visit-level step1a to finish, got {n_step1a_aos}")
+            )
+
+        gotBlitz = redisHelper.getMTAOSZernikeCount(inst, blitzVisit)
+        expectedBlitz = len(EXTRA_IDS) if BLITZ_WRITES_ZERNIKES else None
+        if gotBlitz == expectedBlitz:
+            checks.append(Check(True, f"MTAOS Zernike count for blitz image {blitzVisit} is {gotBlitz}"))
+        else:
+            checks.append(
+                Check(
+                    False,
+                    f"MTAOS Zernike count for blitz image {blitzVisit}: expected {expectedBlitz},"
+                    f" got {gotBlitz} ({BLITZ_WRITES_ZERNIKES=})",
+                )
+            )
+
+        # only look in this run's collection, as earlier CI runs further down
+        # the chain will also hold outputs for these visits
+        locationConfig = LocationConfig("usdf_testing")
+        butler = Butler.from_config(locationConfig.lsstCamButlerPath, instrument=inst)
+        thisRun = getCurrentOutputRun(butler, locationConfig, inst)
+        assert thisRun is not None, "Only None under scons, which never runs the CI suite"
+        # (dataset type, dataId, whether blitz should have written it). The
+        # selected AOS pipeline also writes the in-focus image's aggregate
+        # tables and zernikes, so the shadow's absence of them can't be seen
+        # here; test_pipelines checks the shadow graph writes none.
+        lookups: list[tuple[str, dict[str, Any], bool]] = [
+            (datasetType, {"visit": blitzVisit}, True)
+            for datasetType in ("aggregateAOSVisitTableRaw", "aggregateAOSVisitTableAvg")
+        ]
+        lookups += [
+            ("zernikes", {"visit": blitzVisit, "detector": det}, BLITZ_WRITES_ZERNIKES) for det in EXTRA_IDS
+        ]
+        for datasetType, dataId, shouldExist in lookups:
+            try:
+                ref = butler.find_dataset(datasetType, dataId, collections=[thisRun])
+            except Exception as e:
+                checks.append(Check(False, f"Error looking up blitz {datasetType} for {dataId}: {e}"))
+                continue
+            if ref is not None and shouldExist:
+                checks.append(Check(True, f"Found blitz output {datasetType} for {dataId}"))
+            elif ref is None and shouldExist:
+                checks.append(Check(False, f"Did not find blitz output {datasetType} for {dataId}"))
+            elif ref is None:
+                checks.append(Check(True, f"Blitz wrote no {datasetType} for {dataId}, as expected"))
+            else:
+                checks.append(
+                    Check(
+                        False,
+                        f"Found blitz output {datasetType} for {dataId}, which it should not write"
+                        f" with {BLITZ_WRITES_ZERNIKES=}",
+                    )
+                )
+
+        for visit, label in ((shadowVisit, "shadow"), (blitzVisit, "blitz")):
+            self._check_blitz_corner_zernikes(butler, thisRun, visit, label, checks)
+            self._check_blitz_plots(butler, thisRun, visit, checks)
+
+        # an extra quantum for another visit containing an exposure would
+        # write its results under that visit, clobbering that image's own
+        try:
+            refs = butler.query_datasets("donutBlitzCornerResults", collections=[thisRun], explain=False)
+            blitzVisits = sorted({int(ref.dataId["visit"]) for ref in refs})
+        except Exception as e:
+            checks.append(Check(False, f"Error querying blitz results in {thisRun}: {e}"))
+            return
+        expectedVisits = sorted((shadowVisit, blitzVisit))
+        if blitzVisits == expectedVisits:
+            checks.append(Check(True, f"Blitz only wrote results for {expectedVisits}"))
+        else:
+            checks.append(
+                Check(False, f"Expected blitz results only for {expectedVisits}, got {blitzVisits}")
+            )
+
+    def _check_blitz_plots(self, butler: Butler, thisRun: str, visit: int, checks: list[Check]) -> None:
+        """Check that blitz wrote its three plots for a visit, as PNGs.
+
+        The ``Plot`` storage class is write-only, so the artifacts are read
+        through their URIs rather than with ``butler.get``. The shadow
+        uploads nothing to RubinTV, so this is the only check of its plots.
+        """
+        minSize = 5000  # as for the RubinTV plots in check_plots
+        for datasetType in (
+            "donutBlitzCornerDonutPlot",
+            "donutBlitzCornerWfPlot",
+            "donutBlitzCornerSelectionPlot",
+        ):
+            try:
+                ref = butler.find_dataset(datasetType, {"visit": visit}, collections=[thisRun])
+                if ref is None:
+                    checks.append(Check(False, f"Did not find blitz plot {datasetType} for {visit}"))
+                    continue
+                uri = butler.getURI(ref)
+                size = uri.size()
+                isPng = uri.read(size=8) == b"\x89PNG\r\n\x1a\n"
+            except Exception as e:
+                checks.append(Check(False, f"Error reading blitz plot {datasetType} for {visit}: {e}"))
+                continue
+            if isPng and size >= minSize:
+                checks.append(Check(True, f"Found blitz plot {datasetType} for {visit} ({size} bytes)"))
+            else:
+                checks.append(
+                    Check(False, f"Blitz plot {datasetType} for {visit} is not a PNG of >= {minSize} bytes")
+                )
+
+    def _check_blitz_corner_zernikes(
+        self, butler: Butler, thisRun: str, visit: int, label: str, checks: list[Check]
+    ) -> None:
+        """Check that blitz fitted Zernikes on every corner, and keep its
+        timings for `print_blitz_timing_summary`.
+
+        A corner counts as fitted if any donut on either of its sensors has a
+        successful fit with finite deviation Zernikes at every fitted Noll
+        index. Paired mode replicates each joint fit onto the donuts of both
+        sensors, so the corner is the unit, not the sensor.
+
+        A blitz run reports success even when it lost a corner, e.g. to a
+        cutout worker killed for overrunning its unit timeout, so a failed
+        corner names its sensors' errors, and a cutout slower than ts_wep's
+        default unit timeout warns even when nothing was lost.
+        """
+        try:
+            # the fitted Noll indices are in the table's meta, which a plain
+            # get strips
+            results = butler.get(
+                "donutBlitzCornerResults",
+                visit=visit,
+                collections=[thisRun],
+                parameters={"strip_astropy_meta_yaml": False},
+            )
+            nollIndices = list(results.meta["noll_indices"])
+        except Exception as e:
+            checks.append(Check(False, f"Error reading blitz donutBlitzCornerResults for {visit}: {e}"))
+            return
+
+        timings = BlitzTimings.from_meta(visit, label, results.meta)
+        self.blitz_timings.append(timings)
+        for detName in sorted(timings.detector_times):
+            total = timings.cutout_total(detName)
+            if total > BLITZ_UNIT_TIMEOUT:
+                checks.append(
+                    Check(
+                        None,
+                        f"Blitz cutout of {detName} for {visit} took {total:.1f}s, over ts_wep's default"
+                        f" {BLITZ_UNIT_TIMEOUT:.0f}s unit timeout",
+                    )
+                )
+
+        # the deviation columns are dense over Noll index, NaN at any index
+        # not fitted (20 and 21 by default)
+        finiteZernikes = np.all(np.isfinite(np.asarray(results["zk_deviation_ccs"])[:, nollIndices]), axis=1)
+        fitted = (np.asarray(results["group_fit_outcome"]) == "ok") & finiteZernikes
+        detectors = np.asarray(results["det_id"])
+        for extraId, intraId in zip(EXTRA_IDS, INTRA_IDS):
+            nFitted = int(np.count_nonzero(fitted & np.isin(detectors, (extraId, intraId))))
+            if nFitted > 0:
+                checks.append(
+                    Check(True, f"Blitz fitted Zernikes for {nFitted} donuts on corner {extraId} for {visit}")
+                )
+            else:
+                camera = LsstCam.getCamera()
+                errors = [
+                    f"{name}: {timings.detector_errors[name]}"
+                    for name in (camera[extraId].getName(), camera[intraId].getName())
+                    if name in timings.detector_errors
+                ]
+                reason = f" ({'; '.join(errors)})" if errors else ""
+                checks.append(
+                    Check(
+                        False, f"Blitz fitted no Zernikes on corner {extraId}/{intraId} for {visit}{reason}"
                     )
                 )
 
@@ -1034,6 +1266,7 @@ class ProcessManager:
                         "lsstDebug": lsstDebug,
                     }
                     sys.argv = [script_path] + script_args if script_args else [script_path]
+                    os.environ.update(test_script.env or {})  # each script runs in its own process
                     time.sleep(test_script.delay)
                     exec(script_content, exec_globals)
                     exit_code = 0
@@ -1270,8 +1503,8 @@ class ResultCollector:
         locationConfig = LocationConfig("usdf_testing")
 
         # (path relative to locationConfig.plotPath, minimum size in bytes)
-        inFocus, intra, extra = LSSTCAM_IN_FOCUS, LSSTCAM_FAM_INTRA, LSSTCAM_FAM_EXTRA
-        onSky = (inFocus, intra, extra)
+        inFocus, intra, extra, blitz = LSSTCAM_IN_FOCUS, LSSTCAM_FAM_INTRA, LSSTCAM_FAM_EXTRA, LSSTCAM_BLITZ
+        onSky = (inFocus, intra, extra, blitz)
         calibs = (LSSTCAM_BIAS, LSSTCAM_DARK, LSSTCAM_FLAT)
         plotSize = 5000
         expected: list[tuple[str, int]] = []
@@ -1281,28 +1514,37 @@ class ResultCollector:
             expected.append((exposure.getPlotPath("event_timeline", "png"), plotSize))
             expected.append((exposure.getPlotPath("focal_plane_mosaic", "jpg"), plotSize))  # post ISR mosaic
             expected.append((exposure.getPlotPath("timing_diagram", "jpg"), plotSize))  # performance analysis
-        for exposure in (inFocus, *calibs):  # witness detector images for all with postISR that aren't CWFS
+        for exposure in (
+            inFocus,
+            blitz,
+            *calibs,
+        ):  # witness detector images for all with postISR that aren't CWFS
             expected.append((exposure.getPlotPath("witness_detector", "jpg"), plotSize))
         for exposure in onSky:  # mount plots, donut galleries and guider movies for the on-sky images
             expected.append((exposure.getPlotPath("mount", "png"), plotSize))
             expected.append((exposure.getPlotPath("fp_donut_gallery", "png"), plotSize))
             expected.append((exposure.getPlotPath("full_movie", "mp4"), 200_000))
             expected.append((exposure.getPlotPath("star_movie", "mp4"), 100_000))
-        # plots only the in-focus image gets. TODO: DM-51391 add psfAzEl plot
+        # plots only the in-focus images get. TODO: DM-51391 add psfAzEl plot
         for plotName, extension in (
             ("calexp_mosaic", "jpg"),
             ("fwhm_focal_plane", "png"),
             ("imexam", "png"),
             ("psf_shape_azel", "png"),
-            ("fp_pairing_plot", "png"),
             ("donut_fits", "png"),
-            ("zernike_predicted_fwhm", "png"),
-            ("dof_predicted_fwhm", "png"),
             ("centroid_alt_az", "jpg"),
             ("flux_trend", "jpg"),
             ("psf_trend", "jpg"),
         ):
-            expected.append((inFocus.getPlotPath(plotName, extension), plotSize))
+            for exposure in (inFocus, blitz):
+                expected.append((exposure.getPlotPath(plotName, extension), plotSize))
+        # blitz draws its own selection plot and has no step1b, so no pairing
+        # or predicted FWHM plots, nor any of the AOS plots below. The
+        # in-focus image's shadow blitz uploads nothing, so a selection plot
+        # for it means the shadow is racing the selected pipeline's uploads.
+        for plotName in ("fp_pairing_plot", "zernike_predicted_fwhm", "dof_predicted_fwhm"):
+            expected.append((inFocus.getPlotPath(plotName, "png"), plotSize))
+        expected.append((blitz.getPlotPath("fp_selection_plot", "png"), plotSize))
 
         # AOS plots -------
         # these land on the FAM pair's extra-focal id and on the in-focus image
@@ -1538,6 +1780,138 @@ def _colour(text: str, *codes: str) -> str:
     interleaved output downstream.
     """
     return "".join(codes) + text + _RESET
+
+
+def _seconds(value: Any) -> float:
+    """Return a duration from a table's meta as a float number of seconds."""
+    return float(u.Quantity(value, u.s).to_value(u.s))
+
+
+@dataclass
+class BlitzTimings:
+    """Where one blitz quantum spent its time, from its results table's meta.
+
+    Parameters
+    ----------
+    visit : `int`
+        The visit the quantum processed.
+    label : `str`
+        The pipeline that ran it, ``"blitz"`` or ``"shadow"``.
+    visit_times : `dict` [`str`, `float`]
+        The quantum's timings in seconds, keyed by stage.
+    detector_times : `dict` [`str`, `dict` [`str`, `float`]]
+        Each detector's cutout timings in seconds, keyed by detector name then
+        stage, NaN for a stage the detector never finished.
+    detector_errors : `dict` [`str`, `str`]
+        The WCS refit or catalog selection errors of any detectors that had
+        them, which includes a lost cutout worker.
+    """
+
+    visit: int
+    label: str
+    visit_times: dict[str, float]
+    detector_times: dict[str, dict[str, float]]
+    detector_errors: dict[str, str]
+
+    @classmethod
+    def from_meta(cls, visit: int, label: str, meta: dict[str, Any]) -> Self:
+        """Read the timings from a ``donutBlitzCornerResults`` table's meta.
+
+        Parameters
+        ----------
+        visit : `int`
+            The visit the table is for.
+        label : `str`
+            The pipeline that wrote it, ``"blitz"`` or ``"shadow"``.
+        meta : `dict` [`str`, `Any`]
+            The table's meta, read without stripping its yaml.
+
+        Returns
+        -------
+        timings : `BlitzTimings`
+            The quantum's timings.
+        """
+        visitTimes = {
+            key.removesuffix("_elapsed"): _seconds(meta[key])
+            for key in ("butler_elapsed", "refcat_elapsed", "cutout_elapsed", "danish_elapsed", "run_elapsed")
+            if key in meta
+        }
+        detectorTimes: dict[str, dict[str, float]] = {}
+        detectorErrors: dict[str, str] = {}
+        # keyed by f"{det_name}_{visit_id}", and the meta yaml sorts the stage
+        # keys, so take their order from ts_wep's own stage list
+        for key, detMeta in meta.get("det_meta", {}).items():
+            detName = key.removesuffix(f"_{visit}")
+            detectorTimes[detName] = {
+                stage: _seconds(detMeta[metaKey])
+                for stage, metaKey in _CUTOUT_STAGE_KEYS.items()
+                if metaKey in detMeta
+            }
+            errors = [detMeta.get(errorKey, "") for errorKey in ("wcs_refit_error", "cat_select_error")]
+            if error := "; ".join(e for e in errors if e):
+                detectorErrors[detName] = error
+        return cls(visit, label, visitTimes, detectorTimes, detectorErrors)
+
+    def cutout_total(self, detName: str) -> float:
+        """Return a detector's cutout time in seconds.
+
+        Parameters
+        ----------
+        detName : `str`
+            The detector's name.
+
+        Returns
+        -------
+        total : `float`
+            The sum over the stages it finished, 0 if it finished none.
+        """
+        return float(np.nansum(list(self.detector_times[detName].values())))
+
+    def is_lost(self, detName: str) -> bool:
+        """Return whether a detector's cutout worker finished no stage at all.
+
+        Parameters
+        ----------
+        detName : `str`
+            The detector's name.
+
+        Returns
+        -------
+        lost : `bool`
+            Whether the detector has no finished stage.
+        """
+        return bool(np.all(np.isnan(list(self.detector_times[detName].values()))))
+
+
+def print_blitz_timing_summary(timings: list[BlitzTimings]) -> None:
+    """Print where each blitz quantum spent its time, per corner detector.
+
+    Shown beneath the test results whether or not the blitz checks passed. A
+    detector whose cutout worker was lost, or whose cutout took longer than
+    ts_wep's default unit timeout, is shown in red.
+
+    Parameters
+    ----------
+    timings : `list` [`BlitzTimings`]
+        One entry per blitz quantum.
+    """
+    if not timings:
+        return
+    stages = list(_CUTOUT_STAGE_KEYS)
+    print(f"\nBlitz timings in seconds (red: a lost detector, or a cutout over {BLITZ_UNIT_TIMEOUT:.0f}s):")
+    for timing in timings:
+        summary = "  ".join(f"{name}={seconds:.1f}" for name, seconds in timing.visit_times.items())
+        print(f"  {timing.visit} ({timing.label}): {summary}")
+        print(f"    {'detector':<10}" + "".join(f"{stage:>8}" for stage in stages) + f"{'total':>8}")
+        for detName, times in sorted(timing.detector_times.items()):
+            error = timing.detector_errors.get(detName, "")
+            if timing.is_lost(detName):
+                print(_colour(f"    {detName:<10}lost: {error or 'no stage finished'}", _RED))
+                continue
+            total = timing.cutout_total(detName)
+            line = f"    {detName:<10}" + "".join(f"{times.get(stage, np.nan):>8.1f}" for stage in stages)
+            line += f"{total:>8.1f}" + (f"  ({error})" if error else "")
+            print(_colour(line, _RED) if total > BLITZ_UNIT_TIMEOUT else line)
 
 
 def locate_dockerfile() -> str | None:
@@ -1825,6 +2199,9 @@ class TestRunner:
         # the CI butlers publish to the dev Sasquatch, so tag the records for
         # filtering out
         os.environ["SASQUATCH_EXTRAS"] = "dataset_tag=rapid_analysis_ci"
+        # as the pods' Dockerfile does: the exec'd scripts are forked from
+        # here, and would otherwise each size their thread pools to the node
+        disable_implicit_threading()
 
         # Verify environment settings
         if getDoRaise() is not True:
@@ -1955,6 +2332,8 @@ class TestRunner:
 
             # Print final results
             overall_pass = self.result_collector.print_final_result(self.config)
+
+            print_blitz_timing_summary(self.redis_manager.blitz_timings)
 
             # Show the tracked package versions beneath the test results, with
             # their Dockerfile agreement and the version set hash. Scary on
