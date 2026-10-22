@@ -126,6 +126,11 @@ The CI suite has its own mini-framework:
 - **`ProcessManager`** - launches test scripts as `multiprocessing.Process`
 - **`ResultCollector`** - aggregates pass/fail results
 
+The scripts are forked from the suite's own process after it calls
+`disable_implicit_threading()`, so, like the pods (whose Dockerfile sets
+the thread variables), they run numpy's BLAS and OpenMP single-threaded
+rather than each sizing its thread pools to the whole node.
+
 ### Package Version Validation
 
 At startup the suite scrapes the versions of the tracked science packages —

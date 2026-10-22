@@ -79,6 +79,7 @@ from lsst.rubintv.production.redisUtils import (  # noqa: E402
 from lsst.rubintv.production.resources import getBasePath, listDir, rmtree  # noqa: E402
 from lsst.rubintv.production.uploaders import MultiUploader  # noqa: E402
 from lsst.summit.utils.packageVersions import UNKNOWN_VERSION, PackageVersions  # noqa: E402
+from lsst.utils.threads import disable_implicit_threading  # noqa: E402
 
 # The metric bundles and plots each calibration step1b is expected to write.
 # One that its pipeline graph lacks fails and one not listed here warns, so a
@@ -2027,6 +2028,9 @@ class TestRunner:
         # the CI butlers publish to the dev Sasquatch, so tag the records for
         # filtering out
         os.environ["SASQUATCH_EXTRAS"] = "dataset_tag=rapid_analysis_ci"
+        # as the pods' Dockerfile does: the exec'd scripts are forked from
+        # here, and would otherwise each size their thread pools to the node
+        disable_implicit_threading()
 
         # Verify environment settings
         if getDoRaise() is not True:
