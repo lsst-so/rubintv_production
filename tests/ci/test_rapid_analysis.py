@@ -10,13 +10,15 @@ import subprocess
 import sys
 import time
 import traceback
+from dataclasses import dataclass
 from datetime import datetime
 from multiprocessing import Manager, Process
 from pathlib import Path
 from queue import Empty
-from typing import Any
+from typing import Any, Self
 from unittest.mock import patch
 
+import astropy.units as u  # type: ignore[import-untyped]
 import numpy as np
 
 
@@ -55,6 +57,7 @@ from fixtureExposures import (  # noqa: E402
 
 # Only import from lsst packages after logging is configured
 from lsst.daf.butler import Butler, MissingDatasetTypeError  # noqa: E402
+from lsst.obs.lsst import LsstCam  # noqa: E402
 from lsst.rubintv.production.butlerQueries import getCurrentOutputRun  # noqa: E402
 from lsst.rubintv.production.locationConfig import LocationConfig, findMissingConfigKeys  # noqa: E402
 from lsst.rubintv.production.packageVersions import (  # noqa: E402
@@ -79,6 +82,8 @@ from lsst.rubintv.production.redisUtils import (  # noqa: E402
 from lsst.rubintv.production.resources import getBasePath, listDir, rmtree  # noqa: E402
 from lsst.rubintv.production.uploaders import MultiUploader  # noqa: E402
 from lsst.summit.utils.packageVersions import UNKNOWN_VERSION, PackageVersions  # noqa: E402
+from lsst.ts.wep.blitz.donutBlitzCorner import DonutBlitzCornerConfig  # noqa: E402
+from lsst.ts.wep.blitz.utils import _CUTOUT_STAGE_KEYS  # noqa: E402
 from lsst.utils.threads import disable_implicit_threading  # noqa: E402
 
 # The metric bundles and plots each calibration step1b is expected to write.
@@ -114,6 +119,11 @@ ANALYSIS_STORAGE_CLASSES = ("MetricMeasurementBundle", "Plot")
 # alongside the regular AOS pipeline on the summit, which writes ``zernikes``
 # for the same visits. When off, the CI checks that blitz wrote none.
 BLITZ_WRITES_ZERNIKES = False
+
+# ts_wep's default limit on one corner detector's cutout before its worker is
+# killed, losing the detector and so its corner. A slower cutout warns, so a
+# slow run shows even when nothing was lost.
+BLITZ_UNIT_TIMEOUT: float = DonutBlitzCornerConfig.unitTimeout.default
 
 
 # Add mock uploader class for testing
@@ -543,6 +553,7 @@ class RedisManager:
     def __init__(self, config: TestConfig) -> None:
         self.config = config
         self.redis_process = None
+        self.blitz_timings: list[BlitzTimings] = []
 
     def is_redis_running(self) -> bool:
         """Check if redis-server is already running."""
@@ -784,8 +795,8 @@ class RedisManager:
                     )
                 )
 
-        for visit in (shadowVisit, blitzVisit):
-            self._check_blitz_corner_zernikes(butler, thisRun, visit, checks)
+        for visit, label in ((shadowVisit, "shadow"), (blitzVisit, "blitz")):
+            self._check_blitz_corner_zernikes(butler, thisRun, visit, label, checks)
             self._check_blitz_plots(butler, thisRun, visit, checks)
 
         # an extra quantum for another visit containing an exposure would
@@ -836,14 +847,20 @@ class RedisManager:
                 )
 
     def _check_blitz_corner_zernikes(
-        self, butler: Butler, thisRun: str, visit: int, checks: list[Check]
+        self, butler: Butler, thisRun: str, visit: int, label: str, checks: list[Check]
     ) -> None:
-        """Check that blitz fitted Zernikes on every corner.
+        """Check that blitz fitted Zernikes on every corner, and keep its
+        timings for `print_blitz_timing_summary`.
 
         A corner counts as fitted if any donut on either of its sensors has a
         successful fit with finite deviation Zernikes at every fitted Noll
         index. Paired mode replicates each joint fit onto the donuts of both
         sensors, so the corner is the unit, not the sensor.
+
+        A blitz run reports success even when it lost a corner, e.g. to a
+        cutout worker killed for overrunning its unit timeout, so a failed
+        corner names its sensors' errors, and a cutout slower than ts_wep's
+        default unit timeout warns even when nothing was lost.
         """
         try:
             # the fitted Noll indices are in the table's meta, which a plain
@@ -859,6 +876,19 @@ class RedisManager:
             checks.append(Check(False, f"Error reading blitz donutBlitzCornerResults for {visit}: {e}"))
             return
 
+        timings = BlitzTimings.from_meta(visit, label, results.meta)
+        self.blitz_timings.append(timings)
+        for detName in sorted(timings.detector_times):
+            total = timings.cutout_total(detName)
+            if total > BLITZ_UNIT_TIMEOUT:
+                checks.append(
+                    Check(
+                        None,
+                        f"Blitz cutout of {detName} for {visit} took {total:.1f}s, over ts_wep's default"
+                        f" {BLITZ_UNIT_TIMEOUT:.0f}s unit timeout",
+                    )
+                )
+
         # the deviation columns are dense over Noll index, NaN at any index
         # not fitted (20 and 21 by default)
         finiteZernikes = np.all(np.isfinite(np.asarray(results["zk_deviation_ccs"])[:, nollIndices]), axis=1)
@@ -871,8 +901,17 @@ class RedisManager:
                     Check(True, f"Blitz fitted Zernikes for {nFitted} donuts on corner {extraId} for {visit}")
                 )
             else:
+                camera = LsstCam.getCamera()
+                errors = [
+                    f"{name}: {timings.detector_errors[name]}"
+                    for name in (camera[extraId].getName(), camera[intraId].getName())
+                    if name in timings.detector_errors
+                ]
+                reason = f" ({'; '.join(errors)})" if errors else ""
                 checks.append(
-                    Check(False, f"Blitz fitted no Zernikes on corner {extraId}/{intraId} for {visit}")
+                    Check(
+                        False, f"Blitz fitted no Zernikes on corner {extraId}/{intraId} for {visit}{reason}"
+                    )
                 )
 
     def _check_latiss_data(self, redisHelper: RedisHelper, checks: list[Check]) -> None:
@@ -1743,6 +1782,138 @@ def _colour(text: str, *codes: str) -> str:
     return "".join(codes) + text + _RESET
 
 
+def _seconds(value: Any) -> float:
+    """Return a duration from a table's meta as a float number of seconds."""
+    return float(u.Quantity(value, u.s).to_value(u.s))
+
+
+@dataclass
+class BlitzTimings:
+    """Where one blitz quantum spent its time, from its results table's meta.
+
+    Parameters
+    ----------
+    visit : `int`
+        The visit the quantum processed.
+    label : `str`
+        The pipeline that ran it, ``"blitz"`` or ``"shadow"``.
+    visit_times : `dict` [`str`, `float`]
+        The quantum's timings in seconds, keyed by stage.
+    detector_times : `dict` [`str`, `dict` [`str`, `float`]]
+        Each detector's cutout timings in seconds, keyed by detector name then
+        stage, NaN for a stage the detector never finished.
+    detector_errors : `dict` [`str`, `str`]
+        The WCS refit or catalog selection errors of any detectors that had
+        them, which includes a lost cutout worker.
+    """
+
+    visit: int
+    label: str
+    visit_times: dict[str, float]
+    detector_times: dict[str, dict[str, float]]
+    detector_errors: dict[str, str]
+
+    @classmethod
+    def from_meta(cls, visit: int, label: str, meta: dict[str, Any]) -> Self:
+        """Read the timings from a ``donutBlitzCornerResults`` table's meta.
+
+        Parameters
+        ----------
+        visit : `int`
+            The visit the table is for.
+        label : `str`
+            The pipeline that wrote it, ``"blitz"`` or ``"shadow"``.
+        meta : `dict` [`str`, `Any`]
+            The table's meta, read without stripping its yaml.
+
+        Returns
+        -------
+        timings : `BlitzTimings`
+            The quantum's timings.
+        """
+        visitTimes = {
+            key.removesuffix("_elapsed"): _seconds(meta[key])
+            for key in ("butler_elapsed", "refcat_elapsed", "cutout_elapsed", "danish_elapsed", "run_elapsed")
+            if key in meta
+        }
+        detectorTimes: dict[str, dict[str, float]] = {}
+        detectorErrors: dict[str, str] = {}
+        # keyed by f"{det_name}_{visit_id}", and the meta yaml sorts the stage
+        # keys, so take their order from ts_wep's own stage list
+        for key, detMeta in meta.get("det_meta", {}).items():
+            detName = key.removesuffix(f"_{visit}")
+            detectorTimes[detName] = {
+                stage: _seconds(detMeta[metaKey])
+                for stage, metaKey in _CUTOUT_STAGE_KEYS.items()
+                if metaKey in detMeta
+            }
+            errors = [detMeta.get(errorKey, "") for errorKey in ("wcs_refit_error", "cat_select_error")]
+            if error := "; ".join(e for e in errors if e):
+                detectorErrors[detName] = error
+        return cls(visit, label, visitTimes, detectorTimes, detectorErrors)
+
+    def cutout_total(self, detName: str) -> float:
+        """Return a detector's cutout time in seconds.
+
+        Parameters
+        ----------
+        detName : `str`
+            The detector's name.
+
+        Returns
+        -------
+        total : `float`
+            The sum over the stages it finished, 0 if it finished none.
+        """
+        return float(np.nansum(list(self.detector_times[detName].values())))
+
+    def is_lost(self, detName: str) -> bool:
+        """Return whether a detector's cutout worker finished no stage at all.
+
+        Parameters
+        ----------
+        detName : `str`
+            The detector's name.
+
+        Returns
+        -------
+        lost : `bool`
+            Whether the detector has no finished stage.
+        """
+        return bool(np.all(np.isnan(list(self.detector_times[detName].values()))))
+
+
+def print_blitz_timing_summary(timings: list[BlitzTimings]) -> None:
+    """Print where each blitz quantum spent its time, per corner detector.
+
+    Shown beneath the test results whether or not the blitz checks passed. A
+    detector whose cutout worker was lost, or whose cutout took longer than
+    ts_wep's default unit timeout, is shown in red.
+
+    Parameters
+    ----------
+    timings : `list` [`BlitzTimings`]
+        One entry per blitz quantum.
+    """
+    if not timings:
+        return
+    stages = list(_CUTOUT_STAGE_KEYS)
+    print(f"\nBlitz timings in seconds (red: a lost detector, or a cutout over {BLITZ_UNIT_TIMEOUT:.0f}s):")
+    for timing in timings:
+        summary = "  ".join(f"{name}={seconds:.1f}" for name, seconds in timing.visit_times.items())
+        print(f"  {timing.visit} ({timing.label}): {summary}")
+        print(f"    {'detector':<10}" + "".join(f"{stage:>8}" for stage in stages) + f"{'total':>8}")
+        for detName, times in sorted(timing.detector_times.items()):
+            error = timing.detector_errors.get(detName, "")
+            if timing.is_lost(detName):
+                print(_colour(f"    {detName:<10}lost: {error or 'no stage finished'}", _RED))
+                continue
+            total = timing.cutout_total(detName)
+            line = f"    {detName:<10}" + "".join(f"{times.get(stage, np.nan):>8.1f}" for stage in stages)
+            line += f"{total:>8.1f}" + (f"  ({error})" if error else "")
+            print(_colour(line, _RED) if total > BLITZ_UNIT_TIMEOUT else line)
+
+
 def locate_dockerfile() -> str | None:
     """Find the Dockerfile to cross-check the running package versions against.
 
@@ -2161,6 +2332,8 @@ class TestRunner:
 
             # Print final results
             overall_pass = self.result_collector.print_final_result(self.config)
+
+            print_blitz_timing_summary(self.redis_manager.blitz_timings)
 
             # Show the tracked package versions beneath the test results, with
             # their Dockerfile agreement and the version set hash. Scary on
