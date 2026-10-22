@@ -239,7 +239,11 @@ Post-processing and visualization:
    final checks, all against the current run only, assert two visit-level
    `step1a`/`AOS` finished (226's shadow and 229); that both visits'
    `donutBlitzCornerResults` hold a successful fit with finite Zernikes on
-   every corner; that both have the three blitz plots, read back as PNG
+   every corner (a corner without one names its sensors' errors, such as a
+   cutout worker killed at its unit timeout, and a cutout slower than
+   ts_wep's default `unitTimeout` warns; each visit's per-sensor cutout
+   timings, from the table's meta, print beneath the test results); that
+   both have the three blitz plots, read back as PNG
    artifacts through `butler.getURI` (the `Plot` storage class can't be
    read with `butler.get`); that 229 has `aggregateAOSVisitTable{Raw,Avg}`;
    and that blitz wrote results for no other visit. `BLITZ_WRITES_ZERNIKES`
