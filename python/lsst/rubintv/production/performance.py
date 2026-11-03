@@ -1258,9 +1258,10 @@ def getS3UploadTimes(butler: Butler, record: DimensionRecord) -> dict[int, float
     -------
     uploadTimes : `dict[int, float]`
         Dictionary of detector number to S3 upload time after shutter close.
+        Empty if the raws are no longer in the repo.
     """
     where = "detector in (192, 196, 200, 204, 191, 195, 199, 203)"
-    dRefs = butler.query_datasets("raw", data_id=record.dataId, where=where)
+    dRefs = butler.query_datasets("raw", data_id=record.dataId, where=where, explain=False)
 
     ret = {}
     for dRef in dRefs:
@@ -1297,6 +1298,7 @@ def getButlerIngestTimes(butler: Butler, record: DimensionRecord) -> dict[int, f
     -------
     ingestTimes : dict[int, Time]
         Dictionary of detector number to ingest time after shutter close.
+        Empty if the raws are no longer in the repo.
     """
     with butler.query() as q:
         q = q.join_dataset_search("raw", "LSSTCam/raw/all")
@@ -1560,6 +1562,10 @@ def createLegendBoxes(
     axTop: Axes,
     colors: dict[str, str],
     extraLines: list[str] | None = None,
+    *,
+    showOods: bool = True,
+    showButler: bool = True,
+    showS3: bool = True,
 ) -> None:
     """
     Create legend boxes for the plot.
@@ -1576,37 +1582,51 @@ def createLegendBoxes(
         The dictionary of task colors.
     extraLines : `list` of `str`, optional
         Extra lines to add to the legend.
+    showOods : `bool`, optional
+        Whether to include the OODS ingest marker in the legend.
+    showButler : `bool`, optional
+        Whether to include the Butler ingest marker in the legend.
+    showS3 : `bool`, optional
+        Whether to include the S3 upload marker in the legend.
     """
     # Left: colored task entries (placed just to the *left* of the text legend)
-    ingestHandles = [
-        Line2D(
-            [0],
-            [0],
-            marker="o",
-            linestyle="None",
-            markersize=7,
-            color=OODS_DOT_COLOR,
-            label="OODS ingest",
-        ),
-        Line2D(
-            [0],
-            [0],
-            marker="o",
-            linestyle="None",
-            markersize=7,
-            color=BUTLER_DOT_COLOR,
-            label="Butler ingest",
-        ),
-        Line2D(
-            [0],
-            [0],
-            marker=MarkerStyle(CARETLEFTBASE),
-            linestyle="None",
-            markersize=10,
-            color=S3_DOT_COLOR,
-            label="S3 upload",
-        ),
-    ]
+    ingestHandles: list[Line2D] = []
+    if showOods:
+        ingestHandles.append(
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                linestyle="None",
+                markersize=7,
+                color=OODS_DOT_COLOR,
+                label="OODS ingest",
+            )
+        )
+    if showButler:
+        ingestHandles.append(
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                linestyle="None",
+                markersize=7,
+                color=BUTLER_DOT_COLOR,
+                label="Butler ingest",
+            )
+        )
+    if showS3:
+        ingestHandles.append(
+            Line2D(
+                [0],
+                [0],
+                marker=MarkerStyle(CARETLEFTBASE),
+                linestyle="None",
+                markersize=10,
+                color=S3_DOT_COLOR,
+                label="S3 upload",
+            )
+        )
 
     colorHandles = [Patch(facecolor=v, label=k) for k, v in colors.items()]
     allHandles = ingestHandles + colorHandles
@@ -1752,7 +1772,14 @@ def plotAosTaskTimings(
         timings["ISR Start"] = taskMins["isr"]
 
     # legends anchored to bottom-right of the TOP axis
-    createLegendBoxes(axTop, tasksPlotted, extraLines=legendExtraLines)
+    createLegendBoxes(
+        axTop,
+        tasksPlotted,
+        extraLines=legendExtraLines,
+        showOods=bool(oodsIngestTimes),
+        showButler=bool(butlerIngestTimes),
+        showS3=bool(s3UploadTimes),
+    )
 
     dotSize = 36  # scatter "s" is area in points^2
     if oodsIngestTimes:
