@@ -13,12 +13,12 @@ ARG drp_pipe_ref="5ddbe8d90cd2b6878e2e8a7a70b920bb8786338e"
 ARG analysis_tools_ref="aae6a67b81e71678c7c508d412609d6e8f762e1a"
 ARG summit_utils_ref="w.2026.41"
 ARG summit_extras_ref="w.2026.41"
-ARG ts_wep_ref="v17.14.0"
-ARG donut_viz_ref="v4.11.0"
+ARG ts_wep_ref="v17.15.1"
+ARG donut_viz_ref="v4.13.0"
 ARG tarts_ref="v4.3"
 ARG ts_ofc_ref="5245ded9c985c7707232f53f130a8cb6a402f7e1"
 ARG ts_config_mttcs_ref="ad3ef1b625f0ab5f276193987e4251db95161227"
-ARG ts_aos_ai_ref="v0.2.0"
+ARG ts_aos_ai_ref="v0.3.0"
 
 ARG USER=saluser
 ENV USER=${USER}
