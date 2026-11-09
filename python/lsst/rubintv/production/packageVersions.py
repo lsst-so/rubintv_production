@@ -41,7 +41,10 @@ users without access to this package can still read the recorded data back.
 
 The Dockerfile is the source of truth for what runs on BTS and the summit, so
 the versions git actually reports are cross-checked against the refs pinned
-there, and the set-up stack against its ``STACK_TAG``. A mismatch raises
+there, and the set-up stack against its ``STACK_TAG``. A git package matches
+its pin if both name the same commit in its checkout, because one commit can
+carry several tags: an unchanged package picks up each new weekly tag, and
+``git describe`` reports the newest one. A mismatch raises
 `PackageVersionMismatchError` (or, in CI, logs a warning). A Dockerfile that
 can't be read or parsed only produces a warning. A unit test pins the
 Dockerfile format so that a drift which breaks the parser is caught in CI
@@ -89,7 +92,7 @@ _log = logging.getLogger(__name__)
 # The packages whose git versions are recorded for every dispatched image. The
 # set is deliberately small: just the things that change the AOS results. These
 # are git checkouts located via their EUPS ``<PACKAGE>_DIR`` env var.
-TRACKED_PACKAGES = ["ts_wep", "donut_viz", "rubintv_production", "tarts", "summit_utils"]
+TRACKED_PACKAGES = ["ts_wep", "donut_viz", "rubintv_production", "tarts", "summit_utils", "ts_aos_ai"]
 
 # Tracked packages that are installed into the environment (conda/pip) rather
 # than being git checkouts. These have no ``*_DIR`` env var, so their version
@@ -436,12 +439,44 @@ def parseDockerfileRefs(dockerfilePath: str, condaPackages: list[str] | None = N
     return refs
 
 
-def versionsMatch(gitVersion: str, dockerfileRef: str) -> bool:
+def _resolveCommit(packageDir: str, ref: str) -> str | None:
+    """Resolve a ref to the full SHA of the commit it names in a checkout.
+
+    Parameters
+    ----------
+    packageDir : `str`
+        The path to the package's git checkout.
+    ref : `str`
+        A tag, branch or (possibly abbreviated) commit SHA.
+
+    Returns
+    -------
+    sha : `str` or `None`
+        The full SHA of the commit, or `None` if ``ref`` names no commit in the
+        checkout or git can't be run there.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", packageDir, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def versionsMatch(gitVersion: str, dockerfileRef: str, packageDir: str | None = None) -> bool:
     """Check whether a git version agrees with a Dockerfile ref.
 
-    The two must be equal, except that a SHA in the Dockerfile may be
-    abbreviated, so a ref of at least ``_MIN_ABBREV_SHA_LEN`` characters which
-    is a prefix of the full git SHA also counts as a match.
+    Given the package's checkout, they match if they name the same commit
+    there, e.g. two weekly tags on an unchanged commit. Otherwise, or if
+    either doesn't resolve in the checkout, they must be equal, except that a
+    SHA in the Dockerfile may be abbreviated, so a ref of at least
+    ``_MIN_ABBREV_SHA_LEN`` characters which is a prefix of the full git SHA
+    also counts as a match.
 
     Parameters
     ----------
@@ -449,6 +484,8 @@ def versionsMatch(gitVersion: str, dockerfileRef: str) -> bool:
         The version git reports (a tag or a full SHA).
     dockerfileRef : `str`
         The ref the Dockerfile pins the package to.
+    packageDir : `str`, optional
+        The path to the package's git checkout, to resolve both refs in.
 
     Returns
     -------
@@ -457,6 +494,11 @@ def versionsMatch(gitVersion: str, dockerfileRef: str) -> bool:
     """
     if gitVersion == dockerfileRef:
         return True
+    if packageDir is not None:
+        pinnedCommit = _resolveCommit(packageDir, dockerfileRef)
+        runningCommit = _resolveCommit(packageDir, gitVersion)
+        if pinnedCommit is not None and runningCommit is not None:
+            return pinnedCommit == runningCommit
     # An abbreviated SHA in the Dockerfile should prefix-match the full SHA.
     if len(dockerfileRef) >= _MIN_ABBREV_SHA_LEN and gitVersion.startswith(dockerfileRef):
         return True
@@ -502,8 +544,10 @@ def compareVersionsToDockerfile(
 ) -> list[VersionComparison]:
     """Compare each recorded version to its Dockerfile pin.
 
-    The stack matches if ``STACK_TAG`` is any of its release tags, as one
-    build can carry several.
+    A git package is compared in its checkout, found via its ``<PACKAGE>_DIR``
+    env var, so that a pin naming the same commit matches (see
+    `versionsMatch`). The stack matches if ``STACK_TAG`` is any of its release
+    tags, as one build can carry several.
 
     Never raises: if the Dockerfile can't be read or parsed, a warning is
     logged and every package is reported as not-comparable (``matches=None``).
@@ -543,7 +587,8 @@ def compareVersionsToDockerfile(
         elif name == STACK_PRODUCT:
             matches = ref in gitVersion.split()
         else:
-            matches = versionsMatch(gitVersion, ref)
+            packageDir = os.environ.get(envVarForPackage(name)) or None
+            matches = versionsMatch(gitVersion, ref, packageDir=packageDir)
         comparisons.append(
             VersionComparison(package=name, gitVersion=gitVersion, dockerfileRef=ref, matches=matches)
         )

@@ -133,6 +133,9 @@ git tags/SHAs for the checkouts (`ts_wep`, `donut_viz`, `rubintv_production`,
 distribution version for `danish` (conda-installed, no env var) — and
 cross-checks them against the refs pinned in the `Dockerfile` (`ARG
 <name>_ref` for the git packages, the `name=version` conda spec for `danish`).
+A git package matches its pin if both name the same commit in its checkout,
+so a new weekly tag on an unchanged commit (which `git describe` then
+reports) is not a mismatch.
 The stack is scraped, recorded with each image's package versions and
 checked the same way: its version is the release tags (`w_*`, `d_*` or `v*`)
 of the set-up `lsst_distrib`, which must include the Dockerfile's
