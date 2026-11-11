@@ -60,6 +60,7 @@ DATASETS_TO_CLEAN = (
     "isr_metadata",
     "calibrateImage_metadata",
     "preliminary_visit_image_background",
+    "preliminary_visit_image",
     "initial_astrometry_match_detector",
     "initial_photometry_match_detector",
     "preliminary_visit_mask",
