@@ -1023,6 +1023,11 @@ def backfillCcdVisit1QuicklookForDayAos(
 
             try:
                 consDbValues = computeRotatedZernikesForConsDB(zkTable, physicalRotation)
+                if not consDbValues:
+                    if record not in noData:
+                        noData[record] = []
+                    noData[record].append(detector)
+                    continue
                 populator.populateCcdVisitRowZernikes(record, detector, consDbValues, allowUpdate=True)
             except IndexError:
                 # ideally we wouldn't catch IndexError, but sometimes the

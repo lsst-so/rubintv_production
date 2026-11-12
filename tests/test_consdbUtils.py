@@ -36,7 +36,7 @@ from lsst.rubintv.production.consdbUtils import (
     VISIT_MIN_MED_MAX_MAPPING,
     VISIT_MIN_MED_MAX_TOTAL_MAPPING,
     ConsDBPopulator,
-    _removeNans,
+    _removeNonFinite,
     changeType,
 )
 from lsst.rubintv.production.locationConfig import LocationConfig
@@ -155,39 +155,40 @@ class MappingShapeTestCase(lsst.utils.tests.TestCase):
             )
 
 
-class RemoveNansTestCase(lsst.utils.tests.TestCase):
-    """Tests for the private `_removeNans` helper."""
+class RemoveNonFiniteTestCase(lsst.utils.tests.TestCase):
+    """Tests for the private `_removeNonFinite` helper."""
 
     def test_dropsPlainFloatNan(self) -> None:
-        out = _removeNans({"a": 1.0, "b": float("nan"), "c": 2.0})
+        out = _removeNonFinite({"a": 1.0, "b": float("nan"), "c": 2.0})
         self.assertEqual(out, {"a": 1.0, "c": 2.0})
 
     def test_dropsNumpyFloatNan(self) -> None:
-        out = _removeNans({"a": 1.0, "b": np.float64("nan"), "c": np.float32("nan")})
+        out = _removeNonFinite({"a": 1.0, "b": np.float64("nan"), "c": np.float32("nan")})
         self.assertEqual(out, {"a": 1.0})
 
     def test_keepsZeroAndNegative(self) -> None:
         # 0.0 and negative values are valid numbers, not NaN — they must
         # not be silently dropped along with the NaNs.
-        out = _removeNans({"a": 0.0, "b": -1.5, "c": float("nan")})
+        out = _removeNonFinite({"a": 0.0, "b": -1.5, "c": float("nan")})
         self.assertEqual(out, {"a": 0.0, "b": -1.5})
 
-    def test_keepsInfinity(self) -> None:
-        # Infinity is not NaN; the helper only filters out NaN.
-        out = _removeNans({"a": float("inf"), "b": float("-inf"), "c": float("nan")})
-        self.assertEqual(out, {"a": float("inf"), "b": float("-inf")})
+    def test_dropsInfinity(self) -> None:
+        # JSON can't carry infinity any more than NaN, so the consDB client
+        # rejects both before sending; inf must be dropped too.
+        out = _removeNonFinite({"a": float("inf"), "b": np.float32("-inf"), "c": 1.0})
+        self.assertEqual(out, {"c": 1.0})
 
     def test_keepsIntsAndStrings(self) -> None:
-        out = _removeNans({"i": 42, "s": "hello", "f": float("nan")})
+        out = _removeNonFinite({"i": 42, "s": "hello", "f": float("nan")})
         self.assertEqual(out, {"i": 42, "s": "hello"})
 
     def test_emptyMapping(self) -> None:
-        self.assertEqual(_removeNans({}), {})
+        self.assertEqual(_removeNonFinite({}), {})
 
     def test_returnsNewDict(self) -> None:
         # The helper builds a new dict rather than mutating its input.
         original = {"a": 1.0, "b": float("nan")}
-        result = _removeNans(original)
+        result = _removeNonFinite(original)
         self.assertIsNot(result, original)
         self.assertIn("b", original)  # original untouched
 
@@ -458,6 +459,32 @@ class AsyncWriteTestCase(lsst.utils.tests.TestCase):
         self.assertFalse(returned)
         populator.flush()
         self.assertEqual(len(client.inserts), 0)
+
+    def test_allNonFiniteValuesSkipInsert(self) -> None:
+        # Regression: the empty-values guard used to run before the NaNs were
+        # stripped, so an all-NaN row (e.g. the zernikes for a detector with
+        # no donuts) reached the real client as an empty insert, which raises
+        # ValueError and killed the synchronous backfill.
+        client = _RecordingClient()
+        populator = self._makePopulator(client, asyncWrites=False)
+
+        with self.assertLogs("lsst.rubintv.production.consdbUtils", level="WARNING"):
+            returned = populator._insertIfAllowed(
+                "LSSTCam", "t", 1, {"z4": float("nan"), "z5": np.float64("nan"), "z6": float("inf")}, False
+            )
+        self.assertFalse(returned)
+        self.assertEqual(len(client.inserts), 0)
+
+    def test_nonFiniteValuesStrippedBeforeInsert(self) -> None:
+        # A partly non-finite row must still be written, minus the bad
+        # columns, as the client would reject the whole row otherwise.
+        client = _RecordingClient()
+        populator = self._makePopulator(client, asyncWrites=False)
+
+        populator._insertIfAllowed(
+            "LSSTCam", "t", 1, {"a": 1.0, "b": float("nan"), "c": float("-inf")}, False
+        )
+        self.assertEqual(client.inserts[0]["values"], {"a": 1.0})
 
     def test_syncModeReturnsTrueAndCallsOnSuccessInline(self) -> None:
         client = _RecordingClient()

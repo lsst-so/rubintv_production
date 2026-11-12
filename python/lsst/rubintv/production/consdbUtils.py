@@ -32,7 +32,7 @@ import itertools
 import logging
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Callable, cast
+from typing import TYPE_CHECKING, Callable, TypeVar, cast
 
 import numpy as np
 from astropy.table import Table
@@ -126,12 +126,28 @@ VISIT_MIN_MED_MAX_TOTAL_MAPPING = {
 }
 
 
-def _removeNans(
-    values: Mapping[str, float | int | str | np.floating],
-) -> dict[str, float | int | str | np.floating]:
-    out: dict[str, float | int | str | np.floating] = {}
+_ValueT = TypeVar("_ValueT")
+
+
+def _removeNonFinite(values: Mapping[str, _ValueT]) -> dict[str, _ValueT]:
+    """Return a copy of ``values`` without any NaN or infinite floats.
+
+    The consDB client posts JSON, which cannot represent non-finite floats,
+    so they are dropped and the columns are left null.
+
+    Parameters
+    ----------
+    values : `Mapping` [`str`, `object`]
+        The column values to filter.
+
+    Returns
+    -------
+    finiteValues : `dict` [`str`, `object`]
+        The values with every non-finite float removed.
+    """
+    out: dict[str, _ValueT] = {}
     for k, v in values.items():
-        if isinstance(v, (float, np.floating)) and np.isnan(v):
+        if isinstance(v, (float, np.floating)) and not np.isfinite(v):
             continue
         out[k] = v
     return out
@@ -329,7 +345,7 @@ class ConsDBPopulator:
             The primary key used by consDB for the row (visit/exposure id or
             (day_obs, seq_num)).
         values : `dict[str, int | float | str]`
-            Column values to write; NaN values are removed.
+            Column values to write; non-finite values are removed.
         allowUpdate : `bool`
             Whether to allow updates to existing rows.
         onSuccess : `Callable` [[], `None`], optional
@@ -342,13 +358,16 @@ class ConsDBPopulator:
         -------
         inserted : `bool`
             ``True`` if an insert/update was attempted and succeeded. ``False``
-            if skipped (no values, or disallowed at this location) or if the
-            write was handed off to the background thread (in which case the
-            outcome is not yet known — async call sites must not rely on the
-            return value).
+            if skipped (no finite values, or disallowed at this location) or if
+            the write was handed off to the background thread (in which case
+            the outcome is not yet known; async call sites must not rely on
+            the return value).
         """
+        values = _removeNonFinite(values)
         if not values:
-            logger.warning(f"No values to insert into consDB for {instrument}.{table} with obsId {obsId}")
+            logger.warning(
+                f"No finite values to insert into consDB for {instrument}.{table} with obsId {obsId}"
+            )
             return False
 
         if not self._shouldInsert():  # called here again for safety
@@ -400,7 +419,7 @@ class ConsDBPopulator:
                 instrument=instrument,
                 table=table,
                 obs_id=obsId,
-                values=_removeNans(values),
+                values=values,
                 allow_update=allowUpdate,
             )
         except HTTPError as e:

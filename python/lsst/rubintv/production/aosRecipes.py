@@ -73,8 +73,10 @@ def computeRotatedZernikesForConsDB(
     columns to a dense array, applies the rotator-derived rotation
     matrix to bring the values into the consDB frame, and emits a
     ``{"z4": ..., "z5": ..., ...}`` dict suitable for the
-    ``ccdvisit1_quicklook`` row writer. Sparse zero entries are dropped
-    so they end up as nulls in the database.
+    ``ccdvisit1_quicklook`` row writer. Sparse zero and non-finite
+    entries are dropped so they end up as nulls in the database. A table
+    with no donuts has an all-NaN ``"average"`` row, and so gives an
+    empty dict.
 
     Parameters
     ----------
@@ -95,7 +97,7 @@ def computeRotatedZernikesForConsDB(
     -------
     consDbValues : `dict` [`str`, `float`]
         Mapping ``{"z<n>": value}`` for ``n`` from 4 upwards, omitting
-        any modes that were sparsely zero in the input.
+        any modes that are zero or non-finite.
     """
     from lsst.ts.wep.utils.zernikeUtils import makeDense
 
@@ -111,7 +113,7 @@ def computeRotatedZernikesForConsDB(
     consDbValues: dict[str, float] = {}
     for i in range(len(zernikeValues)):
         value = float(zernikeValues[i])
-        if value == 0:  # skip sparse zeros so they end up null in the DB
+        if value == 0 or not np.isfinite(value):  # leave these null in the DB
             continue
         consDbValues[f"z{i + 4}"] = value
     return consDbValues
