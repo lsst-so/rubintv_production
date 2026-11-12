@@ -25,6 +25,7 @@ import json
 import os
 import tempfile
 import unittest
+from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import patch
@@ -35,6 +36,7 @@ import lsst.utils.tests
 from lsst.daf.butler import Butler, DimensionRecord
 from lsst.rubintv.production.consdbUtils import ConsDBPopulator
 from lsst.rubintv.production.highLevelTools import (
+    backfillCcdVisit1QuicklookForDayHigherOrderMoments,
     backfillPackageVersions,
     checkCcdVisitQuicklookTable,
     checkVisitQuicklookTable,
@@ -142,10 +144,17 @@ class QuicklookTableCheckTestCase(lsst.utils.tests.TestCase):
 
 
 class _RecordingPopulator:
-    """A ``ConsDBPopulator`` stand-in that records package-version writes."""
+    """A ``ConsDBPopulator`` stand-in that records writes.
 
-    def __init__(self) -> None:
+    ``populateHigherOrderMoments`` reports a failed write for any detector in
+    ``emptyDetectors``, as the real one does for a catalog with no finite
+    moments.
+    """
+
+    def __init__(self, emptyDetectors: tuple[int, ...] = ()) -> None:
         self.calls: list[tuple[DimensionRecord, PackageVersions, bool]] = []
+        self.momentCalls: list[tuple[DimensionRecord, int, object, bool]] = []
+        self.emptyDetectors = emptyDetectors
 
     def populatePackageVersions(
         self,
@@ -156,15 +165,41 @@ class _RecordingPopulator:
         self.calls.append((expRecord, packageVersions, allowUpdate))
         return True
 
+    def populateHigherOrderMoments(
+        self,
+        expRecord: DimensionRecord,
+        detectorNum: int,
+        singleVisitStarFootprints: object,
+        allowUpdate: bool = False,
+    ) -> bool:
+        self.momentCalls.append((expRecord, detectorNum, singleVisitStarFootprints, allowUpdate))
+        return detectorNum not in self.emptyDetectors
+
 
 class _FakeButler:
-    """A ``Butler`` stand-in serving canned exposure records for the day."""
+    """A ``Butler`` stand-in serving canned records and dataset refs for the
+    day, where ``get`` returns a ``(visit, detector)`` tuple in place of the
+    dataset.
+    """
 
-    def __init__(self, records: list[DimensionRecord]) -> None:
+    def __init__(self, records: list[DimensionRecord], dRefs: list[SimpleNamespace] | None = None) -> None:
         self.records = records
+        self.dRefs = dRefs or []
+        self.datasetsLimit: int | None = -20_000
 
-    def query_dimension_records(self, element: str, where: str = "") -> list[DimensionRecord]:
+    def query_dimension_records(
+        self, element: str, where: str = "", order_by: str = ""
+    ) -> list[DimensionRecord]:
         return self.records
+
+    def query_datasets(
+        self, datasetType: str, where: str = "", limit: int | None = -20_000, explain: bool = True
+    ) -> list[SimpleNamespace]:
+        self.datasetsLimit = limit
+        return self.dRefs
+
+    def get(self, dRef: SimpleNamespace) -> tuple[int, int]:
+        return (dRef.dataId["visit"], dRef.dataId["detector"])
 
 
 class BackfillPackageVersionsTestCase(lsst.utils.tests.TestCase):
@@ -208,6 +243,56 @@ class BackfillPackageVersionsTestCase(lsst.utils.tests.TestCase):
         # the exposure_quicklook row already exists by backfill time, so the
         # write must be an update or every row would conflict
         self.assertTrue(allowUpdate)
+
+
+@dataclass(frozen=True)
+class _FakeVisitRecord:
+    """A hashable visit-record stand-in, as the backfill keys its results by
+    record.
+    """
+
+    instrument: str
+    id: int
+
+
+class BackfillHigherOrderMomentsTestCase(lsst.utils.tests.TestCase):
+    """Tests for `backfillCcdVisit1QuicklookForDayHigherOrderMoments`.
+
+    The backfill must hand each detector's own catalog to the populator for
+    the right visit, record a detector as inserted only when the write
+    happened, and report visits with no catalogs at all as missing data.
+    """
+
+    def test_backfillHigherOrderMoments(self) -> None:
+        withData = cast(DimensionRecord, _FakeVisitRecord(instrument="LSSTCam", id=2025062400012))
+        withoutData = cast(DimensionRecord, _FakeVisitRecord(instrument="LSSTCam", id=2025062400013))
+        dRefs = [
+            SimpleNamespace(dataId={"visit": withData.id, "detector": 94}),
+            SimpleNamespace(dataId={"visit": withData.id, "detector": 4}),
+        ]
+        butler = _FakeButler([withData, withoutData], dRefs)
+        # detector 94's catalog has no finite moments, so its write is skipped
+        # and it must not be counted as inserted
+        populator = _RecordingPopulator(emptyDetectors=(94,))
+
+        rowsInserted, noData = backfillCcdVisit1QuicklookForDayHigherOrderMoments(
+            cast(Butler, butler), cast(ConsDBPopulator, populator), 20250624
+        )
+
+        self.assertEqual(rowsInserted, {withData: [4]})
+        self.assertEqual(noData, [withoutData])
+        self.assertEqual(
+            populator.momentCalls,
+            [
+                # the ccdvisit1_quicklook rows already exist by backfill time,
+                # so every write must be an update
+                (withData, 4, (withData.id, 4), True),
+                (withData, 94, (withData.id, 94), True),
+            ],
+        )
+        # query_datasets caps results at 20k by default and only warns when it
+        # truncates, which a night of ~190 detectors per visit easily exceeds
+        self.assertIsNone(butler.datasetsLimit)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

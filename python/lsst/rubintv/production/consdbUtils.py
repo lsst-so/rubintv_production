@@ -573,7 +573,32 @@ class ConsDBPopulator:
         detectorNum: int,
         singleVisitStarFootprints: SourceCatalog | Table,
         allowUpdate: bool = False,
-    ) -> None:
+    ) -> bool:
+        """Write a detector's PSF higher-order moment summaries to the
+        ``ccdvisit1_quicklook`` table.
+
+        Each column is the median, over the catalog's sources, of a
+        combination of the HSM higher-order moments.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure or visit record the row is for.
+        detectorNum : `int`
+            The detector number the row is for.
+        singleVisitStarFootprints : `lsst.afw.table.SourceCatalog` or \
+                `astropy.table.Table`
+            The detector's ``single_visit_star_footprints`` catalog.
+        allowUpdate : `bool`, optional
+            Allow updating an existing row.
+
+        Returns
+        -------
+        inserted : `bool`
+            The return value of `_insertIfAllowed`, so ``False`` if the
+            catalog gave no finite values. Only meaningful for a synchronous
+            populator.
+        """
         # TODO: DM-54675 remove this whole function once we have these in
         # ExposureSummaryStats
         if isinstance(singleVisitStarFootprints, SourceCatalog):
@@ -611,7 +636,7 @@ class ConsDBPopulator:
         }
         table = f"cdb_{expRecord.instrument.lower()}.ccdvisit1_quicklook"
 
-        self._insertIfAllowed(
+        return self._insertIfAllowed(
             instrument=expRecord.instrument,
             table=table,
             obsId=obsId,  # integer form required for ccd-type tables

@@ -37,7 +37,7 @@ import pandas as pd
 from astropy.table import Column, MaskedColumn, Table
 from tqdm import tqdm
 
-from lsst.daf.butler import Butler, DatasetNotFoundError, DimensionRecord
+from lsst.daf.butler import Butler, DatasetNotFoundError, DatasetRef, DimensionRecord
 from lsst.summit.utils.consdbClient import getCcdVisitTableForDay, getWideQuicklookTableForDay
 from lsst.summit.utils.dateTime import calcPreviousDay, dayObsIntToString, getCurrentDayObsInt
 from lsst.summit.utils.efdUtils import getEfdData
@@ -963,6 +963,73 @@ def backfillCcdVisit1QuicklookForDay(
             time.sleep(30)  # give the DB some rest
             if slowInserts >= 3:
                 print(f"Aborted after {i} inserts due to poor ConsDB performance")
+                return rowsInserted, noData
+        else:  # reset as soon as DB is performing well again
+            slowInserts = 0
+
+    return rowsInserted, noData
+
+
+def backfillCcdVisit1QuicklookForDayHigherOrderMoments(
+    butler: Butler, populator: ConsDBPopulator, dayObs: int
+) -> tuple[dict[DimensionRecord, list[int]], list[DimensionRecord]]:
+    """Backfill the ccdvisit1_quicklook PSF higher-order moments for a dayObs.
+
+    Writes the same ``psf_coma``, ``psf_trefoil``, ``psf_kurtosis`` and
+    ``psf_e4`` columns that the PSF plotter writes live, from each detector's
+    ``single_visit_star_footprints``.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The butler to query for visit records and catalogs.
+    populator : `ConsDBPopulator`
+        The ConsDBPopulator to use to populate the table. Must be synchronous.
+    dayObs : `int`
+        The dayObs to backfill.
+
+    Returns
+    -------
+    rowsInserted : `dict` [`DimensionRecord`, `list`[`int`]]
+        Dictionary mapping visit record to list of detectors successfully
+        populated for that visit.
+    noData : `list` [`DimensionRecord`]
+        List of visit records with no ``single_visit_star_footprints`` for
+        any detector.
+    """
+    where = f"visit.day_obs={dayObs} AND instrument='LSSTCam'"
+    records = butler.query_dimension_records("visit", where=where, order_by="visit.id")
+    dRefs = butler.query_datasets("single_visit_star_footprints", where=where, limit=None, explain=False)
+
+    dRefsByVisit: dict[int, list[DatasetRef]] = {}
+    for dRef in dRefs:
+        dRefsByVisit.setdefault(int(dRef.dataId["visit"]), []).append(dRef)
+
+    rowsInserted: dict[DimensionRecord, list[int]] = {}
+    noData: list[DimensionRecord] = []
+
+    slowInserts = 0
+    for i, record in enumerate(tqdm(records, total=len(records), mininterval=30.0, ncols=120)):
+        visitRefs = dRefsByVisit.get(record.id)
+        if not visitRefs:
+            noData.append(record)
+            continue
+
+        insertTime = 0.0
+        for dRef in sorted(visitRefs, key=lambda ref: int(ref.dataId["detector"])):
+            detector = int(dRef.dataId["detector"])
+            catalog = butler.get(dRef)
+            t0 = time.time()  # deliberately time after the butler.get()
+            inserted = populator.populateHigherOrderMoments(record, detector, catalog, allowUpdate=True)
+            insertTime += time.time() - t0
+            if inserted:
+                rowsInserted.setdefault(record, []).append(detector)
+
+        if insertTime > 12.5:
+            slowInserts += 1
+            time.sleep(30)  # give the DB some rest
+            if slowInserts >= 3:
+                print(f"Aborted after {i} visits due to poor ConsDB performance")
                 return rowsInserted, noData
         else:  # reset as soon as DB is performing well again
             slowInserts = 0

@@ -23,10 +23,12 @@
 
 import threading
 import unittest
+import warnings
 from types import SimpleNamespace
 from typing import Any, cast
 
 import numpy as np
+from astropy.table import Table
 
 import lsst.utils.tests
 from lsst.afw.image import ExposureSummaryStats
@@ -485,6 +487,55 @@ class AsyncWriteTestCase(lsst.utils.tests.TestCase):
             "LSSTCam", "t", 1, {"a": 1.0, "b": float("nan"), "c": float("-inf")}, False
         )
         self.assertEqual(client.inserts[0]["values"], {"a": 1.0})
+
+    def test_populateHigherOrderMoments(self) -> None:
+        # Pins each consDB column to its moment combination, so a swapped
+        # moment or a renamed column shows up here. The second source is all
+        # NaN and must be ignored by the medians, not poison them.
+        client = _RecordingClient()
+        populator = self._makePopulator(client, asyncWrites=False)
+        moments = {"03": 1, "12": 2, "21": 3, "30": 4, "04": 5, "13": 6, "22": 7, "31": 10, "40": 9}
+        catalog = Table(
+            {f"ext_shapeHSM_HigherOrderMomentsSource_{k}": [float(v), np.nan] for k, v in moments.items()}
+        )
+        expRecord = cast(DimensionRecord, SimpleNamespace(instrument="LSSTCam", id=2025062400012))
+
+        inserted = populator.populateHigherOrderMoments(expRecord, 4, catalog, allowUpdate=True)
+
+        self.assertTrue(inserted)
+        self.assertEqual(client.inserts[0]["table"], "cdb_lsstcam.ccdvisit1_quicklook")
+        self.assertEqual(
+            client.inserts[0]["values"],
+            {
+                "psf_coma_1": 6.0,  # m30 + m12
+                "psf_coma_2": 4.0,  # m21 + m03
+                "psf_trefoil_1": -2.0,  # m30 - 3 m12
+                "psf_trefoil_2": 8.0,  # 3 m21 - m03
+                "psf_kurtosis": 28.0,  # m40 + 2 m22 + m04
+                "psf_e4_1": 4.0,  # m40 - m04
+                "psf_e4_2": 32.0,  # 2 (m31 + m13)
+            },
+        )
+
+    def test_populateHigherOrderMomentsEmptyCatalogNotInserted(self) -> None:
+        # A detector with no stars gives all-NaN medians. The write must be
+        # skipped and reported as not inserted, which is how the backfill
+        # tells it apart from a detector it populated.
+        client = _RecordingClient()
+        populator = self._makePopulator(client, asyncWrites=False)
+        momentKeys = ("03", "12", "21", "30", "04", "13", "22", "31", "40")
+        catalog = Table(
+            {f"ext_shapeHSM_HigherOrderMomentsSource_{k}": np.array([], dtype=float) for k in momentKeys}
+        )
+        expRecord = cast(DimensionRecord, SimpleNamespace(instrument="LSSTCam", id=2025062400012))
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)  # nanmedian of an empty slice
+            with self.assertLogs("lsst.rubintv.production.consdbUtils", level="WARNING"):
+                inserted = populator.populateHigherOrderMoments(expRecord, 4, catalog)
+
+        self.assertFalse(inserted)
+        self.assertEqual(len(client.inserts), 0)
 
     def test_syncModeReturnsTrueAndCallsOnSuccessInline(self) -> None:
         client = _RecordingClient()
