@@ -473,6 +473,25 @@ class LocationConfig:
         return self._config["aosLSSTCamWcsDanishBin2PipelineFile"]
 
     @cached_property
+    def aosLSSTCamBlitzPipelineFile(self) -> str:
+        return self._config["aosLSSTCamBlitzPipelineFile"]
+
+    @cached_property
+    def aosLSSTCamBlitzShadowBin1PipelineFile(self) -> str:
+        return self._config["aosLSSTCamBlitzShadowBin1PipelineFile"]
+
+    @cached_property
+    def aosLSSTCamBlitzShadowBin2PipelineFile(self) -> str:
+        return self._config["aosLSSTCamBlitzShadowBin2PipelineFile"]
+
+    @cached_property
+    def aosLSSTCamShadowPipeline(self) -> str | None:
+        """The blitz pipeline to run alongside the selected AOS pipeline, e.g.
+        ``"AOS_BLITZ_SHADOW_BIN_2"``, or `None` to run none.
+        """
+        return self._config["aosLSSTCamShadowPipeline"]
+
+    @cached_property
     def aosLATISSPipelineFile(self) -> str:
         return self._config["aosLATISSPipelineFile"]
 

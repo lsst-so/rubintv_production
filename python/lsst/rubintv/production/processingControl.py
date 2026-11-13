@@ -100,6 +100,13 @@ PIPELINE_NAMES: tuple[str, ...] = (
     "AOS_AI_DONUT_UNBINNED",
     "AOS_TARTS_UNPAIRED",
     "AOS_UNPAIRED_DANISH",
+    # CWFS pipelines running all eight corner chips in one quantum
+    "AOS_BLITZ_BIN_1",
+    "AOS_BLITZ_BIN_2",
+    # Blitz run alongside the selected AOS pipeline, writing only blitz-named
+    # outputs, see aosLSSTCamShadowPipeline
+    "AOS_BLITZ_SHADOW_BIN_1",
+    "AOS_BLITZ_SHADOW_BIN_2",
     # Full-array-mode AOS pipelines
     "AOS_FAM_TIE",
     "AOS_FAM_DANISH",
@@ -496,6 +503,11 @@ def buildPipelines(
     unpairedDanishFile = locationConfig.aosLSSTCamUnpairedDanishPipelineFile
     aosWcsBin1DanishFile = locationConfig.aosLSSTCamWcsDanishBin1PipelineFile
     aosWcsBin2DanishFile = locationConfig.aosLSSTCamWcsDanishBin2PipelineFile
+    aosBlitzFile = locationConfig.aosLSSTCamBlitzPipelineFile
+    aosBlitzShadowFiles = {
+        1: locationConfig.aosLSSTCamBlitzShadowBin1PipelineFile,
+        2: locationConfig.aosLSSTCamBlitzShadowBin2PipelineFile,
+    }
     aosLatissFile = locationConfig.aosLATISSPipelineFile
 
     # These wrap drp_pipe's quickLook<Type>.yaml files and add the
@@ -566,6 +578,19 @@ def buildPipelines(
         pipelines["AOS_UNPAIRED_DANISH"] = PipelineComponents(
             butler.registry, unpairedDanishFile, ["step1a-detectors", "step1b-visits"], ["step1a", "step1b"]
         )
+        # The blitz pipelines are a single visit-level quantum covering all the
+        # corner chips, so there is no step1b.
+        for binning in (1, 2):
+            pipelines[f"AOS_BLITZ_BIN_{binning}"] = PipelineComponents(
+                butler.registry,
+                aosBlitzFile,
+                ["step1a-visits"],
+                ["step1a"],
+                overrides=[("donutBlitzCornerTask", "wavefrontFit.binning", binning)],
+            )
+            pipelines[f"AOS_BLITZ_SHADOW_BIN_{binning}"] = PipelineComponents(
+                butler.registry, aosBlitzShadowFiles[binning], ["step1a-visits"], ["step1a"]
+            )
         if set(pipelines.keys()) != set(PIPELINE_NAMES):
             missing = set(PIPELINE_NAMES) - set(pipelines.keys())
             extra = set(pipelines.keys()) - set(PIPELINE_NAMES)
@@ -595,6 +620,8 @@ class PipelineComponents:
     overrides : `list` [`tuple`], optional
         The config overrides to apply to the pipeline graph as a list of tuples
         of (label, key, value), passed to `Pipeline.addConfigOverride()`.
+    isCalibrationPipeline : `bool`, optional
+        Is this a calibration pipeline?
     """
 
     graphs: dict[str, PipelineGraph]
@@ -603,6 +630,7 @@ class PipelineComponents:
     steps: list[str]
     stepAliases: list[str]
     pipelineFile: str
+    overrides: list[tuple[str, str, object]]
     isCalibrationPipeline: bool = False
 
     def __init__(
@@ -619,6 +647,7 @@ class PipelineComponents:
         self.graphBytes: dict[str, bytes] = {}
         self.pipelineFile = pipelineFile
         self.stepAliases = stepAliases
+        self.overrides = overrides or []
         self.isCalibrationPipeline = isCalibrationPipeline
 
         if len(steps) != len(stepAliases):
@@ -630,10 +659,9 @@ class PipelineComponents:
             self.uris[stepAlias] = pipelineFile + f"#{step}"
             pipeline = Pipeline.fromFile(self.uris[stepAlias])
 
-            if overrides:
-                for override in overrides:
-                    if override[0] in pipeline.task_labels:
-                        pipeline.addConfigOverride(*override)
+            for override in self.overrides:
+                if override[0] in pipeline.task_labels:
+                    pipeline.addConfigOverride(*override)
             self.graphs[stepAlias] = pipeline.to_graph(registry=registry)
             self.graphBytes[stepAlias] = pipelineGraphToBytes(self.graphs[stepAlias])
 
@@ -658,6 +686,19 @@ class PipelineComponents:
     def isAosPipeline(self) -> bool:
         """Is this an AOS pipeline?"""
         return "donut_viz" in self.pipelineFile.lower()
+
+    @property
+    def isBlitz(self) -> bool:
+        """Is this a blitz AOS pipeline, processing all the corner chips in
+        a single visit-level quantum?"""
+        return "blitz" in self.pipelineFile.lower()
+
+    @property
+    def isShadow(self) -> bool:
+        """Is this a shadow pipeline, run alongside the selected AOS pipeline
+        rather than instead of it? A shadow must write no dataset types the
+        selected pipeline writes, upload nothing and announce nothing."""
+        return "shadow" in self.pipelineFile.lower()
 
     def getTasks(self, steps: list[str] | None = None) -> dict[str, TaskNode]:
         """Get the tasks in the pipeline graph.
@@ -774,6 +815,14 @@ class HeadProcessController:
         )
         self.allGraphs = allGraphs
         self.pipelines = pipelines
+
+        self.aosShadowPipeline = locationConfig.aosLSSTCamShadowPipeline if instrument == "LSSTCam" else None
+        if self.aosShadowPipeline is not None:
+            shadow = self.pipelines.get(self.aosShadowPipeline)
+            if shadow is None or not shadow.isShadow:
+                raise ValueError(
+                    f"aosLSSTCamShadowPipeline {self.aosShadowPipeline} is not a shadow pipeline"
+                )
 
         # restore RubinTV-controlled AOS selections so they survive a restart,
         # now that self.pipelines exists to validate the stored values against
@@ -975,6 +1024,8 @@ class HeadProcessController:
         # AI_DONUT_UNBINNED
         # UNPAIRED_DANISH
         # TARTS_UNPAIRED
+        # BLITZ_BIN_1
+        # BLITZ_BIN_2
 
         for controlKey, attribute, _ in self._aosPipelineControls:
             updateFromKey(controlKey, attribute)
@@ -1100,7 +1151,10 @@ class HeadProcessController:
         """Send the CWFS sensors out for AOS processing. LSSTCam only.
 
         Hard-codes always sending this to all 8 CWFS detectors (191, 192, 195,
-        196, 199, 200, 203, 204).
+        196, 199, 200, 203, 204). If a blitz pipeline is selected, the whole
+        set goes to a single blitz worker instead, see `dispatchAosBlitz`.
+        Otherwise, if a shadow pipeline is configured, the whole set is also
+        sent to a blitz worker for that.
 
         Parameters
         ----------
@@ -1113,10 +1167,14 @@ class HeadProcessController:
 
         aosShardPath = getShardPath(self.locationConfig, expRecord, isAos=True)
         if not isCalibration(expRecord):
-            targetPipelineBytes = self.pipelines[self.currentAosPipeline].graphBytes["step1a"]
             writeAosConfigShards(
                 expRecord, self.pipelines[self.currentAosPipeline], aosShardPath, self.currentAosPipeline
             )
+            if self.pipelines[self.currentAosPipeline].isBlitz:
+                self.dispatchAosBlitz(expRecord, self.currentAosPipeline)
+                writeExpRecordMetadataShard(expRecord, aosShardPath)
+                return
+            targetPipelineBytes = self.pipelines[self.currentAosPipeline].graphBytes["step1a"]
             who = "AOS"
         else:
             # send the detectors to the AOS workers for normal ISR processing
@@ -1141,11 +1199,54 @@ class HeadProcessController:
         self.redisHelper.setAosPipelineConfig(self.instrument, expRecord.id, self.currentAosPipeline)
 
         self._dispatchPayloads(payloads, PodFlavor.AOS_WORKER)
+        if not isCalibration(expRecord) and self.aosShadowPipeline is not None:
+            self.dispatchAosBlitz(expRecord, self.aosShadowPipeline)
 
         # TODO: Consider whether this should move to the expRecord getting
         # function, or the event loop, or if this is OK. If this really does
         # fire for every image this is probably fine.
         writeExpRecordMetadataShard(expRecord, aosShardPath)
+
+    def dispatchAosBlitz(self, expRecord: DimensionRecord, pipelineName: str) -> None:
+        """Send all the CWFS sensors to a single blitz worker. LSSTCam only.
+
+        The blitz pipelines process every corner chip in one visit-level
+        quantum, so a single exposure-level payload is sent instead of one per
+        detector. Nothing is added to the expected detectors in the tracking
+        hash: blitz writes no binned post-ISR images, so expecting the corner
+        chips would block the post-ISR mosaic, and there is no step1b to
+        gather for. The worker reports its own completion, as a visit-level
+        step1a for ``"AOS"``. The pipeline is recorded in the tracking hash
+        unless it is a shadow, which leaves that to the selected pipeline.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure record to process.
+        pipelineName : `str`
+            The blitz pipeline to run, a key of ``self.pipelines``.
+        """
+        pipeline = self.pipelines[pipelineName]
+        payload = Payload(
+            dataId=expRecord.dataId,
+            pipelineGraphBytes=pipeline.graphBytes["step1a"],
+            run=self.outputRun,
+            who="AOS",
+        )
+        if not pipeline.isShadow:
+            self.redisHelper.setAosPipelineConfig(self.instrument, expRecord.id, pipelineName)
+
+        worker = self.redisHelper.getSingleWorker(self.instrument, PodFlavor.AOS_BLITZ_WORKER)
+        if worker is None and self.timeAlive < 60:
+            # we've just been rebooted so give the workers a chance to come up
+            sleep(30)
+            worker = self.redisHelper.getSingleWorker(self.instrument, PodFlavor.AOS_BLITZ_WORKER)
+        if worker is None:
+            self.log.error(f"No blitz workers available, cannot dispatch {pipelineName}")
+            return
+
+        self.log.info(f"Dispatching {pipelineName} for {expRecord.id} to {worker}")
+        self.redisHelper.enqueuePayload(payload, worker)
 
     def doLatissAosFanout(self, expRecord: DimensionRecord) -> None:
         """Dispatch the AOS processing for a completed LATISS CWFS pair.

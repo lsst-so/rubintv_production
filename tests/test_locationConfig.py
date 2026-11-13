@@ -160,8 +160,12 @@ def _buildFixtureConfig(rootDir: str) -> dict:
         "aosLSSTCamUnpairedDanishPipelineFile",
         "aosLSSTCamWcsDanishBin1PipelineFile",
         "aosLSSTCamWcsDanishBin2PipelineFile",
+        "aosLSSTCamBlitzPipelineFile",
+        "aosLSSTCamBlitzShadowBin1PipelineFile",
+        "aosLSSTCamBlitzShadowBin2PipelineFile",
     ):
         config[k] = f"/fixture/{k}.yaml"
+    config["aosLSSTCamShadowPipeline"] = "AOS_BLITZ_SHADOW_BIN_2"
 
     config["sfmPipelineFile"] = {
         "LATISS": "/fixture/latissSfm.yaml",
@@ -300,6 +304,10 @@ class LocationConfigTestCase(lsst.utils.tests.TestCase):
             "aosLSSTCamUnpairedDanishPipelineFile",
             "aosLSSTCamWcsDanishBin1PipelineFile",
             "aosLSSTCamWcsDanishBin2PipelineFile",
+            "aosLSSTCamBlitzPipelineFile",
+            "aosLSSTCamBlitzShadowBin1PipelineFile",
+            "aosLSSTCamBlitzShadowBin2PipelineFile",
+            "aosLSSTCamShadowPipeline",
             "aosDataDir",
         ):
             with self.subTest(key=key):
