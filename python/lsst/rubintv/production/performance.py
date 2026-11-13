@@ -768,7 +768,7 @@ class AosMetrics:
     oodsIngestTimes: dict[int, float]
     butlerIngestTimes: dict[int, float]
     s3UploadTimes: dict[int, float]
-
+    aosDeployTimes: dict[int, float]
 
 class PerformanceBrowser:
     """
@@ -1074,7 +1074,7 @@ class PerformanceBrowser:
         efd_end = last_expRecord.timespan.end
         # Get EFD data
         messages = getEfdData(
-            efdClient, "lsst.sal.MTAOS.logevent_logMessage", columns=["message"], begin=efd_start, end=efd_end
+            efdClient, "lsst.sal.MTAOS.logevent_logMessage", columns=["message"], begin=efd_start, end=efd_end, warn=False
         )
         messages = messages[messages["message"].str.contains("do_issueCorrection")]
         closed_loop_states = getEfdData(
@@ -1083,12 +1083,13 @@ class PerformanceBrowser:
             columns=["state"],
             begin=efd_start,
             end=efd_end,
+            warn=False
         )
         waiting_image = closed_loop_states[closed_loop_states["state"] == 2]
 
         # Add MTPtg and MTM1M3 slew flags
         mtptg = getEfdData(
-            efdClient, "lsst.sal.MTPtg.command_poriginOffset", columns=["num"], begin=efd_start, end=efd_end
+            efdClient, "lsst.sal.MTPtg.command_poriginOffset", columns=["num"], begin=efd_start, end=efd_end, warn=False
         )
 
         set_flag = getEfdData(
@@ -1097,6 +1098,7 @@ class PerformanceBrowser:
             columns=["private_efdStamp"],
             begin=efd_start,
             end=efd_end,
+            warn=False
         )
 
         clear_flag = getEfdData(
@@ -1105,6 +1107,7 @@ class PerformanceBrowser:
             columns=["private_efdStamp"],
             begin=efd_start,
             end=efd_end,
+            warn=False
         )
 
         # Set up base plot
@@ -1166,12 +1169,20 @@ class PerformanceBrowser:
         # Now add the AOS performance plot
         self.loadData(first_expRecord)  # queries the <task>_log dataset of every task in every RA pipeline
         taskResults = self.data[first_expRecord]  # {taskLabel: TaskResult}
-
+        # Add the aosDeploy metrics to the metrics object.
+        # Perhaps there is a better place to do this, but it works here.
+        metrics = calculateAosMetrics(self.butler, efdClient, first_expRecord, taskResults, cwfsDetNums)
+        shutter_close_to_correction = Time(dof_event.name).unix_tai - first_expRecord.timespan.end.unix_tai
+        zernikes_to_correction = shutter_close_to_correction - metrics.legendItems['Shutter close to zernikes']
+        metrics.aosDeployTimes={"Shutter close to correction": shutter_close_to_correction,
+                                "Zernikes to correction": zernikes_to_correction,
+                                "Source of correction visitId": first_visit_id
+                                }
         self.createAosPlot(
             first_expRecord, taskResults, efdClient, cwfsDetNums, combinedPlot=True, inputFigure=fig
         )
         fig.subplots_adjust(hspace=0)
-        return fig
+        return metrics, fig
 
 
 class PerformanceMonitor(BaseButlerChannel):
@@ -1617,6 +1628,7 @@ def calculateAosMetrics(
         oodsIngestTimes=wfTimes,
         butlerIngestTimes=getButlerIngestTimes(butler, expRecord),
         s3UploadTimes=getS3UploadTimes(butler, expRecord),
+        aosDeployTimes={}
     )
 
 
