@@ -46,7 +46,7 @@ from matplotlib.patches import Patch
 from lsst.daf.butler import MissingDatasetTypeError
 from lsst.rubintv.production.formatters import getFilterColorName
 from lsst.summit.utils.dateTime import dayObsIntToString
-from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
+from lsst.summit.utils.efdUtils import getEfdData, getMostRecentRowWithDataBefore, makeEfdClient
 from lsst.summit.utils.utils import getCameraFromInstrumentName
 from lsst.utils.plotting import get_multiband_plot_colors
 from lsst.utils.plotting.figures import make_figure
@@ -768,7 +768,7 @@ class AosMetrics:
     oodsIngestTimes: dict[int, float]
     butlerIngestTimes: dict[int, float]
     s3UploadTimes: dict[int, float]
-
+    aosDeployTimes: dict[int, float]
 
 class PerformanceBrowser:
     """
@@ -968,6 +968,8 @@ class PerformanceBrowser:
         efdClient: EfdClient,
         cwfsDetNums: Iterable[int],
         metrics: AosMetrics | None = None,
+        combinedPlot: bool = False,
+        inputFigure: Figure | None = None,
     ) -> Figure | None:
         """
         Create the AOS task timing plot.
@@ -984,6 +986,10 @@ class PerformanceBrowser:
             The list of CWFS detector numbers.
         metrics : `AosMetrics`, optional
             The calculated metrics. If None, they will be calculated.
+        combinedPlot : `bool`
+            If True, we are adding this to the combined AOS plot.
+        inputFigure : `matplotlib.figure.Figure` or `None`
+            An existing figure to add the AOS timing plot to.
 
         Returns
         -------
@@ -1023,8 +1029,160 @@ class PerformanceBrowser:
             oodsIngestTimes=metrics.oodsIngestTimes,
             butlerIngestTimes=metrics.butlerIngestTimes,
             s3UploadTimes=metrics.s3UploadTimes,
+            combinedPlot=combinedPlot,
+            inputFigure=inputFigure,
         )
         return fig
+
+    def createCombinedAosPlot(
+        self,
+        last_expRecord: DimensionRecord,
+        efdClient: EfdClient,
+        cwfsDetNums: Iterable[int],
+    ) -> Figure | None:
+        """
+        Create the combined AOS task timing plot.
+
+        Adds MTAOS timings to the RA performance plot.
+
+        Parameters
+        ----------
+        last_expRecord : `DimensionRecord`
+            The exposure record of the exposure being corrected.
+        efdClient : `EfdClient`
+            The EFD client.
+        cwfsDetNums : `Iterable` of `int`
+            The list of CWFS detector numbers.
+
+        Returns
+        -------
+        fig : `matplotlib.figure.Figure` or `None`
+            The figure object.
+        """
+        last_visit_id = last_expRecord.id
+        # Find the visit from which the correction came
+        dof_event = getMostRecentRowWithDataBefore(
+            efdClient,
+            "lsst.sal.MTAOS.logevent_degreeOfFreedom",
+            timeToLookBefore=last_expRecord.timespan.begin,
+        )
+        first_visit_id = dof_event["visitId"]
+        dayObs = last_expRecord.day_obs
+        first_seq_num = int(first_visit_id - dayObs * 1e5)
+        first_expRecord = getExpRecord(self.butler, dayObs, first_seq_num)
+        efd_start = first_expRecord.timespan.begin
+        efd_end = last_expRecord.timespan.end
+        # Get EFD data
+        messages = getEfdData(
+            efdClient, "lsst.sal.MTAOS.logevent_logMessage", columns=["message"], begin=efd_start, end=efd_end, warn=False
+        )
+        messages = messages[messages["message"].str.contains("do_issueCorrection")]
+        closed_loop_states = getEfdData(
+            efdClient,
+            "lsst.sal.MTAOS.logevent_closedLoopState",
+            columns=["state"],
+            begin=efd_start,
+            end=efd_end,
+            warn=False
+        )
+        waiting_image = closed_loop_states[closed_loop_states["state"] == 2]
+
+        # Add MTPtg and MTM1M3 slew flags
+        mtptg = getEfdData(
+            efdClient, "lsst.sal.MTPtg.command_poriginOffset", columns=["num"], begin=efd_start, end=efd_end, warn=False
+        )
+
+        set_flag = getEfdData(
+            efdClient,
+            "lsst.sal.MTM1M3.command_setSlewFlag",
+            columns=["private_efdStamp"],
+            begin=efd_start,
+            end=efd_end,
+            warn=False
+        )
+
+        clear_flag = getEfdData(
+            efdClient,
+            "lsst.sal.MTM1M3.command_clearSlewFlag",
+            columns=["private_efdStamp"],
+            begin=efd_start,
+            end=efd_end,
+            warn=False
+        )
+
+        # Set up base plot
+        fig = make_figure(figsize=(20, 10))
+
+        # Define the first baseline axis
+        ax2 = fig.add_subplot(212)
+        ax1 = fig.add_subplot(211, sharex=ax2)
+        ax1.tick_params(labelbottom=False)
+        ax1.set_xticks([])
+        fig.subplots_adjust(hspace=0)
+
+        ax2.tick_params(axis="x", rotation=90)
+        ax2.xaxis.set_major_locator(mdates.SecondLocator(bysecond=[0, 10, 20, 30, 40, 50]))
+        ax2.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
+        ax2.set_yticks([])
+        ax1.set_title(f"Correction timing {first_visit_id} - {last_visit_id}", fontsize=12, y=1.10)
+        visit_id = first_visit_id
+        while visit_id <= last_visit_id:
+            this_seq_num = int(visit_id - dayObs * 1e5)
+            this_expRecord = getExpRecord(self.butler, dayObs, this_seq_num)
+            obs_start = this_expRecord.timespan.begin.utc.to_datetime()
+            obs_end = this_expRecord.timespan.end.utc.to_datetime()
+            xlabel = obs_start + pd.Timedelta(seconds=15)
+            ax2.text(xlabel, 0.9, f"This visit={visit_id}", ha="center")
+            ax2.axvline(obs_start, color="k")
+            ax2.axvline(obs_end, color="k")
+            ax2.axvspan(obs_start, obs_end, color="gray", alpha=0.2)
+            visit_id += 1
+
+        # Add MTAOS messages
+        ax2.axvline(pd.to_datetime(dof_event.name), ls="--", color="red")
+
+        for i in range(len(messages)):
+            ax2.axvline(pd.to_datetime(messages.index[i]), ls="--", color="blue")
+
+        for i in range(len(waiting_image)):
+            ax2.axvline(pd.to_datetime(waiting_image.index[i]), ls="--", color="magenta")
+
+        x0 = ax2.get_xlim()[0]
+        ax2.axvline(x0, ls="--", color="red", label="Correction available")
+        ax2.axvline(x0, ls="--", color="blue", label="Issue Correction")
+        ax2.axvline(x0, ls="--", color="magenta", label="Correction complete")
+
+        # Add MTPtg and MTM1M3 slew flags
+        for i in range(len(mtptg)):
+            ax2.axvline(pd.to_datetime(mtptg.index[i]), ls="-.", color="blue")
+        for i in range(len(set_flag)):
+            ax2.axvline(pd.to_datetime(set_flag.index[i]), ls="-.", color="springgreen")
+        for i in range(len(clear_flag)):
+            ax2.axvline(pd.to_datetime(clear_flag.index[i]), ls="-.", color="red")
+
+        # Add legend
+        ax2.axvline(x0, ls="-.", color="blue", label="Ptg Origin Offset")
+        ax2.axvline(x0, ls="-.", color="springgreen", label="Set Slew Flag")
+        ax2.axvline(x0, ls="-.", color="red", label="Clear Slew Flag")
+        ax2.legend(bbox_to_anchor=(0.1, 0.2), loc="lower left")
+
+        # Now add the AOS performance plot
+        self.loadData(first_expRecord)  # queries the <task>_log dataset of every task in every RA pipeline
+        taskResults = self.data[first_expRecord]  # {taskLabel: TaskResult}
+        # Add the aosDeploy metrics to the metrics object.
+        # Perhaps there is a better place to do this, but it works here.
+        metrics = calculateAosMetrics(self.butler, efdClient, first_expRecord, taskResults, cwfsDetNums)
+        shutter_close_to_correction = Time(dof_event.name).unix_tai - first_expRecord.timespan.end.unix_tai
+        zernikes_to_correction = shutter_close_to_correction - metrics.legendItems['Shutter close to zernikes']
+        metrics.aosDeployTimes={"Shutter close to correction": shutter_close_to_correction,
+                                "Zernikes to correction": zernikes_to_correction,
+                                "Source of correction visitId": first_visit_id
+                                }
+        self.createAosPlot(
+            first_expRecord, taskResults, efdClient, cwfsDetNums, combinedPlot=True, inputFigure=fig
+        )
+        fig.subplots_adjust(hspace=0)
+        return metrics, fig
 
 
 class PerformanceMonitor(BaseButlerChannel):
@@ -1470,6 +1628,7 @@ def calculateAosMetrics(
         oodsIngestTimes=wfTimes,
         butlerIngestTimes=getButlerIngestTimes(butler, expRecord),
         s3UploadTimes=getS3UploadTimes(butler, expRecord),
+        aosDeployTimes={}
     )
 
 
@@ -1680,6 +1839,8 @@ def plotAosTaskTimings(
     expRecord: DimensionRecord,
     timings: dict[str, float],
     *,
+    combinedPlot: bool = False,
+    inputFigure: Figure | None = None,
     barHalf: float = 0.3,
     touchHalf: float = 0.5,
     figsize: tuple[float, float] = (12, 8),
@@ -1704,6 +1865,10 @@ def plotAosTaskTimings(
         The exposure record.
     timings : `dict`
         The timings for the events.
+    combinedPlot : `bool`
+        If True, we are adding this to combinedAOSPlot.
+    inputFigure : `matplotlib.figure.Figure` or `None`
+        Allows to input a figure to add the AOS timing
     barHalf : `float`, optional
         Half the height of the bars. Default is 0.3.
     touchHalf : `float`, optional
@@ -1720,19 +1885,24 @@ def plotAosTaskTimings(
     fig : `matplotlib.figure.Figure`
         The figure object.
     """
-    fig = make_figure(figsize=figsize)
-    axTop, axBottom = fig.subplots(
-        2,
-        1,
-        sharex=True,
-        gridspec_kw={"height_ratios": list(heightRatios), "hspace": 0.0},
-    )
-
+    if not inputFigure:
+        fig = make_figure(figsize=figsize)
+        axTop, axBottom = fig.subplots(
+            2,
+            1,
+            sharex=False,
+            gridspec_kw={"height_ratios": list(heightRatios), "hspace": 0.0},
+        )
+    else:
+        fig = inputFigure
+        axBottom = fig.get_axes()[1]
+        xlim = axBottom.get_xlim()
     t0 = expRecord.timespan.end.utc.to_datetime().astimezone(timezone.utc)
-    if runningCI():  # to make the plots legible in CI
-        # pretend that the shutter closed 10s before the earliest task start
-        t0 = min(tr.startTimeOverall for tr in results.values() if tr.startTimeOverall is not None)
-        t0 = t0 - timedelta(seconds=10)  # to make the plots legible in CI
+    if not combinedPlot:
+        if runningCI():  # to make the plots legible in CI
+            # pretend the shutter closed 10s before the earliest task start
+            t0 = min(tr.startTimeOverall for tr in results.values() if tr.startTimeOverall is not None)
+            t0 = t0 - timedelta(seconds=10)  # to make the plots legible in CI
 
     detMap = {det: i for i, det in enumerate(detectorList)}
     bottoms: list[float] = [i - barHalf for i in range(len(detectorList))]
@@ -1757,33 +1927,39 @@ def plotAosTaskTimings(
             if detNum not in taskResults.logs:
                 continue
             tasksPlotted[task] = color
-            start = (taskResults.logs[detNum][0].asctime - t0).total_seconds()
-            end = (taskResults.logs[detNum][-1].asctime - t0).total_seconds()
-
-            taskMins[task] = min(taskMins[task], start)
-            taskMaxs[task] = max(taskMaxs[task], end)
+            if combinedPlot:
+                start = taskResults.logs[detNum][0].asctime
+                end = taskResults.logs[detNum][-1].asctime
+            else:
+                start = (taskResults.logs[detNum][0].asctime - t0).total_seconds()
+                end = (taskResults.logs[detNum][-1].asctime - t0).total_seconds()
+                taskMins[task] = min(taskMins[task], start)
+                taskMaxs[task] = max(taskMaxs[task], end)
+                if taskMins.get("isr", None) is not None:
+                    timings["ISR Start"] = taskMins["isr"]
 
             idx: int | None = detMap.get(detNum)
             if idx is None:
                 continue
             axBottom.fill_between([start, end], bottoms[idx], tops[idx], color=color)
 
-    if taskMins.get("isr", None) is not None:
-        timings["ISR Start"] = taskMins["isr"]
-
-    # legends anchored to bottom-right of the TOP axis
+    # legends anchored to bottom-right of the TOP axis, except for the
+    # combined plot, which has no top axis so the legend goes on the bottom
+    legendAx = axBottom if combinedPlot else axTop
     createLegendBoxes(
-        axTop,
+        legendAx,
         tasksPlotted,
         extraLines=legendExtraLines,
         showOods=bool(oodsIngestTimes),
         showButler=bool(butlerIngestTimes),
         showS3=bool(s3UploadTimes),
     )
-
     dotSize = 36  # scatter "s" is area in points^2
+
     if oodsIngestTimes:
         for detNum, ingestTime in oodsIngestTimes.items():
+            if combinedPlot:
+                ingestTime = t0 + timedelta(seconds=ingestTime)
             idx = detMap.get(detNum)
             if idx is None:
                 continue
@@ -1791,6 +1967,8 @@ def plotAosTaskTimings(
 
     if butlerIngestTimes:
         for detNum, ingestTime in butlerIngestTimes.items():
+            if combinedPlot:
+                ingestTime = t0 + timedelta(seconds=ingestTime)
             idx = detMap.get(detNum)
             if idx is None:
                 continue
@@ -1798,6 +1976,8 @@ def plotAosTaskTimings(
 
     if s3UploadTimes:
         for detNum, uploadTime in s3UploadTimes.items():
+            if combinedPlot:
+                uploadTime = t0 + timedelta(seconds=uploadTime)
             idx = detMap.get(detNum)
             if idx is None:
                 continue
@@ -1810,27 +1990,54 @@ def plotAosTaskTimings(
                 zorder=10_000,
             )
 
-    axBottom.set_xlim(0, None)
-    axBottom.set_yticks(list(detMap.values()))
-    axBottom.set_yticklabels(list(detMap.keys()))
-    axBottom.set_xlabel("Time since end integration (s)")
+    if not combinedPlot:
+        axBottom.set_xlim(0, None)
+        axBottom.set_xlabel("Time since end integration (s)")
+        # move title to very bottom, centered under the bottom plot x-axis
+        dayObsStr = dayObsIntToString(expRecord.day_obs)
+        bottomTitle = f"AOS pipeline timings for {dayObsStr} - seq {expRecord.seq_num}"
+        fig.subplots_adjust(bottom=0.14)
+        axBottom.set_yticks(list(detMap.values()))
+        axBottom.set_yticklabels(list(detMap.keys()))
+
+    else:
+        axBottom.axvline(t0, ls="--", color="k")
+        axBottom.tick_params(labelbottom=False)
+        fig.subplots_adjust(hspace=0)
+        axBottomTop = axBottom.secondary_xaxis("top")
+        topTicks = []
+        topTickLabels = []
+        for i in range(6):
+            topTicks.append(t0 + timedelta(seconds=i * 10.0))
+            topTickLabels.append(i * 10.0)
+        axBottomTop.set_xticks(topTicks)
+        axBottomTop.set_xticklabels(topTickLabels)
+        axBottomTop.tick_params(axis="x", direction="in", pad=-20)
+        axBottomTop.set_xlabel("Time since end integration (s)", y=0.95)
+        yticks = list(detMap.values())
+        yticks.append(8)
+        yticklabels = list(detMap.keys())
+        yticklabels.append("")
+        axBottom.set_yticks(yticks)
+        axBottom.set_yticklabels(yticklabels)
+        axBottom.set_xlim(xlim)
     axBottom.set_ylabel("Detector number #")
 
-    # move title to very bottom, centered under the x-axis of the bottom plot
-    dayObsStr = dayObsIntToString(expRecord.day_obs)
-    bottomTitle = f"AOS pipeline timings for {dayObsStr} - seq {expRecord.seq_num}"
-
     # Clear any axes titles and draw a figure-level bottom title
-    axBottom.set_title("")
-    axTop.set_title("")
-    fig.text(0.5, 0.02, bottomTitle, ha="center", va="bottom")
 
-    addEventStaircase(axTop, axBottom, timings)
+    if not combinedPlot:
+        axBottom.set_title("")
+        axTop.set_title("")
+        fig.text(0.5, 0.02, bottomTitle, ha="center", va="bottom")
+        addEventStaircase(axTop, axBottom, timings)
 
     # Layout: no extra bottom legend space needed; keep room for bottom title
+
     fig.tight_layout(rect=(0, 0.05, 1, 0.95))
-    fig.subplots_adjust(bottom=0.14)
-    return fig
+    if combinedPlot:
+        return
+    else:
+        return fig
 
 
 def getData(dayObs: int) -> pd.DataFrame:
