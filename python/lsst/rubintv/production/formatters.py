@@ -235,15 +235,41 @@ def makePlotFileFromRecord(
     return makePlotFile(locationConfig, instrument, dayObs, seqNum, plotType, suffix)
 
 
+def getPlotRelativePath(instrument: str, dayObs: int, seqNum: int, plotType: str, suffix: str) -> str:
+    """Get the path of a per-seqNum plot file, relative to the plot root.
+
+    This is the single definition of the on-disk layout for per-seqNum
+    plots: `makePlotFile` resolves it against ``locationConfig.plotPath``
+    when writing, and the integration suite uses it to derive the plot
+    files it expects to find at the end of a run.
+
+    Parameters
+    ----------
+    instrument : `str`
+        The instrument name.
+    dayObs : `int`
+        The dayObs.
+    seqNum : `int`
+        The seqNum.
+    plotType : `str`
+        The plot type, as it appears in the filename, e.g. "mount".
+    suffix : `str`
+        The file extension, without the leading dot, e.g. "png".
+
+    Returns
+    -------
+    relativePath : `str`
+        The plot file's path, relative to the plot root directory.
+    """
+    basename = f"{instrument}_{plotType}_dayObs_{dayObs}_seqNum_{seqNum:06}.{suffix}"
+    return (Path(instrument) / str(dayObs) / basename).as_posix()
+
+
 def makePlotFile(
     locationConfig: LocationConfig, instrument: str, dayObs: int, seqNum: int, plotType: str, suffix: str
 ) -> str:
-    filename = (
-        Path(locationConfig.plotPath)
-        / instrument
-        / str(dayObs)
-        / f"{instrument}_{plotType}_dayObs_{dayObs}_seqNum_{seqNum:06}.{suffix}"
-    )
+    relativePath = getPlotRelativePath(instrument, dayObs, seqNum, plotType, suffix)
+    filename = Path(locationConfig.plotPath) / relativePath
     filename.parent.mkdir(mode=0o777, parents=True, exist_ok=True)
     # add a path.touch() here?
     return filename.as_posix()
