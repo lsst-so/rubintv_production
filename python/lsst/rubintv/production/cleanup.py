@@ -77,6 +77,7 @@ DATASETS_TO_CLEAN = (
 BATCHSIZE = 5000
 SPEED_FACTOR = 0.5  # 0.5 = half-speed, 0.33 = one-third etc
 SMALL_FILE_KEEP_DAYS = 14
+LARGE_FILE_KEEP_DAYS = 30
 
 
 def interruptibleSleep(duration: float, deadline: Time) -> bool:
@@ -151,7 +152,6 @@ class TempFileCleaner:
         }
         self.s3DirsToDelete = ("binnedImages/",)  # NB: must end in a trailing slash
         self.keepDaysS3temp = 2  # 2 means current dayObs and the day before
-        self.keepDaysPixelProducts = 14  # keep the last two weeks for pixel products for now
 
         self.butler = Butler.from_config(
             locationConfig.lsstCamButlerPath,
@@ -170,23 +170,25 @@ class TempFileCleaner:
         output chain.
 
         Only runs at summit-like sites (summit/BTS/TTS). The retention
-        window is set by ``self.keepDaysPixelProducts``.
+        window is set by ``LARGE_FILE_KEEP_DAYS``.
         """
-        # TODO: add post_isr_image to main list and remove this function
-        # entirely once that cleanup code is actually managing to finish before
-        # sunset - the only reason this is separate it to do the big stuff
-        # first while still making max progress on the small files
+        # TODO: move these products to the throttled cleanupPass and remove
+        # this function entirely once that cleanup code is actually managing
+        # to finish before sunset. The only reason this is separate is to do
+        # the big stuff first while still making max progress on the small
+        # files.
         site = self.locationConfig.location
         if site.lower() not in ("summit", "bts", "tts"):
             self.log.info(f"Pixel products are only deleted at summit/BTS/TTS sites, not {site}, skipping")
             return
 
         currentDayObs = getCurrentDayObsInt()
-        deleteBefore = offsetDayObs(currentDayObs, -self.keepDaysPixelProducts)
+        deleteBefore = offsetDayObs(currentDayObs, -LARGE_FILE_KEEP_DAYS)
 
         where = f"exposure.day_obs<={deleteBefore} AND instrument='LSSTCam'"
         for product in [
             "post_isr_image",
+            "preliminary_visit_image",
         ]:
             self.log.info(f"Querying for {product}s to delete before {deleteBefore}...")
             allDRefs = self.butler.query_datasets(
