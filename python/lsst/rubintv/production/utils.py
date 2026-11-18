@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from lsst.daf.butler import DataCoordinate, DimensionRecord
+from lsst.summit.utils.dateTime import offsetDayObs
 
 if TYPE_CHECKING:
     from lsst.afw.image import Exposure, ExposureSummaryStats
@@ -45,6 +46,7 @@ __all__ = [
     "summaryStatsToDict",
     "getAirmass",
     "getExpIdOrVisitId",
+    "getDayObsRange",
 ]
 
 
@@ -121,3 +123,26 @@ def getExpIdOrVisitId(obj: DimensionRecord | DataCoordinate) -> int:
         elif "exposure" in obj:
             return int(obj["exposure"])
     raise ValueError(f"{obj} does not contain an exposure or visit ID")
+
+
+def getDayObsRange(firstDayObs: int, lastDayObs: int) -> list[int]:
+    """Return every dayObs from ``firstDayObs`` to ``lastDayObs``, inclusive.
+
+    Parameters
+    ----------
+    firstDayObs : `int`
+        The first dayObs, e.g. ``20261130``.
+    lastDayObs : `int`
+        The last dayObs. Must not be before ``firstDayObs``.
+
+    Returns
+    -------
+    dayObsRange : `list` [`int`]
+        The dayObs values, in order.
+    """
+    if lastDayObs < firstDayObs:
+        raise ValueError(f"lastDayObs {lastDayObs} is before firstDayObs {firstDayObs}")
+    dayObsRange = [firstDayObs]
+    while dayObsRange[-1] < lastDayObs:
+        dayObsRange.append(offsetDayObs(dayObsRange[-1], 1))
+    return dayObsRange
