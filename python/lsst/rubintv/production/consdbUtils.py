@@ -32,7 +32,7 @@ import itertools
 import logging
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Callable, cast
+from typing import TYPE_CHECKING, Callable, TypeVar, cast
 
 import numpy as np
 from astropy.table import Table
@@ -50,6 +50,7 @@ from lsst.summit.utils.packageVersions import (
 from lsst.summit.utils.simonyi.mountAnalysis import MountErrors
 from lsst.summit.utils.utils import computeCcdExposureId, getDetectorIds
 
+from .consdbSqlWriter import ConsDBSqlWriter
 from .redisUtils import RedisHelper
 
 if TYPE_CHECKING:
@@ -126,12 +127,28 @@ VISIT_MIN_MED_MAX_TOTAL_MAPPING = {
 }
 
 
-def _removeNans(
-    values: Mapping[str, float | int | str | np.floating],
-) -> dict[str, float | int | str | np.floating]:
-    out: dict[str, float | int | str | np.floating] = {}
+_ValueT = TypeVar("_ValueT")
+
+
+def _removeNonFinite(values: Mapping[str, _ValueT]) -> dict[str, _ValueT]:
+    """Return a copy of ``values`` without any NaN or infinite floats.
+
+    The consDB client posts JSON, which cannot represent non-finite floats,
+    so they are dropped and the columns are left null.
+
+    Parameters
+    ----------
+    values : `Mapping` [`str`, `object`]
+        The column values to filter.
+
+    Returns
+    -------
+    finiteValues : `dict` [`str`, `object`]
+        The values with every non-finite float removed.
+    """
+    out: dict[str, _ValueT] = {}
     for k, v in values.items():
-        if isinstance(v, (float, np.floating)) and np.isnan(v):
+        if isinstance(v, (float, np.floating)) and not np.isfinite(v):
             continue
         out[k] = v
     return out
@@ -163,34 +180,44 @@ def changeType(key: str, typeMapping: dict[str, str]) -> Callable[[int | float],
 
 
 class ConsDBPopulator:
+    """Populate consDB from rapid analysis.
+
+    Parameters
+    ----------
+    client : `lsst.summit.utils.ConsDbClient`
+        The client used to talk to consDB. With a ``sqlWriter`` it is only
+        used to read table schemas.
+    redisHelper : `RedisHelper`, optional
+        Used to announce completed writes for cross-pod coordination.
+        ``None`` skips the announcements, e.g. for backfilling.
+    locationConfig : `LocationConfig`
+        The location config; its ``location`` gates whether writes happen at
+        all (only "summit", "bts" and "tts" insert). Ignored with a
+        ``sqlWriter``, as nothing is written to the database.
+    asyncWrites : `bool`, optional
+        If ``True``, every write is handed off to a single background thread
+        so a slow or timing-out insert never blocks processing. Enable in the
+        live pods; leave ``False`` for synchronous tooling (e.g. backfill)
+        that relies on the blocking back-pressure and the bool return value.
+    sqlWriter : `ConsDBSqlWriter`, optional
+        If given, writes are collected by it, to be written as SQL files,
+        instead of being sent to consDB, and nothing is announced.
+    """
+
     def __init__(
         self,
         client: ConsDbClient,
-        redisHelper: RedisHelper,
+        redisHelper: RedisHelper | None,
         locationConfig: LocationConfig,
         asyncWrites: bool = False,
+        sqlWriter: ConsDBSqlWriter | None = None,
     ) -> None:
-        """Populate consDB from rapid analysis.
-
-        Parameters
-        ----------
-        client : `lsst.summit.utils.ConsDbClient`
-            The client used to talk to consDB.
-        redisHelper : `RedisHelper`
-            Used to announce completed writes for cross-pod coordination.
-        locationConfig : `LocationConfig`
-            The location config; its ``location`` gates whether writes happen
-            at all (only "summit", "bts" and "tts" insert).
-        asyncWrites : `bool`, optional
-            If ``True``, every write is handed off to a single background
-            thread so a slow or timing-out insert never blocks processing.
-            Enable in the live pods; leave ``False`` for synchronous tooling
-            (e.g. backfill) that relies on the blocking back-pressure and the
-            bool return value.
-        """
+        if asyncWrites and sqlWriter is not None:
+            raise ValueError("asyncWrites and sqlWriter cannot be used together")
         self.client = client
         self.redisHelper = redisHelper
         self.locationConfig = locationConfig
+        self.sqlWriter = sqlWriter
         # When asyncWrites is True every consDB write is handed off to a
         # single background thread, so that a slow or timing-out insert never
         # blocks the processing that triggered it. Nothing in rapid analysis
@@ -294,13 +321,31 @@ class ConsDBPopulator:
         Returns
         -------
         allowed : `bool`
-            True if location is one of "summit", "bts", or "tts".
+            True if location is one of "summit", "bts", or "tts", or if
+            writing to a ``sqlWriter``, which is allowed anywhere.
         """
+        if self.sqlWriter is not None:
+            return True
         location = self.locationConfig.location
         if location is None:
             logger.warning("LocationConfig.location is None; skipping consDB insert.")
             return False
         return str(location).lower() in ("summit", "bts", "tts")
+
+    def _announceResultInConsDb(self, instrument: str, table: str, obsId: int) -> None:
+        """Announce a completed write in redis, if there is a redisHelper.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name.
+        table : `str`
+            The table written to.
+        obsId : `int`
+            The obsId written.
+        """
+        if self.redisHelper is not None:
+            self.redisHelper.announceResultInConsDb(instrument, table, obsId)
 
     def _insertIfAllowed(
         self,
@@ -329,7 +374,7 @@ class ConsDBPopulator:
             The primary key used by consDB for the row (visit/exposure id or
             (day_obs, seq_num)).
         values : `dict[str, int | float | str]`
-            Column values to write; NaN values are removed.
+            Column values to write; non-finite values are removed.
         allowUpdate : `bool`
             Whether to allow updates to existing rows.
         onSuccess : `Callable` [[], `None`], optional
@@ -342,13 +387,16 @@ class ConsDBPopulator:
         -------
         inserted : `bool`
             ``True`` if an insert/update was attempted and succeeded. ``False``
-            if skipped (no values, or disallowed at this location) or if the
-            write was handed off to the background thread (in which case the
-            outcome is not yet known — async call sites must not rely on the
-            return value).
+            if skipped (no finite values, or disallowed at this location) or if
+            the write was handed off to the background thread (in which case
+            the outcome is not yet known; async call sites must not rely on
+            the return value).
         """
+        values = _removeNonFinite(values)
         if not values:
-            logger.warning(f"No values to insert into consDB for {instrument}.{table} with obsId {obsId}")
+            logger.warning(
+                f"No finite values to insert into consDB for {instrument}.{table} with obsId {obsId}"
+            )
             return False
 
         if not self._shouldInsert():  # called here again for safety
@@ -377,7 +425,7 @@ class ConsDBPopulator:
         # report success to the caller. Used by the backfill tooling, which
         # relies on both the back-pressure of a blocking insert and the bool.
         self._doInsert(instrument, table, obsId, values, allowUpdate)
-        if onSuccess is not None:
+        if onSuccess is not None and self.sqlWriter is None:
             onSuccess()
         return True
 
@@ -386,21 +434,38 @@ class ConsDBPopulator:
         instrument: str,
         table: str,
         obsId: int | tuple[int, int],
-        values: Mapping[str, int | float | str],
+        values: Mapping[str, object],
         allowUpdate: bool,
     ) -> None:
         """Perform the actual consDB insert, raising on failure.
 
-        This is the single point at which a row is written to consDB. It runs
-        on the calling thread for synchronous writes and on the background
-        writer thread (via `_backgroundInsert`) for async writes.
+        This is the single point at which a row is written to consDB, or
+        handed to the ``sqlWriter`` if there is one. It runs on the calling
+        thread for synchronous writes and on the background writer thread (via
+        `_backgroundInsert`) for async writes.
+
+        Parameters
+        ----------
+        instrument : `str`
+            Instrument name for the consDB schema.
+        table : `str`
+            Table name within the instrument schema.
+        obsId : `int` or `tuple` [`int`, `int`]
+            The row's ccd-level id, or its ``(day_obs, seq_num)``.
+        values : `Mapping` [`str`, `object`]
+            Column values to write.
+        allowUpdate : `bool`
+            Whether to allow updates to existing rows.
         """
+        if self.sqlWriter is not None:
+            self.sqlWriter.addRow(instrument, table, obsId, values, allowUpdate)
+            return
         try:
             self.client.insert(
                 instrument=instrument,
                 table=table,
                 obs_id=obsId,
-                values=_removeNans(values),
+                values=values,
                 allow_update=allowUpdate,
             )
         except HTTPError as e:
@@ -545,7 +610,7 @@ class ConsDBPopulator:
             obsId=obsId,  # integer form required for ccd-type tables
             values=values,
             allowUpdate=allowUpdate,
-            onSuccess=lambda: self.redisHelper.announceResultInConsDb(expRecord.instrument, table, obsId),
+            onSuccess=lambda: self._announceResultInConsDb(expRecord.instrument, table, obsId),
         )
 
     def populateHigherOrderMoments(
@@ -554,7 +619,32 @@ class ConsDBPopulator:
         detectorNum: int,
         singleVisitStarFootprints: SourceCatalog | Table,
         allowUpdate: bool = False,
-    ) -> None:
+    ) -> bool:
+        """Write a detector's PSF higher-order moment summaries to the
+        ``ccdvisit1_quicklook`` table.
+
+        Each column is the median, over the catalog's sources, of a
+        combination of the HSM higher-order moments.
+
+        Parameters
+        ----------
+        expRecord : `lsst.daf.butler.DimensionRecord`
+            The exposure or visit record the row is for.
+        detectorNum : `int`
+            The detector number the row is for.
+        singleVisitStarFootprints : `lsst.afw.table.SourceCatalog` or \
+                `astropy.table.Table`
+            The detector's ``single_visit_star_footprints`` catalog.
+        allowUpdate : `bool`, optional
+            Allow updating an existing row.
+
+        Returns
+        -------
+        inserted : `bool`
+            The return value of `_insertIfAllowed`, so ``False`` if the
+            catalog gave no finite values. Only meaningful for a synchronous
+            populator.
+        """
         # TODO: DM-54675 remove this whole function once we have these in
         # ExposureSummaryStats
         if isinstance(singleVisitStarFootprints, SourceCatalog):
@@ -592,13 +682,13 @@ class ConsDBPopulator:
         }
         table = f"cdb_{expRecord.instrument.lower()}.ccdvisit1_quicklook"
 
-        self._insertIfAllowed(
+        return self._insertIfAllowed(
             instrument=expRecord.instrument,
             table=table,
             obsId=obsId,  # integer form required for ccd-type tables
             values=values,
             allowUpdate=allowUpdate,
-            onSuccess=lambda: self.redisHelper.announceResultInConsDb(expRecord.instrument, table, obsId),
+            onSuccess=lambda: self._announceResultInConsDb(expRecord.instrument, table, obsId),
         )
 
     def populateCcdVisitRowZernikes(
@@ -718,7 +808,7 @@ class ConsDBPopulator:
             obsId=(expRecord.day_obs, expRecord.seq_num),
             values=values,
             allowUpdate=allowUpdate,
-            onSuccess=lambda: self.redisHelper.announceResultInConsDb(instrument, table, visit),
+            onSuccess=lambda: self._announceResultInConsDb(instrument, table, visit),
         )
 
     def populateArbitrary(
@@ -853,8 +943,9 @@ class ConsDBPopulator:
 
         Used by ``highLevelTools.backfillPackageVersions``. The table, column
         and dict shape (``toDict``) come from summit_utils, which also holds
-        the read side. The insert is synchronous, not via ``_insertIfAllowed``,
-        as the value is a dict rather than the scalars that helper takes.
+        the read side. The insert is synchronous, via `_doInsert` rather than
+        `_insertIfAllowed`, as the value is a dict rather than the scalars that
+        helper takes.
 
         Parameters
         ----------
@@ -880,10 +971,10 @@ class ConsDBPopulator:
             )
             return False
 
-        self.client.insert(
+        self._doInsert(
             instrument=instrument,
             table=f"cdb_{instrument.lower()}.{PACKAGE_VERSIONS_TABLE}",
-            obs_id=(
+            obsId=(
                 expRecord.day_obs,
                 expRecord.seq_num,
             ),  # tuple-form required for updating non ccd-type tables
@@ -891,6 +982,6 @@ class ConsDBPopulator:
                 PACKAGE_VERSIONS_COLUMN: packageVersions.toDict(),
                 "exposure_id": expRecord.id,
             },
-            allow_update=allowUpdate,
+            allowUpdate=allowUpdate,
         )
         return True

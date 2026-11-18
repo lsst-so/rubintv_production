@@ -56,6 +56,7 @@ from lsst.rubintv.production.predicates import (
     runningPyTest,
     runningScons,
 )
+from lsst.rubintv.production.utils import getDayObsRange
 from lsst.summit.utils.utils import getSite
 
 
@@ -531,6 +532,29 @@ class DetectorAndTaskPredicatesTestCase(lsst.utils.tests.TestCase):
             "lsst.pipe.tasks.calibrateImage.CalibrateImageTask",
         ):
             self.assertFalse(isCpVerifyTask(makeFakeTask(taskClassName)), taskClassName)
+
+
+class GetDayObsRangeTestCase(lsst.utils.tests.TestCase):
+    """Tests for `getDayObsRange`, which the consDB backfill script uses to
+    turn a first and last dayObs into the nights to run.
+
+    dayObs values are dates written as integers, so stepping them by adding
+    one would invent nights like 20260132; the range must follow the
+    calendar across month ends, leap days and year ends.
+    """
+
+    def test_followsTheCalendar(self) -> None:
+        self.assertEqual(getDayObsRange(20261130, 20261202), [20261130, 20261201, 20261202])
+        self.assertEqual(getDayObsRange(20280228, 20280301), [20280228, 20280229, 20280301])
+        self.assertEqual(getDayObsRange(20261231, 20270101), [20261231, 20270101])
+
+    def test_singleDay(self) -> None:
+        self.assertEqual(getDayObsRange(20261111, 20261111), [20261111])
+
+    def test_reversedRangeRaises(self) -> None:
+        # a swapped pair of arguments must fail loudly rather than run nothing
+        with self.assertRaises(ValueError):
+            getDayObsRange(20261111, 20261110)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
