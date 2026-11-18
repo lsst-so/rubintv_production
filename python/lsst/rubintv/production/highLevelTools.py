@@ -1066,6 +1066,13 @@ def backfillCcdVisit1QuicklookForDayAos(
     records = butler.query_dimension_records("visit", where=where, order_by="-visit.id")
 
     detectors = (191, 192, 195, 196, 199, 200, 203, 204)
+    dRefs = butler.query_datasets(
+        "zernikes",
+        where=f"{where} AND detector IN ({', '.join(str(d) for d in detectors)})",
+        limit=None,
+        explain=False,
+    )
+    zernikeRefs = {(int(dRef.dataId["visit"]), int(dRef.dataId["detector"])): dRef for dRef in dRefs}
 
     rowsInserted: dict[DimensionRecord, list[int]] = {}
     noData: dict[DimensionRecord, list[int]] = {}
@@ -1076,13 +1083,13 @@ def backfillCcdVisit1QuicklookForDayAos(
     ):
         physicalRotation: float | None = None
         for detector in detectors:
-            try:
-                zkTable = butler.get("zernikes", visit=record.id, detector=detector)
-            except DatasetNotFoundError:
+            zernikeRef = zernikeRefs.get((record.id, detector))
+            if zernikeRef is None:
                 if record not in noData:
                     noData[record] = []
                 noData[record].append(detector)
                 continue
+            zkTable = butler.get(zernikeRef)
 
             if physicalRotation is None:  # same for all detectors so only read it once
                 data = getEfdData(efdClient, "lsst.sal.MTRotator.rotation", expRecord=record)

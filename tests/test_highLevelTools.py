@@ -379,6 +379,19 @@ class BackfillCcdVisitAosTestCase(lsst.utils.tests.TestCase):
             {withData: [d for d in _CWFS_DETECTORS if d not in (191, 204)], withoutData: _CWFS_DETECTORS},
         )
 
+    def test_zernikesReadByRefFromOneQuery(self) -> None:
+        # Looking each detector up by data ID costs a registry query per
+        # detector, missing ones included, so the night's refs must come from
+        # a single query, with no limit, so none of the night is truncated
+        visit = cast(DimensionRecord, _FakeVisitRecord(instrument="LSSTCam", id=2025062400012))
+        butler = _FakeButler([visit], [SimpleNamespace(dataId={"visit": visit.id, "detector": 195})])
+
+        rowsInserted, _, _, _ = self.runBackfill(butler)
+
+        self.assertEqual(rowsInserted, {visit: [195]})
+        self.assertEqual(butler.nDataIdLookups, 0)
+        self.assertIsNone(butler.datasetsLimit)
+
 
 # backfillDay looks each step function up in the module when it runs it, so
 # patching these names stands in for the real backfills
