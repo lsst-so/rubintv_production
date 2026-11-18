@@ -151,6 +151,7 @@ python/lsst/rubintv/production/   # Main Python package
   aosRecipes.py                    # Zernike post-processing recipes
   timedServices.py                 # TimedMetadataServer, TMA telemetry
   consdbUtils.py                   # ConsDBPopulator - consolidated DB writes
+  consdbSqlWriter.py               # ConsDBSqlWriter - consDB writes as SQL upsert files
   channels.py                      # Channel definitions for RubinTV frontend
   performance.py                   # PerformanceMonitor - pipeline timing metrics
   cleanup.py                       # TempFileCleaner - daily housekeeping

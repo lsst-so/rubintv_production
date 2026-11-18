@@ -21,6 +21,8 @@
 
 """Test cases for consdbUtils."""
 
+import json
+import tempfile
 import threading
 import unittest
 import warnings
@@ -33,6 +35,7 @@ from astropy.table import Table
 import lsst.utils.tests
 from lsst.afw.image import ExposureSummaryStats
 from lsst.daf.butler import DimensionRecord
+from lsst.rubintv.production.consdbSqlWriter import ConsDBSqlWriter
 from lsst.rubintv.production.consdbUtils import (
     CCD_VISIT_MAPPING,
     VISIT_MIN_MED_MAX_MAPPING,
@@ -536,6 +539,95 @@ class AsyncWriteTestCase(lsst.utils.tests.TestCase):
 
         self.assertFalse(inserted)
         self.assertEqual(len(client.inserts), 0)
+
+    def test_sqlWriterCollectsWritesAtAnyLocation(self) -> None:
+        # File mode is for generating the backfill off the summit, so the
+        # location gate must not apply, nothing may go to the REST API, NaNs
+        # must still be dropped, and onSuccess (which announces the row as
+        # being in consDB) must not run, as nothing is in consDB yet
+        client = _RecordingClient()
+        writer = ConsDBSqlWriter(tempfile.mkdtemp())
+        writer.startFile(20250624, "test")
+        populator = ConsDBPopulator(
+            cast(ConsDbClient, client),
+            None,
+            cast(LocationConfig, SimpleNamespace(location="usdfprod")),
+            sqlWriter=writer,
+        )
+        called: list[bool] = []
+
+        inserted = populator._insertIfAllowed(
+            "LSSTCam",
+            "visit1_quicklook",
+            (20250624, 12),
+            {"visit_id": 2025062400012, "a": float("nan")},
+            True,
+            onSuccess=lambda: called.append(True),
+        )
+
+        self.assertTrue(inserted)
+        self.assertEqual(client.inserts, [])
+        self.assertEqual(called, [])
+        with open(writer.finishFile()) as f:
+            sql = f.read()
+        self.assertIn("INSERT INTO cdb_lsstcam.visit1_quicklook (day_obs, seq_num, visit_id)\n", sql)
+        self.assertIn("(20250624, 12, 2025062400012)", sql)
+
+    def test_populatePackageVersionsGoesToSqlWriter(self) -> None:
+        # package versions bypass _insertIfAllowed, and must still land in
+        # the files rather than going to the REST API
+        client = _RecordingClient()
+        writer = ConsDBSqlWriter(tempfile.mkdtemp())
+        writer.startFile(20250624, "test")
+        populator = ConsDBPopulator(
+            cast(ConsDbClient, client),
+            None,
+            cast(LocationConfig, SimpleNamespace(location="usdfprod")),
+            sqlWriter=writer,
+        )
+        pv = PackageVersions(versions={"ts_wep": "v1"})
+        expRecord = cast(
+            DimensionRecord,
+            SimpleNamespace(instrument="LSSTCam", day_obs=20250624, seq_num=123, id=2025062400123),
+        )
+
+        self.assertTrue(populator.populatePackageVersions(expRecord, pv, allowUpdate=True))
+        self.assertEqual(client.inserts, [])
+        with open(writer.finishFile()) as f:
+            sql = f.read()
+        self.assertIn(
+            f"INSERT INTO cdb_lsstcam.{PACKAGE_VERSIONS_TABLE} "
+            f"(day_obs, seq_num, exposure_id, {PACKAGE_VERSIONS_COLUMN})\n",
+            sql,
+        )
+        self.assertIn(f"(20250624, 123, 2025062400123, '{json.dumps(pv.toDict())}')", sql)
+
+    def test_sqlWriterAndAsyncWritesRejected(self) -> None:
+        # the writer isn't thread-safe, and async mode can't report success
+        with self.assertRaises(ValueError):
+            ConsDBPopulator(
+                cast(ConsDbClient, _RecordingClient()),
+                None,
+                cast(LocationConfig, SimpleNamespace(location="summit")),
+                asyncWrites=True,
+                sqlWriter=ConsDBSqlWriter(tempfile.mkdtemp()),
+            )
+
+    def test_noRedisHelperSkipsAnnouncement(self) -> None:
+        # a REST backfill run without redis must still write, just without
+        # announcing the row
+        client = _RecordingClient()
+        populator = ConsDBPopulator(
+            cast(ConsDbClient, client),
+            None,
+            cast(LocationConfig, SimpleNamespace(location="summit")),
+        )
+        moments = ("03", "12", "21", "30", "04", "13", "22", "31", "40")
+        catalog = Table({f"ext_shapeHSM_HigherOrderMomentsSource_{k}": [1.0] for k in moments})
+        expRecord = cast(DimensionRecord, SimpleNamespace(instrument="LSSTCam", id=2025062400012))
+
+        self.assertTrue(populator.populateHigherOrderMoments(expRecord, 4, catalog, allowUpdate=True))
+        self.assertEqual(len(client.inserts), 1)
 
     def test_syncModeReturnsTrueAndCallsOnSuccessInline(self) -> None:
         client = _RecordingClient()

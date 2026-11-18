@@ -50,6 +50,7 @@ from lsst.summit.utils.packageVersions import (
 from lsst.summit.utils.simonyi.mountAnalysis import MountErrors
 from lsst.summit.utils.utils import computeCcdExposureId, getDetectorIds
 
+from .consdbSqlWriter import ConsDBSqlWriter
 from .redisUtils import RedisHelper
 
 if TYPE_CHECKING:
@@ -179,34 +180,44 @@ def changeType(key: str, typeMapping: dict[str, str]) -> Callable[[int | float],
 
 
 class ConsDBPopulator:
+    """Populate consDB from rapid analysis.
+
+    Parameters
+    ----------
+    client : `lsst.summit.utils.ConsDbClient`
+        The client used to talk to consDB. With a ``sqlWriter`` it is only
+        used to read table schemas.
+    redisHelper : `RedisHelper`, optional
+        Used to announce completed writes for cross-pod coordination.
+        ``None`` skips the announcements, e.g. for backfilling.
+    locationConfig : `LocationConfig`
+        The location config; its ``location`` gates whether writes happen at
+        all (only "summit", "bts" and "tts" insert). Ignored with a
+        ``sqlWriter``, as nothing is written to the database.
+    asyncWrites : `bool`, optional
+        If ``True``, every write is handed off to a single background thread
+        so a slow or timing-out insert never blocks processing. Enable in the
+        live pods; leave ``False`` for synchronous tooling (e.g. backfill)
+        that relies on the blocking back-pressure and the bool return value.
+    sqlWriter : `ConsDBSqlWriter`, optional
+        If given, writes are collected by it, to be written as SQL files,
+        instead of being sent to consDB, and nothing is announced.
+    """
+
     def __init__(
         self,
         client: ConsDbClient,
-        redisHelper: RedisHelper,
+        redisHelper: RedisHelper | None,
         locationConfig: LocationConfig,
         asyncWrites: bool = False,
+        sqlWriter: ConsDBSqlWriter | None = None,
     ) -> None:
-        """Populate consDB from rapid analysis.
-
-        Parameters
-        ----------
-        client : `lsst.summit.utils.ConsDbClient`
-            The client used to talk to consDB.
-        redisHelper : `RedisHelper`
-            Used to announce completed writes for cross-pod coordination.
-        locationConfig : `LocationConfig`
-            The location config; its ``location`` gates whether writes happen
-            at all (only "summit", "bts" and "tts" insert).
-        asyncWrites : `bool`, optional
-            If ``True``, every write is handed off to a single background
-            thread so a slow or timing-out insert never blocks processing.
-            Enable in the live pods; leave ``False`` for synchronous tooling
-            (e.g. backfill) that relies on the blocking back-pressure and the
-            bool return value.
-        """
+        if asyncWrites and sqlWriter is not None:
+            raise ValueError("asyncWrites and sqlWriter cannot be used together")
         self.client = client
         self.redisHelper = redisHelper
         self.locationConfig = locationConfig
+        self.sqlWriter = sqlWriter
         # When asyncWrites is True every consDB write is handed off to a
         # single background thread, so that a slow or timing-out insert never
         # blocks the processing that triggered it. Nothing in rapid analysis
@@ -310,13 +321,31 @@ class ConsDBPopulator:
         Returns
         -------
         allowed : `bool`
-            True if location is one of "summit", "bts", or "tts".
+            True if location is one of "summit", "bts", or "tts", or if
+            writing to a ``sqlWriter``, which is allowed anywhere.
         """
+        if self.sqlWriter is not None:
+            return True
         location = self.locationConfig.location
         if location is None:
             logger.warning("LocationConfig.location is None; skipping consDB insert.")
             return False
         return str(location).lower() in ("summit", "bts", "tts")
+
+    def _announceResultInConsDb(self, instrument: str, table: str, obsId: int) -> None:
+        """Announce a completed write in redis, if there is a redisHelper.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The instrument name.
+        table : `str`
+            The table written to.
+        obsId : `int`
+            The obsId written.
+        """
+        if self.redisHelper is not None:
+            self.redisHelper.announceResultInConsDb(instrument, table, obsId)
 
     def _insertIfAllowed(
         self,
@@ -396,7 +425,7 @@ class ConsDBPopulator:
         # report success to the caller. Used by the backfill tooling, which
         # relies on both the back-pressure of a blocking insert and the bool.
         self._doInsert(instrument, table, obsId, values, allowUpdate)
-        if onSuccess is not None:
+        if onSuccess is not None and self.sqlWriter is None:
             onSuccess()
         return True
 
@@ -405,15 +434,32 @@ class ConsDBPopulator:
         instrument: str,
         table: str,
         obsId: int | tuple[int, int],
-        values: Mapping[str, int | float | str],
+        values: Mapping[str, object],
         allowUpdate: bool,
     ) -> None:
         """Perform the actual consDB insert, raising on failure.
 
-        This is the single point at which a row is written to consDB. It runs
-        on the calling thread for synchronous writes and on the background
-        writer thread (via `_backgroundInsert`) for async writes.
+        This is the single point at which a row is written to consDB, or
+        handed to the ``sqlWriter`` if there is one. It runs on the calling
+        thread for synchronous writes and on the background writer thread (via
+        `_backgroundInsert`) for async writes.
+
+        Parameters
+        ----------
+        instrument : `str`
+            Instrument name for the consDB schema.
+        table : `str`
+            Table name within the instrument schema.
+        obsId : `int` or `tuple` [`int`, `int`]
+            The row's ccd-level id, or its ``(day_obs, seq_num)``.
+        values : `Mapping` [`str`, `object`]
+            Column values to write.
+        allowUpdate : `bool`
+            Whether to allow updates to existing rows.
         """
+        if self.sqlWriter is not None:
+            self.sqlWriter.addRow(instrument, table, obsId, values, allowUpdate)
+            return
         try:
             self.client.insert(
                 instrument=instrument,
@@ -564,7 +610,7 @@ class ConsDBPopulator:
             obsId=obsId,  # integer form required for ccd-type tables
             values=values,
             allowUpdate=allowUpdate,
-            onSuccess=lambda: self.redisHelper.announceResultInConsDb(expRecord.instrument, table, obsId),
+            onSuccess=lambda: self._announceResultInConsDb(expRecord.instrument, table, obsId),
         )
 
     def populateHigherOrderMoments(
@@ -642,7 +688,7 @@ class ConsDBPopulator:
             obsId=obsId,  # integer form required for ccd-type tables
             values=values,
             allowUpdate=allowUpdate,
-            onSuccess=lambda: self.redisHelper.announceResultInConsDb(expRecord.instrument, table, obsId),
+            onSuccess=lambda: self._announceResultInConsDb(expRecord.instrument, table, obsId),
         )
 
     def populateCcdVisitRowZernikes(
@@ -762,7 +808,7 @@ class ConsDBPopulator:
             obsId=(expRecord.day_obs, expRecord.seq_num),
             values=values,
             allowUpdate=allowUpdate,
-            onSuccess=lambda: self.redisHelper.announceResultInConsDb(instrument, table, visit),
+            onSuccess=lambda: self._announceResultInConsDb(instrument, table, visit),
         )
 
     def populateArbitrary(
@@ -897,8 +943,9 @@ class ConsDBPopulator:
 
         Used by ``highLevelTools.backfillPackageVersions``. The table, column
         and dict shape (``toDict``) come from summit_utils, which also holds
-        the read side. The insert is synchronous, not via ``_insertIfAllowed``,
-        as the value is a dict rather than the scalars that helper takes.
+        the read side. The insert is synchronous, via `_doInsert` rather than
+        `_insertIfAllowed`, as the value is a dict rather than the scalars that
+        helper takes.
 
         Parameters
         ----------
@@ -924,10 +971,10 @@ class ConsDBPopulator:
             )
             return False
 
-        self.client.insert(
+        self._doInsert(
             instrument=instrument,
             table=f"cdb_{instrument.lower()}.{PACKAGE_VERSIONS_TABLE}",
-            obs_id=(
+            obsId=(
                 expRecord.day_obs,
                 expRecord.seq_num,
             ),  # tuple-form required for updating non ccd-type tables
@@ -935,6 +982,6 @@ class ConsDBPopulator:
                 PACKAGE_VERSIONS_COLUMN: packageVersions.toDict(),
                 "exposure_id": expRecord.id,
             },
-            allow_update=allowUpdate,
+            allowUpdate=allowUpdate,
         )
         return True
