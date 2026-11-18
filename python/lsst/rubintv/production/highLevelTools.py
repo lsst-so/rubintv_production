@@ -1074,9 +1074,8 @@ def backfillCcdVisit1QuicklookForDayAos(
     for nInsert, record in enumerate(
         tqdm(reversed(records), total=len(records), mininterval=30.0, ncols=120)
     ):
+        physicalRotation: float | None = None
         for detector in detectors:
-            t0 = time.time()
-
             try:
                 zkTable = butler.get("zernikes", visit=record.id, detector=detector)
             except DatasetNotFoundError:
@@ -1085,9 +1084,11 @@ def backfillCcdVisit1QuicklookForDayAos(
                 noData[record].append(detector)
                 continue
 
-            data = getEfdData(efdClient, "lsst.sal.MTRotator.rotation", expRecord=record)
-            physicalRotation = np.nanmean(data["actualPosition"])
+            if physicalRotation is None:  # same for all detectors so only read it once
+                data = getEfdData(efdClient, "lsst.sal.MTRotator.rotation", expRecord=record)
+                physicalRotation = float(np.nanmean(data["actualPosition"]))
 
+            t0 = time.time()  # deliberately time after the butler.get() and EFD query
             try:
                 consDbValues = computeRotatedZernikesForConsDB(zkTable, physicalRotation)
                 if not consDbValues:

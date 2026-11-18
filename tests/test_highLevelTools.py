@@ -28,17 +28,19 @@ import unittest
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Callable, cast
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import pandas as pd
 from astropy.table import Table
 
 import lsst.utils.tests
-from lsst.daf.butler import Butler, DimensionRecord
+from lsst.daf.butler import Butler, DatasetNotFoundError, DimensionRecord
 from lsst.rubintv.production.consdbSqlWriter import ConsDBSqlWriter
 from lsst.rubintv.production.consdbUtils import ConsDBPopulator
 from lsst.rubintv.production.highLevelTools import (
     BACKFILL_STEPS,
     DayBackfillResult,
+    backfillCcdVisit1QuicklookForDayAos,
     backfillCcdVisit1QuicklookForDayHigherOrderMoments,
     backfillDay,
     backfillPackageVersions,
@@ -158,6 +160,7 @@ class _RecordingPopulator:
     def __init__(self, emptyDetectors: tuple[int, ...] = ()) -> None:
         self.calls: list[tuple[DimensionRecord, PackageVersions, bool]] = []
         self.momentCalls: list[tuple[DimensionRecord, int, object, bool]] = []
+        self.zernikeCalls: list[tuple[DimensionRecord, int]] = []
         self.emptyDetectors = emptyDetectors
 
     def populatePackageVersions(
@@ -179,17 +182,28 @@ class _RecordingPopulator:
         self.momentCalls.append((expRecord, detectorNum, singleVisitStarFootprints, allowUpdate))
         return detectorNum not in self.emptyDetectors
 
+    def populateCcdVisitRowZernikes(
+        self,
+        visitRecord: DimensionRecord,
+        detectorNum: int,
+        zernikeValues: dict[str, float],
+        allowUpdate: bool = False,
+    ) -> None:
+        self.zernikeCalls.append((visitRecord, detectorNum))
+
 
 class _FakeButler:
     """A ``Butler`` stand-in serving canned records and dataset refs for the
     day, where ``get`` returns a ``(visit, detector)`` tuple in place of the
-    dataset.
+    dataset. ``get`` also takes a dataset type and data ID, counting each
+    such lookup in ``nDataIdLookups``.
     """
 
     def __init__(self, records: list[DimensionRecord], dRefs: list[SimpleNamespace] | None = None) -> None:
         self.records = records
         self.dRefs = dRefs or []
         self.datasetsLimit: int | None = -20_000
+        self.nDataIdLookups = 0
 
     def query_dimension_records(
         self, element: str, where: str = "", order_by: str = ""
@@ -202,7 +216,13 @@ class _FakeButler:
         self.datasetsLimit = limit
         return self.dRefs
 
-    def get(self, dRef: SimpleNamespace) -> tuple[int, int]:
+    def get(self, dRef: SimpleNamespace | str, **dataId: int) -> tuple[int, int]:
+        if isinstance(dRef, str):
+            self.nDataIdLookups += 1
+            matches = [ref for ref in self.dRefs if ref.dataId == dataId]
+            if not matches:
+                raise DatasetNotFoundError(f"No {dRef} for {dataId}")
+            dRef = matches[0]
         return (dRef.dataId["visit"], dRef.dataId["detector"])
 
 
@@ -297,6 +317,67 @@ class BackfillHigherOrderMomentsTestCase(lsst.utils.tests.TestCase):
         # query_datasets caps results at 20k by default and only warns when it
         # truncates, which a night of ~190 detectors per visit easily exceeds
         self.assertIsNone(butler.datasetsLimit)
+
+
+_CWFS_DETECTORS = [191, 192, 195, 196, 199, 200, 203, 204]
+
+
+class BackfillCcdVisitAosTestCase(lsst.utils.tests.TestCase):
+    """Tests for `backfillCcdVisit1QuicklookForDayAos`, with the EFD and the
+    zernike recipe faked.
+
+    The loop runs over the eight wavefront detectors of every visit, so
+    anything per visit done inside it is repeated eight times.
+    """
+
+    def runBackfill(self, butler: _FakeButler) -> tuple[Any, Any, Any, _RecordingPopulator]:
+        """Run the backfill with the EFD and the zernike recipe faked.
+
+        Parameters
+        ----------
+        butler : `_FakeButler`
+            The butler to read from.
+
+        Returns
+        -------
+        rowsInserted : `dict` [`DimensionRecord`, `list` [`int`]]
+            The detectors written, per visit.
+        noData : `dict` [`DimensionRecord`, `list` [`int`]]
+            The detectors with no zernikes, per visit.
+        efd : `unittest.mock.MagicMock`
+            The fake ``getEfdData``.
+        populator : `_RecordingPopulator`
+            The populator written to.
+        """
+        populator = _RecordingPopulator()
+        efd = MagicMock(return_value=pd.DataFrame({"actualPosition": [10.0, 12.0]}))
+        recipe = MagicMock(return_value={"z4": 1.0})
+        with patch(f"{_MODULE}.getEfdData", efd), patch(f"{_MODULE}.computeRotatedZernikesForConsDB", recipe):
+            rowsInserted, noData = backfillCcdVisit1QuicklookForDayAos(
+                cast(Butler, butler), cast(ConsDBPopulator, populator), 20250624, cast(Any, None)
+            )
+        # every detector of the visit is rotated by the visit's one angle
+        self.assertEqual([call.args[1] for call in recipe.call_args_list], [11.0] * recipe.call_count)
+        return rowsInserted, noData, efd, populator
+
+    def test_rotatorFetchedOncePerVisit(self) -> None:
+        # The rotator angle is per visit, so it must come from the EFD once
+        # per visit rather than once per detector, and not at all for a visit
+        # with no zernikes
+        withData = cast(DimensionRecord, _FakeVisitRecord(instrument="LSSTCam", id=2025062400012))
+        withoutData = cast(DimensionRecord, _FakeVisitRecord(instrument="LSSTCam", id=2025062400013))
+        dRefs = [SimpleNamespace(dataId={"visit": withData.id, "detector": det}) for det in (191, 204)]
+
+        rowsInserted, noData, efd, populator = self.runBackfill(_FakeButler([withData, withoutData], dRefs))
+
+        self.assertEqual(efd.call_count, 1)
+        self.assertIs(efd.call_args.kwargs["expRecord"], withData)
+        self.assertEqual(populator.zernikeCalls, [(withData, 191), (withData, 204)])
+        self.assertEqual(rowsInserted, {withData: [191, 204]})
+        self.assertEqual(
+            noData,
+            {withData: [d for d in _CWFS_DETECTORS if d not in (191, 204)], withoutData: _CWFS_DETECTORS},
+        )
 
 
 # backfillDay looks each step function up in the module when it runs it, so
