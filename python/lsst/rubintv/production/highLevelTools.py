@@ -29,7 +29,9 @@ import os
 import pickle
 import re
 import time
-from dataclasses import dataclass
+import traceback
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -962,8 +964,7 @@ def backfillCcdVisit1QuicklookForDay(
             slowInserts += 1
             time.sleep(30)  # give the DB some rest
             if slowInserts >= 3:
-                print(f"Aborted after {i} inserts due to poor ConsDB performance")
-                return rowsInserted, noData
+                raise RuntimeError(f"Aborted after {i} inserts due to poor ConsDB performance")
         else:  # reset as soon as DB is performing well again
             slowInserts = 0
 
@@ -1029,8 +1030,7 @@ def backfillCcdVisit1QuicklookForDayHigherOrderMoments(
             slowInserts += 1
             time.sleep(30)  # give the DB some rest
             if slowInserts >= 3:
-                print(f"Aborted after {i} visits due to poor ConsDB performance")
-                return rowsInserted, noData
+                raise RuntimeError(f"Aborted after {i} visits due to poor ConsDB performance")
         else:  # reset as soon as DB is performing well again
             slowInserts = 0
 
@@ -1114,10 +1114,142 @@ def backfillCcdVisit1QuicklookForDayAos(
                 slowInserts += 1
                 time.sleep(30)  # give the DB some rest
                 if slowInserts >= 3:
-                    print(f"Aborted after {nInsert} inserts due to poor ConsDB performance")
-                    return rowsInserted, noData
+                    raise RuntimeError(f"Aborted after {nInsert} inserts due to poor ConsDB performance")
 
             else:
                 slowInserts = 0
 
     return rowsInserted, noData
+
+
+BACKFILL_STEPS = (
+    "visit1Quicklook",
+    "visit1QuicklookAos",
+    "ccdVisit1Quicklook",
+    "ccdVisit1QuicklookHigherOrderMoments",
+    "ccdVisit1QuicklookAos",
+    "packageVersions",
+)
+"""The steps `backfillDay` runs, in the order it runs them."""
+
+
+@dataclass
+class DayBackfillResult:
+    """The outcome of `backfillDay` for one dayObs."""
+
+    dayObs: int
+    """The dayObs backfilled."""
+    stepResults: dict[str, Any] = field(default_factory=dict)
+    """Each step that completed, mapped to its backfill function's return
+    value."""
+    errors: dict[str, str] = field(default_factory=dict)
+    """Each step that raised, mapped to its formatted traceback."""
+    outputFiles: list[str] = field(default_factory=list)
+    """The SQL files written, one per step, if writing to files."""
+    skippedSteps: list[str] = field(default_factory=list)
+    """The steps skipped as their SQL file had already been written."""
+
+    @property
+    def succeeded(self) -> bool:
+        """Whether every step ran without raising (`bool`)."""
+        return not self.errors
+
+
+def backfillDay(
+    butler: Butler,
+    populator: ConsDBPopulator,
+    dayObs: int,
+    efdClient: EfdClient,
+    metadataPath: str | None = None,
+    steps: Iterable[str] | None = None,
+    overwrite: bool = False,
+) -> DayBackfillResult:
+    """Run every consDB backfill for a dayObs.
+
+    A step that raises is logged and recorded in the result, and the other
+    steps still run. Every write is an upsert, so rerunning a day is safe.
+
+    If the populator has a ``sqlWriter``, each step's rows are written to
+    their own SQL file, ``<dayObs>/<step>.sql``, as the step runs. The file
+    only gets that name once the step completes, and a step whose file
+    already exists is skipped unless ``overwrite`` is set, so rerunning a day
+    runs only the steps that failed or never ran.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The butler to read the day's records and datasets from.
+    populator : `ConsDBPopulator`
+        The populator to write with. Must be synchronous.
+    dayObs : `int`
+        The dayObs to backfill.
+    efdClient : `lsst_efd_client.EfdClient`
+        The EFD client, for the rotator angles.
+    metadataPath : `str`, optional
+        The directory of merged AOS metadata files that package versions are
+        read from. The ``packageVersions`` step is skipped if not given.
+    steps : `Iterable` [`str`], optional
+        The steps to run, from `BACKFILL_STEPS`. Defaults to all of them.
+    overwrite : `bool`, optional
+        Rerun the steps whose SQL files already exist, replacing the files.
+        Only used with a ``sqlWriter``.
+
+    Returns
+    -------
+    result : `DayBackfillResult`
+        What each step returned, and the error from any that raised.
+    """
+    log = logging.getLogger(__name__)
+
+    runners: dict[str, Callable[[], Any]] = {
+        "visit1Quicklook": lambda: backfillVisit1QuicklookForDay(butler, populator, dayObs, efdClient),
+        "visit1QuicklookAos": lambda: backfillVisit1QuicklookForDayAos(butler, populator, dayObs),
+        "ccdVisit1Quicklook": lambda: backfillCcdVisit1QuicklookForDay(butler, populator, dayObs),
+        "ccdVisit1QuicklookHigherOrderMoments": lambda: backfillCcdVisit1QuicklookForDayHigherOrderMoments(
+            butler, populator, dayObs
+        ),
+        "ccdVisit1QuicklookAos": lambda: backfillCcdVisit1QuicklookForDayAos(
+            butler, populator, dayObs, efdClient
+        ),
+    }
+    if metadataPath is not None:
+        path = metadataPath
+        runners["packageVersions"] = lambda: backfillPackageVersions(
+            butler, populator, path, dayObs, "LSSTCam"
+        )
+
+    requested = set(runners) if steps is None else set(steps)
+    unknown = requested - set(BACKFILL_STEPS)
+    if unknown:
+        raise ValueError(f"Unknown backfill steps {sorted(unknown)}; choose from {BACKFILL_STEPS}")
+    if requested - set(runners):
+        raise ValueError("The packageVersions step needs a metadataPath")
+
+    writer = populator.sqlWriter
+    if writer is not None and writer.isFileOpen:
+        raise RuntimeError("The sqlWriter already has a file open")
+
+    result = DayBackfillResult(dayObs)
+    for step in BACKFILL_STEPS:
+        if step not in requested:
+            continue
+        if writer is not None and not overwrite and writer.isFileWritten(dayObs, step):
+            log.info(f"Skipping backfill step {step} for {dayObs=} as it has already been written")
+            result.skippedSteps.append(step)
+            continue
+
+        log.info(f"Running backfill step {step} for {dayObs=}")
+        try:
+            if writer is not None:
+                writer.startFile(dayObs, step)
+            result.stepResults[step] = runners[step]()
+            if writer is not None:
+                result.outputFiles.append(writer.finishFile())
+        except Exception:
+            log.exception(f"Backfill step {step} failed for {dayObs=}")
+            result.errors[step] = traceback.format_exc()
+        finally:
+            if writer is not None:
+                writer.discardFile()
+
+    return result

@@ -27,16 +27,20 @@ import tempfile
 import unittest
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, Callable, cast
 from unittest.mock import patch
 
 from astropy.table import Table
 
 import lsst.utils.tests
 from lsst.daf.butler import Butler, DimensionRecord
+from lsst.rubintv.production.consdbSqlWriter import ConsDBSqlWriter
 from lsst.rubintv.production.consdbUtils import ConsDBPopulator
 from lsst.rubintv.production.highLevelTools import (
+    BACKFILL_STEPS,
+    DayBackfillResult,
     backfillCcdVisit1QuicklookForDayHigherOrderMoments,
+    backfillDay,
     backfillPackageVersions,
     checkCcdVisitQuicklookTable,
     checkVisitQuicklookTable,
@@ -293,6 +297,172 @@ class BackfillHigherOrderMomentsTestCase(lsst.utils.tests.TestCase):
         # query_datasets caps results at 20k by default and only warns when it
         # truncates, which a night of ~190 detectors per visit easily exceeds
         self.assertIsNone(butler.datasetsLimit)
+
+
+# backfillDay looks each step function up in the module when it runs it, so
+# patching these names stands in for the real backfills
+_STEP_FUNCTIONS = {
+    "visit1Quicklook": "backfillVisit1QuicklookForDay",
+    "visit1QuicklookAos": "backfillVisit1QuicklookForDayAos",
+    "ccdVisit1Quicklook": "backfillCcdVisit1QuicklookForDay",
+    "ccdVisit1QuicklookHigherOrderMoments": "backfillCcdVisit1QuicklookForDayHigherOrderMoments",
+    "ccdVisit1QuicklookAos": "backfillCcdVisit1QuicklookForDayAos",
+    "packageVersions": "backfillPackageVersions",
+}
+
+
+class BackfillDayTestCase(lsst.utils.tests.TestCase):
+    """Tests for `backfillDay`, with every backfill step faked.
+
+    Pins the contract a long multi-day run relies on: every step runs, in
+    order, even after one fails; failures are recorded rather than raised; in
+    file mode each step writes its own file as it goes, which only gets its
+    final name if the step completes, and a step whose file exists is
+    skipped, so rerunning a list of days only redoes what didn't finish.
+    """
+
+    def setUp(self) -> None:
+        self.writer = ConsDBSqlWriter(tempfile.mkdtemp())
+
+    def runDay(
+        self,
+        sqlWriter: ConsDBSqlWriter | None,
+        failing: tuple[str, ...] = (),
+        interrupting: tuple[str, ...] = (),
+        **kwargs: Any,
+    ) -> tuple[DayBackfillResult, list[str]]:
+        """Run backfillDay with fake steps, returning the steps called.
+
+        Parameters
+        ----------
+        sqlWriter : `ConsDBSqlWriter`, optional
+            The writer for the populator, or `None` for REST mode. Each fake
+            step adds a row to it.
+        failing : `tuple` [`str`, ...], optional
+            The steps that raise an error, after adding their row.
+        interrupting : `tuple` [`str`, ...], optional
+            The steps that raise `KeyboardInterrupt`, after adding their row.
+        **kwargs
+            Passed on to `backfillDay`.
+
+        Returns
+        -------
+        result : `DayBackfillResult`
+            What `backfillDay` returned.
+        calls : `list` [`str`]
+            The steps run, in order.
+        """
+        calls: list[str] = []
+
+        def makeStep(step: str) -> Callable[..., str]:
+            def run(*args: Any, **kwargs: Any) -> str:
+                calls.append(step)
+                if sqlWriter is not None:
+                    sqlWriter.addRow("LSSTCam", "visit1_quicklook", (20250624, len(calls)), {"x": 1.0}, True)
+                if step in failing:
+                    raise RuntimeError(f"{step} broke")
+                if step in interrupting:
+                    raise KeyboardInterrupt
+                return f"{step} result"
+
+            return run
+
+        populator = cast(ConsDBPopulator, SimpleNamespace(sqlWriter=sqlWriter))
+        fakes: dict[str, Any] = {function: makeStep(step) for step, function in _STEP_FUNCTIONS.items()}
+        with patch.multiple(_MODULE, **fakes):
+            result = backfillDay(cast(Butler, None), populator, 20250624, cast(Any, None), **kwargs)
+        return result, calls
+
+    def getWrittenSteps(self) -> list[str]:
+        """Return the steps with a finished file for the day.
+
+        Returns
+        -------
+        steps : `list` [`str`]
+            The steps, in `BACKFILL_STEPS` order.
+        """
+        return [step for step in BACKFILL_STEPS if self.writer.isFileWritten(20250624, step)]
+
+    def test_failedStepRecordedAndLaterStepsStillRun(self) -> None:
+        with self.assertLogs(_MODULE, level="ERROR"):
+            result, calls = self.runDay(None, failing=("ccdVisit1Quicklook",), metadataPath="/meta")
+
+        self.assertEqual(calls, list(BACKFILL_STEPS))
+        self.assertFalse(result.succeeded)
+        self.assertEqual(list(result.errors), ["ccdVisit1Quicklook"])
+        self.assertIn("ccdVisit1Quicklook broke", result.errors["ccdVisit1Quicklook"])  # the traceback
+        self.assertEqual(set(result.stepResults), set(BACKFILL_STEPS) - {"ccdVisit1Quicklook"})
+        self.assertEqual(result.stepResults["visit1Quicklook"], "visit1Quicklook result")
+
+    def test_stepSelection(self) -> None:
+        # package versions need the metadata sidecars, so they're only run
+        # when given a path to them
+        _, calls = self.runDay(None)
+        self.assertEqual(calls, [s for s in BACKFILL_STEPS if s != "packageVersions"])
+
+        # a chosen subset still runs in the canonical order
+        _, calls = self.runDay(None, steps=["ccdVisit1QuicklookAos", "visit1Quicklook"])
+        self.assertEqual(calls, ["visit1Quicklook", "ccdVisit1QuicklookAos"])
+
+        with self.assertRaises(ValueError):
+            self.runDay(None, steps=["packageVersions"])
+        with self.assertRaises(ValueError):
+            self.runDay(None, steps=["notAStep"])
+
+    def test_fileModeWritesAFilePerStep(self) -> None:
+        result, calls = self.runDay(self.writer)
+
+        self.assertTrue(result.succeeded)
+        self.assertEqual(self.getWrittenSteps(), calls)
+        self.assertEqual(result.outputFiles, [self.writer.getFilePath(20250624, step) for step in calls])
+
+    def test_fileModeFailedStepKeepsTheOthers(self) -> None:
+        # Hours of work in the other steps must survive one step failing.
+        # The failed step leaves no file, not even a partial one, and its
+        # rows must not leak into the next step's file
+        with self.assertLogs(_MODULE, level="ERROR"):
+            result, calls = self.runDay(self.writer, failing=("visit1QuicklookAos",))
+
+        self.assertEqual(self.getWrittenSteps(), [step for step in calls if step != "visit1QuicklookAos"])
+        dayDir = os.path.dirname(self.writer.getFilePath(20250624, "x"))
+        self.assertFalse(any(name.endswith(".partial") for name in os.listdir(dayDir)))
+        self.assertFalse(self.writer.isFileOpen)
+        with open(self.writer.getFilePath(20250624, "ccdVisit1Quicklook")) as f:
+            self.assertEqual(f.read().count("INSERT INTO"), 1)
+
+    def test_rerunOnlyRunsUnwrittenSteps(self) -> None:
+        # resuming: after a failure, a rerun of the day runs just the step
+        # that failed, and overwrite reruns everything
+        with self.assertLogs(_MODULE, level="ERROR"):
+            self.runDay(self.writer, failing=("ccdVisit1QuicklookAos",))
+
+        result, calls = self.runDay(self.writer)
+        self.assertEqual(calls, ["ccdVisit1QuicklookAos"])
+        self.assertEqual(
+            result.skippedSteps, [s for s in BACKFILL_STEPS[:-1] if s != "ccdVisit1QuicklookAos"]
+        )
+        self.assertTrue(result.succeeded)
+
+        _, calls = self.runDay(self.writer, overwrite=True)
+        self.assertEqual(calls, list(BACKFILL_STEPS[:-1]))
+
+    def test_interruptLeavesNoPartialFile(self) -> None:
+        # Ctrl-C in a notebook must still clean up, or the writer would be
+        # left with a file open and the next run would refuse to start
+        with self.assertRaises(KeyboardInterrupt):
+            self.runDay(self.writer, interrupting=("ccdVisit1Quicklook",))
+
+        self.assertFalse(self.writer.isFileOpen)
+        self.assertEqual(self.getWrittenSteps(), ["visit1Quicklook", "visit1QuicklookAos"])
+        result, calls = self.runDay(self.writer)
+        self.assertTrue(result.succeeded)
+        self.assertEqual(calls[0], "ccdVisit1Quicklook")
+
+    def test_fileModeRefusesAnOpenFile(self) -> None:
+        # rows written outside backfillDay would otherwise land in its files
+        self.writer.startFile(20250101, "manual")
+        with self.assertRaises(RuntimeError):
+            self.runDay(self.writer)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
