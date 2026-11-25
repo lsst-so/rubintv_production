@@ -144,5 +144,6 @@ def getDayObsRange(firstDayObs: int, lastDayObs: int) -> list[int]:
         raise ValueError(f"lastDayObs {lastDayObs} is before firstDayObs {firstDayObs}")
     dayObsRange = [firstDayObs]
     while dayObsRange[-1] < lastDayObs:
+        # dayObs are dates written as ints, so +1 would step to e.g. 20261132
         dayObsRange.append(offsetDayObs(dayObsRange[-1], 1))
     return dayObsRange

@@ -964,6 +964,7 @@ def backfillCcdVisit1QuicklookForDay(
             slowInserts += 1
             time.sleep(30)  # give the DB some rest
             if slowInserts >= 3:
+                # raised, not returned, so backfillDay sees the step fail
                 raise RuntimeError(f"Aborted after {i} inserts due to poor ConsDB performance")
         else:  # reset as soon as DB is performing well again
             slowInserts = 0
@@ -1000,6 +1001,8 @@ def backfillCcdVisit1QuicklookForDayHigherOrderMoments(
     """
     where = f"visit.day_obs={dayObs} AND instrument='LSSTCam'"
     records = butler.query_dimension_records("visit", where=where, order_by="visit.id")
+    # limit=None as the default caps at 20k, with only a warning, and a night
+    # has ~190 detectors per visit
     dRefs = butler.query_datasets("single_visit_star_footprints", where=where, limit=None, explain=False)
 
     dRefsByVisit: dict[int, list[DatasetRef]] = {}
@@ -1030,6 +1033,7 @@ def backfillCcdVisit1QuicklookForDayHigherOrderMoments(
             slowInserts += 1
             time.sleep(30)  # give the DB some rest
             if slowInserts >= 3:
+                # raised, not returned, so backfillDay sees the step fail
                 raise RuntimeError(f"Aborted after {i} visits due to poor ConsDB performance")
         else:  # reset as soon as DB is performing well again
             slowInserts = 0
@@ -1066,6 +1070,8 @@ def backfillCcdVisit1QuicklookForDayAos(
     records = butler.query_dimension_records("visit", where=where, order_by="-visit.id")
 
     detectors = (191, 192, 195, 196, 199, 200, 203, 204)
+    # One query for the night, rather than a get by data ID per detector,
+    # each of which is a registry lookup, missing detectors included.
     dRefs = butler.query_datasets(
         "zernikes",
         where=f"{where} AND detector IN ({', '.join(str(d) for d in detectors)})",
@@ -1122,6 +1128,7 @@ def backfillCcdVisit1QuicklookForDayAos(
                 slowInserts += 1
                 time.sleep(30)  # give the DB some rest
                 if slowInserts >= 3:
+                    # raised, not returned, so backfillDay sees the step fail
                     raise RuntimeError(f"Aborted after {nInsert} inserts due to poor ConsDB performance")
 
             else:
@@ -1257,6 +1264,8 @@ def backfillDay(
             log.exception(f"Backfill step {step} failed for {dayObs=}")
             result.errors[step] = traceback.format_exc()
         finally:
+            # On any exit short of finishing, Ctrl-C included, so no partial
+            # file is left and the writer is free for the next step or run.
             if writer is not None:
                 writer.discardFile()
 

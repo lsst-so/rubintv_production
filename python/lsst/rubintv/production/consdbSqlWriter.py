@@ -45,6 +45,8 @@ ObsId = int | tuple[int, ...]
 
 _IDENTIFIER = re.compile(r"^[a-z_][a-z0-9_]*$")
 
+# Owned by the hinfo service and refused by the REST API: every other table's
+# key is resolved against them.
 _FORBIDDEN_TABLES = frozenset({"exposure", "ccdexposure"})
 
 _SEQ_NUM_KEY = ("day_obs", "seq_num")
@@ -136,6 +138,8 @@ def _toSqlLiteral(value: object) -> str:
         return _toSqlLiteral(json.dumps(value))
     if isinstance(value, str):
         quoted = value.replace("'", "''")
+        # E'' strings read backslashes the same way whatever the server's
+        # standard_conforming_strings setting is
         if "\\" in value:
             return "E'" + quoted.replace("\\", "\\\\") + "'"
         return "'" + quoted + "'"
@@ -180,6 +184,9 @@ class ConsDBSqlWriter:
     """
 
     def __init__(self, outputDir: str, rowsPerStatement: int = 1000) -> None:
+        # Checked here, before a run starts, not when the first file is
+        # written, possibly hours in, and by writing a file rather than by
+        # inferring it from permissions.
         if not os.path.isdir(outputDir):
             raise FileNotFoundError(f"Output directory {outputDir} does not exist")
         try:
@@ -311,12 +318,14 @@ class ConsDBSqlWriter:
             raise ValueError("ConsDBSqlWriter only writes upserts, so allowUpdate must be True")
         qualifiedTable = _qualifyTable(instrument, table)
 
+        # rendered now, so a bad value fails the write that made it, not a
+        # later one that happens to flush it
         row = {_checkIdentifier(column): _toSqlLiteral(value) for column, value in values.items()}
         if isinstance(obsId, tuple):
             if len(obsId) not in (2, 3):
                 raise ValueError(f"obsId tuple must be (day_obs, seq_num[, detector]), got {obsId!r}")
             keyColumns = _SEQ_NUM_KEY if len(obsId) == 2 else _DETECTOR_KEY
-            for column in keyColumns:
+            for column in keyColumns:  # the obsId wins, as the URL does for the REST API
                 row.pop(column, None)
         else:
             if not qualifiedTable.split(".")[1].startswith("ccdvisit"):
@@ -327,6 +336,10 @@ class ConsDBSqlWriter:
             if clashes:
                 raise ValueError(f"Key columns {sorted(clashes)} come from the obsId, not the values")
 
+        # A statement needs one column list, so any change of table, key or
+        # columns starts a new one; only consecutive rows are batched, which
+        # keeps the statements in the order of the writes. A repeat write to a
+        # pending row replaces it, as an upsert can't touch a row twice.
         keyLength = len(obsId) if isinstance(obsId, tuple) else 1
         batchKey = (qualifiedTable, keyLength, tuple(sorted(row)))
         batchIsFull = len(self._batchRows) >= self.rowsPerStatement and obsId not in self._batchRows
@@ -354,6 +367,8 @@ class ConsDBSqlWriter:
         )
         self._file.close()
         self._file = None
+        # The rename is atomic, so a .sql file is never seen incomplete: a
+        # resumed run skips any step that has one.
         finalPath = self._partialPath.removesuffix(".partial")
         os.replace(self._partialPath, finalPath)
         return finalPath
@@ -383,7 +398,7 @@ class ConsDBSqlWriter:
         """
         assert self._file is not None
         self._file.write(text)
-        self._file.flush()
+        self._file.flush()  # so a long step's progress shows on disk as it goes
 
     def _flushBatch(self) -> None:
         """Write the pending rows as one statement, if there are any."""

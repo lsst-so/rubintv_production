@@ -392,6 +392,8 @@ class ConsDBPopulator:
             the outcome is not yet known; async call sites must not rely on
             the return value).
         """
+        # Stripped before the empty check, so an all-NaN row is skipped rather
+        # than reaching the client as an empty insert, which raises.
         values = _removeNonFinite(values)
         if not values:
             logger.warning(
@@ -425,7 +427,7 @@ class ConsDBPopulator:
         # report success to the caller. Used by the backfill tooling, which
         # relies on both the back-pressure of a blocking insert and the bool.
         self._doInsert(instrument, table, obsId, values, allowUpdate)
-        if onSuccess is not None and self.sqlWriter is None:
+        if onSuccess is not None and self.sqlWriter is None:  # a file write puts nothing in consDB
             onSuccess()
         return True
 

@@ -145,20 +145,30 @@ def backfillDaysInParallel(days: list[int], nWorkers: int, childArgs: list[str],
     failedDays : `list` [`int`]
         The days whose process exited with an error.
     """
+    # Processes, not threads: about half of each butler read holds the GIL,
+    # so threads gave only ~2x (55 ms/read serially, 29 ms with 16 threads).
+    # Each day re-runs this script in a fresh interpreter, rather than using
+    # multiprocessing, so it builds its own clients (an EfdClient can't be
+    # pickled) and all its output, tqdm bars included, goes to its own log.
     os.makedirs(logDir, exist_ok=True)
     pending = list(days)
     running: dict[subprocess.Popen[bytes], int] = {}
     failedDays: list[int] = []
     nDone = 0
     try:
+        # Days are started and polled from the main thread, as calling Popen
+        # from worker threads made Numba warn about forking from one.
         while pending or running:
             while pending and len(running) < nWorkers:
                 dayObs = pending.pop(0)
+                # appended, so a rerun keeps the log of an earlier failure
                 with open(os.path.join(logDir, f"{dayObs}.log"), "a") as log:
                     child = subprocess.Popen(
                         [sys.executable, os.path.abspath(__file__), str(dayObs), *childArgs],
                         stdout=log,
                         stderr=subprocess.STDOUT,
+                        # A session of its own, so a terminal Ctrl-C reaches
+                        # only this launcher, which signals each day once.
                         start_new_session=True,
                     )
                 running[child] = dayObs
@@ -224,6 +234,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     days = getDayObsRange(args.first_day_obs, args.last_day_obs or args.first_day_obs)
+    # checks the output directory once, up front, not hours into a run
     ConsDBSqlWriter(args.output_dir)
 
     if len(days) == 1:
