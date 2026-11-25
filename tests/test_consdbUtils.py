@@ -21,22 +21,27 @@
 
 """Test cases for consdbUtils."""
 
+import json
+import tempfile
 import threading
 import unittest
+import warnings
 from types import SimpleNamespace
 from typing import Any, cast
 
 import numpy as np
+from astropy.table import Table
 
 import lsst.utils.tests
 from lsst.afw.image import ExposureSummaryStats
 from lsst.daf.butler import DimensionRecord
+from lsst.rubintv.production.consdbSqlWriter import ConsDBSqlWriter
 from lsst.rubintv.production.consdbUtils import (
     CCD_VISIT_MAPPING,
     VISIT_MIN_MED_MAX_MAPPING,
     VISIT_MIN_MED_MAX_TOTAL_MAPPING,
     ConsDBPopulator,
-    _removeNans,
+    _removeNonFinite,
     changeType,
 )
 from lsst.rubintv.production.locationConfig import LocationConfig
@@ -155,39 +160,40 @@ class MappingShapeTestCase(lsst.utils.tests.TestCase):
             )
 
 
-class RemoveNansTestCase(lsst.utils.tests.TestCase):
-    """Tests for the private `_removeNans` helper."""
+class RemoveNonFiniteTestCase(lsst.utils.tests.TestCase):
+    """Tests for the private `_removeNonFinite` helper."""
 
     def test_dropsPlainFloatNan(self) -> None:
-        out = _removeNans({"a": 1.0, "b": float("nan"), "c": 2.0})
+        out = _removeNonFinite({"a": 1.0, "b": float("nan"), "c": 2.0})
         self.assertEqual(out, {"a": 1.0, "c": 2.0})
 
     def test_dropsNumpyFloatNan(self) -> None:
-        out = _removeNans({"a": 1.0, "b": np.float64("nan"), "c": np.float32("nan")})
+        out = _removeNonFinite({"a": 1.0, "b": np.float64("nan"), "c": np.float32("nan")})
         self.assertEqual(out, {"a": 1.0})
 
     def test_keepsZeroAndNegative(self) -> None:
         # 0.0 and negative values are valid numbers, not NaN — they must
         # not be silently dropped along with the NaNs.
-        out = _removeNans({"a": 0.0, "b": -1.5, "c": float("nan")})
+        out = _removeNonFinite({"a": 0.0, "b": -1.5, "c": float("nan")})
         self.assertEqual(out, {"a": 0.0, "b": -1.5})
 
-    def test_keepsInfinity(self) -> None:
-        # Infinity is not NaN; the helper only filters out NaN.
-        out = _removeNans({"a": float("inf"), "b": float("-inf"), "c": float("nan")})
-        self.assertEqual(out, {"a": float("inf"), "b": float("-inf")})
+    def test_dropsInfinity(self) -> None:
+        # JSON can't carry infinity any more than NaN, so the consDB client
+        # rejects both before sending; inf must be dropped too.
+        out = _removeNonFinite({"a": float("inf"), "b": np.float32("-inf"), "c": 1.0})
+        self.assertEqual(out, {"c": 1.0})
 
     def test_keepsIntsAndStrings(self) -> None:
-        out = _removeNans({"i": 42, "s": "hello", "f": float("nan")})
+        out = _removeNonFinite({"i": 42, "s": "hello", "f": float("nan")})
         self.assertEqual(out, {"i": 42, "s": "hello"})
 
     def test_emptyMapping(self) -> None:
-        self.assertEqual(_removeNans({}), {})
+        self.assertEqual(_removeNonFinite({}), {})
 
     def test_returnsNewDict(self) -> None:
         # The helper builds a new dict rather than mutating its input.
         original = {"a": 1.0, "b": float("nan")}
-        result = _removeNans(original)
+        result = _removeNonFinite(original)
         self.assertIsNot(result, original)
         self.assertIn("b", original)  # original untouched
 
@@ -458,6 +464,170 @@ class AsyncWriteTestCase(lsst.utils.tests.TestCase):
         self.assertFalse(returned)
         populator.flush()
         self.assertEqual(len(client.inserts), 0)
+
+    def test_allNonFiniteValuesSkipInsert(self) -> None:
+        # Regression: the empty-values guard used to run before the NaNs were
+        # stripped, so an all-NaN row (e.g. the zernikes for a detector with
+        # no donuts) reached the real client as an empty insert, which raises
+        # ValueError and killed the synchronous backfill.
+        client = _RecordingClient()
+        populator = self._makePopulator(client, asyncWrites=False)
+
+        with self.assertLogs("lsst.rubintv.production.consdbUtils", level="WARNING"):
+            returned = populator._insertIfAllowed(
+                "LSSTCam", "t", 1, {"z4": float("nan"), "z5": np.float64("nan"), "z6": float("inf")}, False
+            )
+        self.assertFalse(returned)
+        self.assertEqual(len(client.inserts), 0)
+
+    def test_nonFiniteValuesStrippedBeforeInsert(self) -> None:
+        # A partly non-finite row must still be written, minus the bad
+        # columns, as the client would reject the whole row otherwise.
+        client = _RecordingClient()
+        populator = self._makePopulator(client, asyncWrites=False)
+
+        populator._insertIfAllowed(
+            "LSSTCam", "t", 1, {"a": 1.0, "b": float("nan"), "c": float("-inf")}, False
+        )
+        self.assertEqual(client.inserts[0]["values"], {"a": 1.0})
+
+    def test_populateHigherOrderMoments(self) -> None:
+        # Pins each consDB column to its moment combination, so a swapped
+        # moment or a renamed column shows up here. The second source is all
+        # NaN and must be ignored by the medians, not poison them.
+        client = _RecordingClient()
+        populator = self._makePopulator(client, asyncWrites=False)
+        moments = {"03": 1, "12": 2, "21": 3, "30": 4, "04": 5, "13": 6, "22": 7, "31": 10, "40": 9}
+        catalog = Table(
+            {f"ext_shapeHSM_HigherOrderMomentsSource_{k}": [float(v), np.nan] for k, v in moments.items()}
+        )
+        expRecord = cast(DimensionRecord, SimpleNamespace(instrument="LSSTCam", id=2025062400012))
+
+        inserted = populator.populateHigherOrderMoments(expRecord, 4, catalog, allowUpdate=True)
+
+        self.assertTrue(inserted)
+        self.assertEqual(client.inserts[0]["table"], "cdb_lsstcam.ccdvisit1_quicklook")
+        self.assertEqual(
+            client.inserts[0]["values"],
+            {
+                "psf_coma_1": 6.0,  # m30 + m12
+                "psf_coma_2": 4.0,  # m21 + m03
+                "psf_trefoil_1": -2.0,  # m30 - 3 m12
+                "psf_trefoil_2": 8.0,  # 3 m21 - m03
+                "psf_kurtosis": 28.0,  # m40 + 2 m22 + m04
+                "psf_e4_1": 4.0,  # m40 - m04
+                "psf_e4_2": 32.0,  # 2 (m31 + m13)
+            },
+        )
+
+    def test_populateHigherOrderMomentsEmptyCatalogNotInserted(self) -> None:
+        # A detector with no stars gives all-NaN medians. The write must be
+        # skipped and reported as not inserted, which is how the backfill
+        # tells it apart from a detector it populated.
+        client = _RecordingClient()
+        populator = self._makePopulator(client, asyncWrites=False)
+        momentKeys = ("03", "12", "21", "30", "04", "13", "22", "31", "40")
+        catalog = Table(
+            {f"ext_shapeHSM_HigherOrderMomentsSource_{k}": np.array([], dtype=float) for k in momentKeys}
+        )
+        expRecord = cast(DimensionRecord, SimpleNamespace(instrument="LSSTCam", id=2025062400012))
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)  # nanmedian of an empty slice
+            with self.assertLogs("lsst.rubintv.production.consdbUtils", level="WARNING"):
+                inserted = populator.populateHigherOrderMoments(expRecord, 4, catalog)
+
+        self.assertFalse(inserted)
+        self.assertEqual(len(client.inserts), 0)
+
+    def test_sqlWriterCollectsWritesAtAnyLocation(self) -> None:
+        # File mode is for generating the backfill off the summit, so the
+        # location gate must not apply, nothing may go to the REST API, NaNs
+        # must still be dropped, and onSuccess (which announces the row as
+        # being in consDB) must not run, as nothing is in consDB yet
+        client = _RecordingClient()
+        writer = ConsDBSqlWriter(tempfile.mkdtemp())
+        writer.startFile(20250624, "test")
+        populator = ConsDBPopulator(
+            cast(ConsDbClient, client),
+            None,
+            cast(LocationConfig, SimpleNamespace(location="usdfprod")),
+            sqlWriter=writer,
+        )
+        called: list[bool] = []
+
+        inserted = populator._insertIfAllowed(
+            "LSSTCam",
+            "visit1_quicklook",
+            (20250624, 12),
+            {"visit_id": 2025062400012, "a": float("nan")},
+            True,
+            onSuccess=lambda: called.append(True),
+        )
+
+        self.assertTrue(inserted)
+        self.assertEqual(client.inserts, [])
+        self.assertEqual(called, [])
+        with open(writer.finishFile()) as f:
+            sql = f.read()
+        self.assertIn("INSERT INTO cdb_lsstcam.visit1_quicklook (day_obs, seq_num, visit_id)\n", sql)
+        self.assertIn("(20250624, 12, 2025062400012)", sql)
+
+    def test_populatePackageVersionsGoesToSqlWriter(self) -> None:
+        # package versions bypass _insertIfAllowed, and must still land in
+        # the files rather than going to the REST API
+        client = _RecordingClient()
+        writer = ConsDBSqlWriter(tempfile.mkdtemp())
+        writer.startFile(20250624, "test")
+        populator = ConsDBPopulator(
+            cast(ConsDbClient, client),
+            None,
+            cast(LocationConfig, SimpleNamespace(location="usdfprod")),
+            sqlWriter=writer,
+        )
+        pv = PackageVersions(versions={"ts_wep": "v1"})
+        expRecord = cast(
+            DimensionRecord,
+            SimpleNamespace(instrument="LSSTCam", day_obs=20250624, seq_num=123, id=2025062400123),
+        )
+
+        self.assertTrue(populator.populatePackageVersions(expRecord, pv, allowUpdate=True))
+        self.assertEqual(client.inserts, [])
+        with open(writer.finishFile()) as f:
+            sql = f.read()
+        self.assertIn(
+            f"INSERT INTO cdb_lsstcam.{PACKAGE_VERSIONS_TABLE} "
+            f"(day_obs, seq_num, exposure_id, {PACKAGE_VERSIONS_COLUMN})\n",
+            sql,
+        )
+        self.assertIn(f"(20250624, 123, 2025062400123, '{json.dumps(pv.toDict())}')", sql)
+
+    def test_sqlWriterAndAsyncWritesRejected(self) -> None:
+        # the writer isn't thread-safe, and async mode can't report success
+        with self.assertRaises(ValueError):
+            ConsDBPopulator(
+                cast(ConsDbClient, _RecordingClient()),
+                None,
+                cast(LocationConfig, SimpleNamespace(location="summit")),
+                asyncWrites=True,
+                sqlWriter=ConsDBSqlWriter(tempfile.mkdtemp()),
+            )
+
+    def test_noRedisHelperSkipsAnnouncement(self) -> None:
+        # a REST backfill run without redis must still write, just without
+        # announcing the row
+        client = _RecordingClient()
+        populator = ConsDBPopulator(
+            cast(ConsDbClient, client),
+            None,
+            cast(LocationConfig, SimpleNamespace(location="summit")),
+        )
+        moments = ("03", "12", "21", "30", "04", "13", "22", "31", "40")
+        catalog = Table({f"ext_shapeHSM_HigherOrderMomentsSource_{k}": [1.0] for k in moments})
+        expRecord = cast(DimensionRecord, SimpleNamespace(instrument="LSSTCam", id=2025062400012))
+
+        self.assertTrue(populator.populateHigherOrderMoments(expRecord, 4, catalog, allowUpdate=True))
+        self.assertEqual(len(client.inserts), 1)
 
     def test_syncModeReturnsTrueAndCallsOnSuccessInline(self) -> None:
         client = _RecordingClient()

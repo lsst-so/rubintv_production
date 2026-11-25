@@ -25,16 +25,24 @@ import json
 import os
 import tempfile
 import unittest
+from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import cast
-from unittest.mock import patch
+from typing import Any, Callable, cast
+from unittest.mock import MagicMock, patch
 
+import pandas as pd
 from astropy.table import Table
 
 import lsst.utils.tests
-from lsst.daf.butler import Butler, DimensionRecord
+from lsst.daf.butler import Butler, DatasetNotFoundError, DimensionRecord
+from lsst.rubintv.production.consdbSqlWriter import ConsDBSqlWriter
 from lsst.rubintv.production.consdbUtils import ConsDBPopulator
 from lsst.rubintv.production.highLevelTools import (
+    BACKFILL_STEPS,
+    DayBackfillResult,
+    backfillCcdVisit1QuicklookForDayAos,
+    backfillCcdVisit1QuicklookForDayHigherOrderMoments,
+    backfillDay,
     backfillPackageVersions,
     checkCcdVisitQuicklookTable,
     checkVisitQuicklookTable,
@@ -142,10 +150,18 @@ class QuicklookTableCheckTestCase(lsst.utils.tests.TestCase):
 
 
 class _RecordingPopulator:
-    """A ``ConsDBPopulator`` stand-in that records package-version writes."""
+    """A ``ConsDBPopulator`` stand-in that records writes.
 
-    def __init__(self) -> None:
+    ``populateHigherOrderMoments`` reports a failed write for any detector in
+    ``emptyDetectors``, as the real one does for a catalog with no finite
+    moments.
+    """
+
+    def __init__(self, emptyDetectors: tuple[int, ...] = ()) -> None:
         self.calls: list[tuple[DimensionRecord, PackageVersions, bool]] = []
+        self.momentCalls: list[tuple[DimensionRecord, int, object, bool]] = []
+        self.zernikeCalls: list[tuple[DimensionRecord, int]] = []
+        self.emptyDetectors = emptyDetectors
 
     def populatePackageVersions(
         self,
@@ -156,15 +172,58 @@ class _RecordingPopulator:
         self.calls.append((expRecord, packageVersions, allowUpdate))
         return True
 
+    def populateHigherOrderMoments(
+        self,
+        expRecord: DimensionRecord,
+        detectorNum: int,
+        singleVisitStarFootprints: object,
+        allowUpdate: bool = False,
+    ) -> bool:
+        self.momentCalls.append((expRecord, detectorNum, singleVisitStarFootprints, allowUpdate))
+        return detectorNum not in self.emptyDetectors
+
+    def populateCcdVisitRowZernikes(
+        self,
+        visitRecord: DimensionRecord,
+        detectorNum: int,
+        zernikeValues: dict[str, float],
+        allowUpdate: bool = False,
+    ) -> None:
+        self.zernikeCalls.append((visitRecord, detectorNum))
+
 
 class _FakeButler:
-    """A ``Butler`` stand-in serving canned exposure records for the day."""
+    """A ``Butler`` stand-in serving canned records and dataset refs for the
+    day, where ``get`` returns a ``(visit, detector)`` tuple in place of the
+    dataset. ``get`` also takes a dataset type and data ID, counting each
+    such lookup in ``nDataIdLookups``.
+    """
 
-    def __init__(self, records: list[DimensionRecord]) -> None:
+    def __init__(self, records: list[DimensionRecord], dRefs: list[SimpleNamespace] | None = None) -> None:
         self.records = records
+        self.dRefs = dRefs or []
+        self.datasetsLimit: int | None = -20_000
+        self.nDataIdLookups = 0
 
-    def query_dimension_records(self, element: str, where: str = "") -> list[DimensionRecord]:
+    def query_dimension_records(
+        self, element: str, where: str = "", order_by: str = ""
+    ) -> list[DimensionRecord]:
         return self.records
+
+    def query_datasets(
+        self, datasetType: str, where: str = "", limit: int | None = -20_000, explain: bool = True
+    ) -> list[SimpleNamespace]:
+        self.datasetsLimit = limit
+        return self.dRefs
+
+    def get(self, dRef: SimpleNamespace | str, **dataId: int) -> tuple[int, int]:
+        if isinstance(dRef, str):
+            self.nDataIdLookups += 1
+            matches = [ref for ref in self.dRefs if ref.dataId == dataId]
+            if not matches:
+                raise DatasetNotFoundError(f"No {dRef} for {dataId}")
+            dRef = matches[0]
+        return (dRef.dataId["visit"], dRef.dataId["detector"])
 
 
 class BackfillPackageVersionsTestCase(lsst.utils.tests.TestCase):
@@ -208,6 +267,296 @@ class BackfillPackageVersionsTestCase(lsst.utils.tests.TestCase):
         # the exposure_quicklook row already exists by backfill time, so the
         # write must be an update or every row would conflict
         self.assertTrue(allowUpdate)
+
+
+@dataclass(frozen=True)
+class _FakeVisitRecord:
+    """A hashable visit-record stand-in, as the backfill keys its results by
+    record.
+    """
+
+    instrument: str
+    id: int
+
+
+class BackfillHigherOrderMomentsTestCase(lsst.utils.tests.TestCase):
+    """Tests for `backfillCcdVisit1QuicklookForDayHigherOrderMoments`.
+
+    The backfill must hand each detector's own catalog to the populator for
+    the right visit, record a detector as inserted only when the write
+    happened, and report visits with no catalogs at all as missing data.
+    """
+
+    def test_backfillHigherOrderMoments(self) -> None:
+        withData = cast(DimensionRecord, _FakeVisitRecord(instrument="LSSTCam", id=2025062400012))
+        withoutData = cast(DimensionRecord, _FakeVisitRecord(instrument="LSSTCam", id=2025062400013))
+        dRefs = [
+            SimpleNamespace(dataId={"visit": withData.id, "detector": 94}),
+            SimpleNamespace(dataId={"visit": withData.id, "detector": 4}),
+        ]
+        butler = _FakeButler([withData, withoutData], dRefs)
+        # detector 94's catalog has no finite moments, so its write is skipped
+        # and it must not be counted as inserted
+        populator = _RecordingPopulator(emptyDetectors=(94,))
+
+        rowsInserted, noData = backfillCcdVisit1QuicklookForDayHigherOrderMoments(
+            cast(Butler, butler), cast(ConsDBPopulator, populator), 20250624
+        )
+
+        self.assertEqual(rowsInserted, {withData: [4]})
+        self.assertEqual(noData, [withoutData])
+        self.assertEqual(
+            populator.momentCalls,
+            [
+                # the ccdvisit1_quicklook rows already exist by backfill time,
+                # so every write must be an update
+                (withData, 4, (withData.id, 4), True),
+                (withData, 94, (withData.id, 94), True),
+            ],
+        )
+        # query_datasets caps results at 20k by default and only warns when it
+        # truncates, which a night of ~190 detectors per visit easily exceeds
+        self.assertIsNone(butler.datasetsLimit)
+
+
+_CWFS_DETECTORS = [191, 192, 195, 196, 199, 200, 203, 204]
+
+
+class BackfillCcdVisitAosTestCase(lsst.utils.tests.TestCase):
+    """Tests for `backfillCcdVisit1QuicklookForDayAos`, with the EFD and the
+    zernike recipe faked.
+
+    The loop runs over the eight wavefront detectors of every visit, so
+    anything per visit done inside it is repeated eight times.
+    """
+
+    def runBackfill(self, butler: _FakeButler) -> tuple[Any, Any, Any, _RecordingPopulator]:
+        """Run the backfill with the EFD and the zernike recipe faked.
+
+        Parameters
+        ----------
+        butler : `_FakeButler`
+            The butler to read from.
+
+        Returns
+        -------
+        rowsInserted : `dict` [`DimensionRecord`, `list` [`int`]]
+            The detectors written, per visit.
+        noData : `dict` [`DimensionRecord`, `list` [`int`]]
+            The detectors with no zernikes, per visit.
+        efd : `unittest.mock.MagicMock`
+            The fake ``getEfdData``.
+        populator : `_RecordingPopulator`
+            The populator written to.
+        """
+        populator = _RecordingPopulator()
+        efd = MagicMock(return_value=pd.DataFrame({"actualPosition": [10.0, 12.0]}))
+        recipe = MagicMock(return_value={"z4": 1.0})
+        with patch(f"{_MODULE}.getEfdData", efd), patch(f"{_MODULE}.computeRotatedZernikesForConsDB", recipe):
+            rowsInserted, noData = backfillCcdVisit1QuicklookForDayAos(
+                cast(Butler, butler), cast(ConsDBPopulator, populator), 20250624, cast(Any, None)
+            )
+        # every detector of the visit is rotated by the visit's one angle
+        self.assertEqual([call.args[1] for call in recipe.call_args_list], [11.0] * recipe.call_count)
+        return rowsInserted, noData, efd, populator
+
+    def test_rotatorFetchedOncePerVisit(self) -> None:
+        # The rotator angle is per visit, so it must come from the EFD once
+        # per visit rather than once per detector, and not at all for a visit
+        # with no zernikes
+        withData = cast(DimensionRecord, _FakeVisitRecord(instrument="LSSTCam", id=2025062400012))
+        withoutData = cast(DimensionRecord, _FakeVisitRecord(instrument="LSSTCam", id=2025062400013))
+        dRefs = [SimpleNamespace(dataId={"visit": withData.id, "detector": det}) for det in (191, 204)]
+
+        rowsInserted, noData, efd, populator = self.runBackfill(_FakeButler([withData, withoutData], dRefs))
+
+        self.assertEqual(efd.call_count, 1)
+        self.assertIs(efd.call_args.kwargs["expRecord"], withData)
+        self.assertEqual(populator.zernikeCalls, [(withData, 191), (withData, 204)])
+        self.assertEqual(rowsInserted, {withData: [191, 204]})
+        self.assertEqual(
+            noData,
+            {withData: [d for d in _CWFS_DETECTORS if d not in (191, 204)], withoutData: _CWFS_DETECTORS},
+        )
+
+    def test_zernikesReadByRefFromOneQuery(self) -> None:
+        # Looking each detector up by data ID costs a registry query per
+        # detector, missing ones included, so the night's refs must come from
+        # a single query, with no limit, so none of the night is truncated
+        visit = cast(DimensionRecord, _FakeVisitRecord(instrument="LSSTCam", id=2025062400012))
+        butler = _FakeButler([visit], [SimpleNamespace(dataId={"visit": visit.id, "detector": 195})])
+
+        rowsInserted, _, _, _ = self.runBackfill(butler)
+
+        self.assertEqual(rowsInserted, {visit: [195]})
+        self.assertEqual(butler.nDataIdLookups, 0)
+        self.assertIsNone(butler.datasetsLimit)
+
+
+# backfillDay looks each step function up in the module when it runs it, so
+# patching these names stands in for the real backfills
+_STEP_FUNCTIONS = {
+    "visit1Quicklook": "backfillVisit1QuicklookForDay",
+    "visit1QuicklookAos": "backfillVisit1QuicklookForDayAos",
+    "ccdVisit1Quicklook": "backfillCcdVisit1QuicklookForDay",
+    "ccdVisit1QuicklookHigherOrderMoments": "backfillCcdVisit1QuicklookForDayHigherOrderMoments",
+    "ccdVisit1QuicklookAos": "backfillCcdVisit1QuicklookForDayAos",
+    "packageVersions": "backfillPackageVersions",
+}
+
+
+class BackfillDayTestCase(lsst.utils.tests.TestCase):
+    """Tests for `backfillDay`, with every backfill step faked.
+
+    Pins the contract a long multi-day run relies on: every step runs, in
+    order, even after one fails; failures are recorded rather than raised; in
+    file mode each step writes its own file as it goes, which only gets its
+    final name if the step completes, and a step whose file exists is
+    skipped, so rerunning a list of days only redoes what didn't finish.
+    """
+
+    def setUp(self) -> None:
+        self.writer = ConsDBSqlWriter(tempfile.mkdtemp())
+
+    def runDay(
+        self,
+        sqlWriter: ConsDBSqlWriter | None,
+        failing: tuple[str, ...] = (),
+        interrupting: tuple[str, ...] = (),
+        **kwargs: Any,
+    ) -> tuple[DayBackfillResult, list[str]]:
+        """Run backfillDay with fake steps, returning the steps called.
+
+        Parameters
+        ----------
+        sqlWriter : `ConsDBSqlWriter`, optional
+            The writer for the populator, or `None` for REST mode. Each fake
+            step adds a row to it.
+        failing : `tuple` [`str`, ...], optional
+            The steps that raise an error, after adding their row.
+        interrupting : `tuple` [`str`, ...], optional
+            The steps that raise `KeyboardInterrupt`, after adding their row.
+        **kwargs
+            Passed on to `backfillDay`.
+
+        Returns
+        -------
+        result : `DayBackfillResult`
+            What `backfillDay` returned.
+        calls : `list` [`str`]
+            The steps run, in order.
+        """
+        calls: list[str] = []
+
+        def makeStep(step: str) -> Callable[..., str]:
+            def run(*args: Any, **kwargs: Any) -> str:
+                calls.append(step)
+                if sqlWriter is not None:
+                    sqlWriter.addRow("LSSTCam", "visit1_quicklook", (20250624, len(calls)), {"x": 1.0}, True)
+                if step in failing:
+                    raise RuntimeError(f"{step} broke")
+                if step in interrupting:
+                    raise KeyboardInterrupt
+                return f"{step} result"
+
+            return run
+
+        populator = cast(ConsDBPopulator, SimpleNamespace(sqlWriter=sqlWriter))
+        fakes: dict[str, Any] = {function: makeStep(step) for step, function in _STEP_FUNCTIONS.items()}
+        with patch.multiple(_MODULE, **fakes):
+            result = backfillDay(cast(Butler, None), populator, 20250624, cast(Any, None), **kwargs)
+        return result, calls
+
+    def getWrittenSteps(self) -> list[str]:
+        """Return the steps with a finished file for the day.
+
+        Returns
+        -------
+        steps : `list` [`str`]
+            The steps, in `BACKFILL_STEPS` order.
+        """
+        return [step for step in BACKFILL_STEPS if self.writer.isFileWritten(20250624, step)]
+
+    def test_failedStepRecordedAndLaterStepsStillRun(self) -> None:
+        with self.assertLogs(_MODULE, level="ERROR"):
+            result, calls = self.runDay(None, failing=("ccdVisit1Quicklook",), metadataPath="/meta")
+
+        self.assertEqual(calls, list(BACKFILL_STEPS))
+        self.assertFalse(result.succeeded)
+        self.assertEqual(list(result.errors), ["ccdVisit1Quicklook"])
+        self.assertIn("ccdVisit1Quicklook broke", result.errors["ccdVisit1Quicklook"])  # the traceback
+        self.assertEqual(set(result.stepResults), set(BACKFILL_STEPS) - {"ccdVisit1Quicklook"})
+        self.assertEqual(result.stepResults["visit1Quicklook"], "visit1Quicklook result")
+
+    def test_stepSelection(self) -> None:
+        # package versions need the metadata sidecars, so they're only run
+        # when given a path to them
+        _, calls = self.runDay(None)
+        self.assertEqual(calls, [s for s in BACKFILL_STEPS if s != "packageVersions"])
+
+        # a chosen subset still runs in the canonical order
+        _, calls = self.runDay(None, steps=["ccdVisit1QuicklookAos", "visit1Quicklook"])
+        self.assertEqual(calls, ["visit1Quicklook", "ccdVisit1QuicklookAos"])
+
+        with self.assertRaises(ValueError):
+            self.runDay(None, steps=["packageVersions"])
+        with self.assertRaises(ValueError):
+            self.runDay(None, steps=["notAStep"])
+
+    def test_fileModeWritesAFilePerStep(self) -> None:
+        result, calls = self.runDay(self.writer)
+
+        self.assertTrue(result.succeeded)
+        self.assertEqual(self.getWrittenSteps(), calls)
+        self.assertEqual(result.outputFiles, [self.writer.getFilePath(20250624, step) for step in calls])
+
+    def test_fileModeFailedStepKeepsTheOthers(self) -> None:
+        # Hours of work in the other steps must survive one step failing.
+        # The failed step leaves no file, not even a partial one, and its
+        # rows must not leak into the next step's file
+        with self.assertLogs(_MODULE, level="ERROR"):
+            result, calls = self.runDay(self.writer, failing=("visit1QuicklookAos",))
+
+        self.assertEqual(self.getWrittenSteps(), [step for step in calls if step != "visit1QuicklookAos"])
+        dayDir = os.path.dirname(self.writer.getFilePath(20250624, "x"))
+        self.assertFalse(any(name.endswith(".partial") for name in os.listdir(dayDir)))
+        self.assertFalse(self.writer.isFileOpen)
+        with open(self.writer.getFilePath(20250624, "ccdVisit1Quicklook")) as f:
+            self.assertEqual(f.read().count("INSERT INTO"), 1)
+
+    def test_rerunOnlyRunsUnwrittenSteps(self) -> None:
+        # resuming: after a failure, a rerun of the day runs just the step
+        # that failed, and overwrite reruns everything
+        with self.assertLogs(_MODULE, level="ERROR"):
+            self.runDay(self.writer, failing=("ccdVisit1QuicklookAos",))
+
+        result, calls = self.runDay(self.writer)
+        self.assertEqual(calls, ["ccdVisit1QuicklookAos"])
+        self.assertEqual(
+            result.skippedSteps, [s for s in BACKFILL_STEPS[:-1] if s != "ccdVisit1QuicklookAos"]
+        )
+        self.assertTrue(result.succeeded)
+
+        _, calls = self.runDay(self.writer, overwrite=True)
+        self.assertEqual(calls, list(BACKFILL_STEPS[:-1]))
+
+    def test_interruptLeavesNoPartialFile(self) -> None:
+        # Ctrl-C in a notebook must still clean up, or the writer would be
+        # left with a file open and the next run would refuse to start
+        with self.assertRaises(KeyboardInterrupt):
+            self.runDay(self.writer, interrupting=("ccdVisit1Quicklook",))
+
+        self.assertFalse(self.writer.isFileOpen)
+        self.assertEqual(self.getWrittenSteps(), ["visit1Quicklook", "visit1QuicklookAos"])
+        result, calls = self.runDay(self.writer)
+        self.assertTrue(result.succeeded)
+        self.assertEqual(calls[0], "ccdVisit1Quicklook")
+
+    def test_fileModeRefusesAnOpenFile(self) -> None:
+        # rows written outside backfillDay would otherwise land in its files
+        self.writer.startFile(20250101, "manual")
+        with self.assertRaises(RuntimeError):
+            self.runDay(self.writer)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):

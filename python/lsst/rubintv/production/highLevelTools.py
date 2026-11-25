@@ -29,7 +29,9 @@ import os
 import pickle
 import re
 import time
-from dataclasses import dataclass
+import traceback
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -37,7 +39,7 @@ import pandas as pd
 from astropy.table import Column, MaskedColumn, Table
 from tqdm import tqdm
 
-from lsst.daf.butler import Butler, DatasetNotFoundError, DimensionRecord
+from lsst.daf.butler import Butler, DatasetNotFoundError, DatasetRef, DimensionRecord
 from lsst.summit.utils.consdbClient import getCcdVisitTableForDay, getWideQuicklookTableForDay
 from lsst.summit.utils.dateTime import calcPreviousDay, dayObsIntToString, getCurrentDayObsInt
 from lsst.summit.utils.efdUtils import getEfdData
@@ -962,8 +964,77 @@ def backfillCcdVisit1QuicklookForDay(
             slowInserts += 1
             time.sleep(30)  # give the DB some rest
             if slowInserts >= 3:
-                print(f"Aborted after {i} inserts due to poor ConsDB performance")
-                return rowsInserted, noData
+                # raised, not returned, so backfillDay sees the step fail
+                raise RuntimeError(f"Aborted after {i} inserts due to poor ConsDB performance")
+        else:  # reset as soon as DB is performing well again
+            slowInserts = 0
+
+    return rowsInserted, noData
+
+
+def backfillCcdVisit1QuicklookForDayHigherOrderMoments(
+    butler: Butler, populator: ConsDBPopulator, dayObs: int
+) -> tuple[dict[DimensionRecord, list[int]], list[DimensionRecord]]:
+    """Backfill the ccdvisit1_quicklook PSF higher-order moments for a dayObs.
+
+    Writes the same ``psf_coma``, ``psf_trefoil``, ``psf_kurtosis`` and
+    ``psf_e4`` columns that the PSF plotter writes live, from each detector's
+    ``single_visit_star_footprints``.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The butler to query for visit records and catalogs.
+    populator : `ConsDBPopulator`
+        The ConsDBPopulator to use to populate the table. Must be synchronous.
+    dayObs : `int`
+        The dayObs to backfill.
+
+    Returns
+    -------
+    rowsInserted : `dict` [`DimensionRecord`, `list`[`int`]]
+        Dictionary mapping visit record to list of detectors successfully
+        populated for that visit.
+    noData : `list` [`DimensionRecord`]
+        List of visit records with no ``single_visit_star_footprints`` for
+        any detector.
+    """
+    where = f"visit.day_obs={dayObs} AND instrument='LSSTCam'"
+    records = butler.query_dimension_records("visit", where=where, order_by="visit.id")
+    # limit=None as the default caps at 20k, with only a warning, and a night
+    # has ~190 detectors per visit
+    dRefs = butler.query_datasets("single_visit_star_footprints", where=where, limit=None, explain=False)
+
+    dRefsByVisit: dict[int, list[DatasetRef]] = {}
+    for dRef in dRefs:
+        dRefsByVisit.setdefault(int(dRef.dataId["visit"]), []).append(dRef)
+
+    rowsInserted: dict[DimensionRecord, list[int]] = {}
+    noData: list[DimensionRecord] = []
+
+    slowInserts = 0
+    for i, record in enumerate(tqdm(records, total=len(records), mininterval=30.0, ncols=120)):
+        visitRefs = dRefsByVisit.get(record.id)
+        if not visitRefs:
+            noData.append(record)
+            continue
+
+        insertTime = 0.0
+        for dRef in sorted(visitRefs, key=lambda ref: int(ref.dataId["detector"])):
+            detector = int(dRef.dataId["detector"])
+            catalog = butler.get(dRef)
+            t0 = time.time()  # deliberately time after the butler.get()
+            inserted = populator.populateHigherOrderMoments(record, detector, catalog, allowUpdate=True)
+            insertTime += time.time() - t0
+            if inserted:
+                rowsInserted.setdefault(record, []).append(detector)
+
+        if insertTime > 12.5:
+            slowInserts += 1
+            time.sleep(30)  # give the DB some rest
+            if slowInserts >= 3:
+                # raised, not returned, so backfillDay sees the step fail
+                raise RuntimeError(f"Aborted after {i} visits due to poor ConsDB performance")
         else:  # reset as soon as DB is performing well again
             slowInserts = 0
 
@@ -999,6 +1070,15 @@ def backfillCcdVisit1QuicklookForDayAos(
     records = butler.query_dimension_records("visit", where=where, order_by="-visit.id")
 
     detectors = (191, 192, 195, 196, 199, 200, 203, 204)
+    # One query for the night, rather than a get by data ID per detector,
+    # each of which is a registry lookup, missing detectors included.
+    dRefs = butler.query_datasets(
+        "zernikes",
+        where=f"{where} AND detector IN ({', '.join(str(d) for d in detectors)})",
+        limit=None,
+        explain=False,
+    )
+    zernikeRefs = {(int(dRef.dataId["visit"]), int(dRef.dataId["detector"])): dRef for dRef in dRefs}
 
     rowsInserted: dict[DimensionRecord, list[int]] = {}
     noData: dict[DimensionRecord, list[int]] = {}
@@ -1007,22 +1087,28 @@ def backfillCcdVisit1QuicklookForDayAos(
     for nInsert, record in enumerate(
         tqdm(reversed(records), total=len(records), mininterval=30.0, ncols=120)
     ):
+        physicalRotation: float | None = None
         for detector in detectors:
-            t0 = time.time()
-
-            try:
-                zkTable = butler.get("zernikes", visit=record.id, detector=detector)
-            except DatasetNotFoundError:
+            zernikeRef = zernikeRefs.get((record.id, detector))
+            if zernikeRef is None:
                 if record not in noData:
                     noData[record] = []
                 noData[record].append(detector)
                 continue
+            zkTable = butler.get(zernikeRef)
 
-            data = getEfdData(efdClient, "lsst.sal.MTRotator.rotation", expRecord=record)
-            physicalRotation = np.nanmean(data["actualPosition"])
+            if physicalRotation is None:  # same for all detectors so only read it once
+                data = getEfdData(efdClient, "lsst.sal.MTRotator.rotation", expRecord=record)
+                physicalRotation = float(np.nanmean(data["actualPosition"]))
 
+            t0 = time.time()  # deliberately time after the butler.get() and EFD query
             try:
                 consDbValues = computeRotatedZernikesForConsDB(zkTable, physicalRotation)
+                if not consDbValues:
+                    if record not in noData:
+                        noData[record] = []
+                    noData[record].append(detector)
+                    continue
                 populator.populateCcdVisitRowZernikes(record, detector, consDbValues, allowUpdate=True)
             except IndexError:
                 # ideally we wouldn't catch IndexError, but sometimes the
@@ -1042,10 +1128,145 @@ def backfillCcdVisit1QuicklookForDayAos(
                 slowInserts += 1
                 time.sleep(30)  # give the DB some rest
                 if slowInserts >= 3:
-                    print(f"Aborted after {nInsert} inserts due to poor ConsDB performance")
-                    return rowsInserted, noData
+                    # raised, not returned, so backfillDay sees the step fail
+                    raise RuntimeError(f"Aborted after {nInsert} inserts due to poor ConsDB performance")
 
             else:
                 slowInserts = 0
 
     return rowsInserted, noData
+
+
+BACKFILL_STEPS = (
+    "visit1Quicklook",
+    "visit1QuicklookAos",
+    "ccdVisit1Quicklook",
+    "ccdVisit1QuicklookHigherOrderMoments",
+    "ccdVisit1QuicklookAos",
+    "packageVersions",
+)
+"""The steps `backfillDay` runs, in the order it runs them."""
+
+
+@dataclass
+class DayBackfillResult:
+    """The outcome of `backfillDay` for one dayObs."""
+
+    dayObs: int
+    """The dayObs backfilled."""
+    stepResults: dict[str, Any] = field(default_factory=dict)
+    """Each step that completed, mapped to its backfill function's return
+    value."""
+    errors: dict[str, str] = field(default_factory=dict)
+    """Each step that raised, mapped to its formatted traceback."""
+    outputFiles: list[str] = field(default_factory=list)
+    """The SQL files written, one per step, if writing to files."""
+    skippedSteps: list[str] = field(default_factory=list)
+    """The steps skipped as their SQL file had already been written."""
+
+    @property
+    def succeeded(self) -> bool:
+        """Whether every step ran without raising (`bool`)."""
+        return not self.errors
+
+
+def backfillDay(
+    butler: Butler,
+    populator: ConsDBPopulator,
+    dayObs: int,
+    efdClient: EfdClient,
+    metadataPath: str | None = None,
+    steps: Iterable[str] | None = None,
+    overwrite: bool = False,
+) -> DayBackfillResult:
+    """Run every consDB backfill for a dayObs.
+
+    A step that raises is logged and recorded in the result, and the other
+    steps still run. Every write is an upsert, so rerunning a day is safe.
+
+    If the populator has a ``sqlWriter``, each step's rows are written to
+    their own SQL file, ``<dayObs>/<step>.sql``, as the step runs. The file
+    only gets that name once the step completes, and a step whose file
+    already exists is skipped unless ``overwrite`` is set, so rerunning a day
+    runs only the steps that failed or never ran.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The butler to read the day's records and datasets from.
+    populator : `ConsDBPopulator`
+        The populator to write with. Must be synchronous.
+    dayObs : `int`
+        The dayObs to backfill.
+    efdClient : `lsst_efd_client.EfdClient`
+        The EFD client, for the rotator angles.
+    metadataPath : `str`, optional
+        The directory of merged AOS metadata files that package versions are
+        read from. The ``packageVersions`` step is skipped if not given.
+    steps : `Iterable` [`str`], optional
+        The steps to run, from `BACKFILL_STEPS`. Defaults to all of them.
+    overwrite : `bool`, optional
+        Rerun the steps whose SQL files already exist, replacing the files.
+        Only used with a ``sqlWriter``.
+
+    Returns
+    -------
+    result : `DayBackfillResult`
+        What each step returned, and the error from any that raised.
+    """
+    log = logging.getLogger(__name__)
+
+    runners: dict[str, Callable[[], Any]] = {
+        "visit1Quicklook": lambda: backfillVisit1QuicklookForDay(butler, populator, dayObs, efdClient),
+        "visit1QuicklookAos": lambda: backfillVisit1QuicklookForDayAos(butler, populator, dayObs),
+        "ccdVisit1Quicklook": lambda: backfillCcdVisit1QuicklookForDay(butler, populator, dayObs),
+        "ccdVisit1QuicklookHigherOrderMoments": lambda: backfillCcdVisit1QuicklookForDayHigherOrderMoments(
+            butler, populator, dayObs
+        ),
+        "ccdVisit1QuicklookAos": lambda: backfillCcdVisit1QuicklookForDayAos(
+            butler, populator, dayObs, efdClient
+        ),
+    }
+    if metadataPath is not None:
+        path = metadataPath
+        runners["packageVersions"] = lambda: backfillPackageVersions(
+            butler, populator, path, dayObs, "LSSTCam"
+        )
+
+    requested = set(runners) if steps is None else set(steps)
+    unknown = requested - set(BACKFILL_STEPS)
+    if unknown:
+        raise ValueError(f"Unknown backfill steps {sorted(unknown)}; choose from {BACKFILL_STEPS}")
+    if requested - set(runners):
+        raise ValueError("The packageVersions step needs a metadataPath")
+
+    writer = populator.sqlWriter
+    if writer is not None and writer.isFileOpen:
+        raise RuntimeError("The sqlWriter already has a file open")
+
+    result = DayBackfillResult(dayObs)
+    for step in BACKFILL_STEPS:
+        if step not in requested:
+            continue
+        if writer is not None and not overwrite and writer.isFileWritten(dayObs, step):
+            log.info(f"Skipping backfill step {step} for {dayObs=} as it has already been written")
+            result.skippedSteps.append(step)
+            continue
+
+        log.info(f"Running backfill step {step} for {dayObs=}")
+        try:
+            if writer is not None:
+                writer.startFile(dayObs, step)
+            result.stepResults[step] = runners[step]()
+            if writer is not None:
+                result.outputFiles.append(writer.finishFile())
+        except Exception:
+            log.exception(f"Backfill step {step} failed for {dayObs=}")
+            result.errors[step] = traceback.format_exc()
+        finally:
+            # On any exit short of finishing, Ctrl-C included, so no partial
+            # file is left and the writer is free for the next step or run.
+            if writer is not None:
+                writer.discardFile()
+
+    return result
